@@ -34,6 +34,14 @@ const UserSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  lastIp: {
+    type: String,
+    default: '',
+  },
+  registrationIp: {
+    type: String,
+    default: '',
+  }
 }, {
   timestamps: true,
 });

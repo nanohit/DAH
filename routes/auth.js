@@ -9,8 +9,18 @@ const { protect, admin } = require('../middleware/auth');
 // @access  Public (for development)
 router.get('/users', async (req, res) => {
   try {
-    const users = await User.find().select('-password');
-    res.json(users);
+    const users = await User.find().select('-password').select('+registrationIp +lastIp');
+    const usersWithIp = users.map(user => ({
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      isAdmin: user.isAdmin,
+      registrationIp: user.registrationIp,
+      lastIp: user.lastIp,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt
+    }));
+    res.json(usersWithIp);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server Error' });
@@ -72,6 +82,8 @@ router.post('/register', async (req, res) => {
       username,
       email,
       password,
+      registrationIp: ip,
+      lastIp: ip
     });
 
     if (user) {
@@ -93,6 +105,8 @@ router.post('/register', async (req, res) => {
         username: user.username,
         email: user.email,
         isAdmin: user.isAdmin,
+        registrationIp: user.registrationIp,
+        lastIp: user.lastIp,
         token,
       });
     } else {
