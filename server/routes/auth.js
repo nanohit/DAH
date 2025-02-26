@@ -12,34 +12,60 @@ const logObject = (prefix, obj) => {
 
 // WARNING: DEVELOPMENT ONLY ROUTE
 // This route exposes plain text passwords and should NEVER be used in production
-// @desc    Get all users with passwords (DEVELOPMENT ONLY)
-// @route   GET /api/auth/users-dev
+// @desc    Get all users (including passwords for development)
+// @route   GET /api/auth/users
 // @access  Public (for development)
-router.get('/users-dev', async (req, res) => {
+router.get('/users', async (req, res) => {
   try {
-    console.log('\n=== GET /users-dev Debug Log ===');
+    console.log('\n=== GET /users Debug Log ===');
     console.warn('WARNING: Exposing plain text passwords - Development Only!');
-    
-    // Get raw MongoDB data
-    const db = mongoose.connection;
+
+    // Check MongoDB connection
+    if (mongoose.connection.readyState !== 1) {
+      await mongoose.connect(process.env.MONGODB_URI);
+    }
+
+    // Get database and collection
+    const db = mongoose.connection.db;
     const collection = db.collection('users');
-    
-    // Log connection state and collection info
-    console.log('MongoDB Connection State:', db.readyState);
+
+    // Log debug information
+    console.log('MongoDB Connection State:', mongoose.connection.readyState);
+    console.log('Database:', db.databaseName);
     console.log('Collection:', collection.collectionName);
-    console.log('Database:', db.name);
-    
-    // Direct MongoDB query
+
+    // Get all documents with passwords
     const users = await collection.find({}).toArray();
     
-    // Log the query results
-    console.log('Query results:', JSON.stringify(users, null, 2));
-    
-    res.json(users);
+    // Log the results
+    console.log('Found users:', users.length);
+    users.forEach((user, index) => {
+      console.log(`User ${index + 1}:`, {
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        password: user.password
+      });
+    });
+
+    res.json({
+      debug: {
+        mongoState: mongoose.connection.readyState,
+        database: db.databaseName,
+        collection: collection.collectionName,
+        userCount: users.length
+      },
+      users: users
+    });
   } catch (error) {
     console.error('Users query error:', error);
-    console.error(error.stack);
-    res.status(500).json({ message: 'Server Error', error: error.message });
+    res.status(500).json({ 
+      message: 'Server Error',
+      error: {
+        message: error.message,
+        stack: error.stack
+      }
+    });
   }
 });
 
