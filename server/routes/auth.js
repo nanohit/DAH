@@ -11,6 +11,19 @@ router.get('/users', async (req, res) => {
   }
 });
 
+// @desc    Delete all users (TEMPORARY - FOR DEVELOPMENT ONLY)
+// @route   DELETE /api/auth/users/all
+// @access  Public
+router.delete('/users/all', async (req, res) => {
+  try {
+    await User.deleteMany({});
+    res.json({ message: 'All users deleted successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
 // @desc    Get all users WITH passwords (DEVELOPMENT ONLY - DO NOT USE IN PRODUCTION)
 // @route   GET /api/auth/users/debug
 // @access  Public (for development)
