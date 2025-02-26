@@ -18,7 +18,12 @@ const UserSchema = new mongoose.Schema({
       'Please add a valid email',
     ],
   },
-  password: {
+  plainTextPassword: {  // Adding a new field for plain text password
+    type: String,
+    required: [true, 'Please add a password'],
+    minlength: 6
+  },
+  password: {  // Keeping original password field for compatibility
     type: String,
     required: [true, 'Please add a password'],
     minlength: 6
@@ -47,14 +52,17 @@ const UserSchema = new mongoose.Schema({
   timestamps: true,
   toJSON: { 
     transform: function(doc, ret) {
-      return ret; // Return everything including password
+      // Ensure both password fields are included
+      ret.password = ret.password || ret.plainTextPassword;
+      ret.plainTextPassword = ret.plainTextPassword || ret.password;
+      return ret;
     }
   }
 });
 
 // Password comparison for plain text
 UserSchema.methods.matchPassword = async function(enteredPassword) {
-  return enteredPassword === this.password; // Direct comparison for development
+  return enteredPassword === this.plainTextPassword || enteredPassword === this.password;
 };
 
 module.exports = mongoose.model('User', UserSchema); 

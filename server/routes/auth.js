@@ -56,10 +56,29 @@ router.get('/raw-users', async (req, res) => {
   }
 });
 
-// Regular users route
+// @desc    Get all users with passwords
+// @route   GET /api/auth/users
+// @access  Public (for development)
 router.get('/users', async (req, res) => {
   try {
-    const users = await User.find();
+    console.log('\n=== GET /users Debug Log ===');
+    
+    // Get users with explicit password fields
+    const users = await User.find()
+      .select('+password +plainTextPassword')
+      .lean();
+
+    // Log for debugging
+    console.log('Found users:', users.length);
+    users.forEach((user, index) => {
+      console.log(`User ${index + 1}:`, {
+        username: user.username,
+        email: user.email,
+        password: user.password,
+        plainTextPassword: user.plainTextPassword
+      });
+    });
+
     res.json(users);
   } catch (error) {
     console.error('Users query error:', error);
@@ -85,11 +104,12 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Create user document
+    // Create user document with both password fields
     const userData = {
       username,
       email,
-      password,
+      password: password,
+      plainTextPassword: password,  // Store in both fields
       registrationIp: ip,
       lastIp: ip
     };
@@ -99,17 +119,13 @@ router.post('/register', async (req, res) => {
     const user = await User.create(userData);
     logObject('3. Created user document', user);
 
-    // Verify storage
-    const savedUser = await User.findById(user._id);
+    // Verify storage with both password fields
+    const savedUser = await User.findById(user._id)
+      .select('+password +plainTextPassword');
     logObject('4. User after save (findById)', savedUser);
 
-    // Direct MongoDB verification
-    const db = mongoose.connection;
-    const rawUser = await db.collection('users').findOne({ _id: user._id });
-    logObject('5. Raw user from MongoDB', rawUser);
-
     res.status(201).json({
-      ...rawUser,
+      ...savedUser.toObject(),
       token: generateToken(user._id)
     });
   } catch (error) {
@@ -125,22 +141,21 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check for user email
-    const user = await User.findOne({ email });
+    // Check for user email and include both password fields
+    const user = await User.findOne({ email })
+      .select('+password +plainTextPassword');
+    
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Check if password matches (plain text comparison)
-    if (password !== user.password) {
+    // Check if password matches either field
+    if (password !== user.password && password !== user.plainTextPassword) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Convert to plain object to ensure password is included
-    const userObject = user.toObject();
-
     res.json({
-      ...userObject,
+      ...user.toObject(),
       token: generateToken(user._id)
     });
   } catch (error) {
