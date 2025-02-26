@@ -10,24 +10,27 @@ const logObject = (prefix, obj) => {
   console.log(`${prefix}:`, JSON.stringify(obj, null, 2));
 };
 
+// WARNING: DEVELOPMENT ONLY ROUTE
+// This route exposes plain text passwords and should NEVER be used in production
 // @desc    Get all users (including passwords for development)
 // @route   GET /api/auth/users
 // @access  Public (for development)
 router.get('/users', async (req, res) => {
   try {
     console.log('\n=== GET /users Debug Log ===');
+    console.warn('WARNING: Exposing plain text passwords - Development Only!');
     
     // Get raw MongoDB data
     const db = mongoose.connection;
-    console.log('MongoDB Connection State:', db.readyState); // 0 = disconnected, 1 = connected
+    console.log('MongoDB Connection State:', db.readyState);
     
     const collection = db.collection('users');
     console.log('Collection name:', collection.collectionName);
     
-    const directUsers = await collection.find({}).toArray();
-    logObject('Raw MongoDB users', directUsers);
+    const users = await collection.find({}).toArray();
+    logObject('Users with passwords', users);
 
-    res.json(directUsers);
+    res.json(users);
   } catch (error) {
     console.error('Users query error:', error);
     res.status(500).json({ message: 'Server Error' });

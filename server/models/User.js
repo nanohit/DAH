@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+// WARNING: THIS IS FOR DEVELOPMENT ONLY
+// This schema includes plain text passwords and should NEVER be used in production
 const UserSchema = new mongoose.Schema({
   username: {
     type: String,
@@ -19,7 +21,8 @@ const UserSchema = new mongoose.Schema({
   password: {
     type: String,
     required: [true, 'Please add a password'],
-    minlength: 6
+    minlength: 6,
+    select: true  // Changed to true to always include password
   },
   isAdmin: {
     type: Boolean,
@@ -50,21 +53,12 @@ const UserSchema = new mongoose.Schema({
   }
 });
 
-// Comment out password hashing for development
-// UserSchema.pre('save', async function(next) {
-//   if (!this.isModified('password')) {
-//     next();
-//   }
-//   const salt = await bcrypt.genSalt(10);
-//   this.password = await bcrypt.hash(this.password, salt);
-// });
-
-// Modify password comparison to work with plain text
+// Password comparison for plain text
 UserSchema.methods.matchPassword = async function(enteredPassword) {
-  // return await bcrypt.compare(enteredPassword, this.password);
   return enteredPassword === this.password; // Direct comparison for development
 };
 
+// Ensure password is always selected
 UserSchema.pre('find', function() {
   this.select('+password');
 });
