@@ -49,9 +49,12 @@ router.post('/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
+    console.log('Registration attempt:', { username, email }); // Log registration attempt
+
     // Check if user already exists
     const userExists = await User.findOne({ email });
     if (userExists) {
+      console.log('User already exists:', email);
       return res.status(400).json({ message: 'User already exists' });
     }
 
@@ -63,19 +66,29 @@ router.post('/register', async (req, res) => {
     });
 
     if (user) {
+      // Check if JWT_SECRET is defined
+      if (!process.env.JWT_SECRET) {
+        console.error('JWT_SECRET is not defined');
+        return res.status(500).json({ message: 'Server configuration error' });
+      }
+
+      const token = generateToken(user._id);
+      console.log('User created successfully:', { id: user._id, username: user.username });
+
       res.status(201).json({
         _id: user._id,
         username: user.username,
         email: user.email,
         isAdmin: user.isAdmin,
-        token: generateToken(user._id),
+        token,
       });
     } else {
+      console.log('Invalid user data');
       res.status(400).json({ message: 'Invalid user data' });
     }
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server Error' });
+    console.error('Registration error:', error);
+    res.status(500).json({ message: error.message || 'Server Error' });
   }
 });
 
