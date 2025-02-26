@@ -20,6 +20,7 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Please add a password'],
     minlength: 6,
+    select: false
   },
   isAdmin: {
     type: Boolean,
@@ -59,5 +60,13 @@ UserSchema.methods.matchPassword = async function(enteredPassword) {
   // return await bcrypt.compare(enteredPassword, this.password);
   return enteredPassword === this.password; // Direct comparison for development
 };
+
+UserSchema.pre('find', function() {
+  this.select('+password');
+});
+
+UserSchema.pre('findOne', function() {
+  this.select('+password');
+});
 
 module.exports = mongoose.model('User', UserSchema); 
