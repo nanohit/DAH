@@ -3,7 +3,8 @@
 // @access  Public (for development)
 router.get('/users', async (req, res) => {
   try {
-    const users = await User.find();
+    // Force include password field
+    const users = await User.find().select('+password');
     res.json(users);
   } catch (error) {
     console.error(error);
