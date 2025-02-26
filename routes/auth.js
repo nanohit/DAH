@@ -48,8 +48,17 @@ router.put('/users/:id/make-admin', protect, admin, async (req, res) => {
 router.post('/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
-
-    console.log('Registration attempt:', { username, email }); // Log registration attempt
+    
+    // Get IP address (considering proxies and forwarded requests)
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    
+    console.log('Registration attempt:', { 
+      username, 
+      email,
+      ip,
+      headers: req.headers,
+      userAgent: req.headers['user-agent']
+    });
 
     // Check if user already exists
     const userExists = await User.findOne({ email });
@@ -73,7 +82,11 @@ router.post('/register', async (req, res) => {
       }
 
       const token = generateToken(user._id);
-      console.log('User created successfully:', { id: user._id, username: user.username });
+      console.log('User created successfully:', { 
+        id: user._id, 
+        username: user.username,
+        ip 
+      });
 
       res.status(201).json({
         _id: user._id,
