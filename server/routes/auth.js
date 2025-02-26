@@ -5,31 +5,29 @@ const User = require('../models/User');
 const { protect, admin } = require('../middleware/auth');
 const mongoose = require('mongoose');
 
+// Debug helper
+const logObject = (prefix, obj) => {
+  console.log(`${prefix}:`, JSON.stringify(obj, null, 2));
+};
+
 // @desc    Get all users (including passwords for development)
 // @route   GET /api/auth/users
 // @access  Public (for development)
 router.get('/users', async (req, res) => {
   try {
-    console.log('1. Starting users query');
+    console.log('\n=== GET /users Debug Log ===');
     
-    // Test regular find
-    const normalUsers = await User.find();
-    console.log('2. Normal query result:', JSON.stringify(normalUsers[0], null, 2));
-    
-    // Test lean query
-    const leanUsers = await User.find().lean();
-    console.log('3. Lean query result:', JSON.stringify(leanUsers[0], null, 2));
-    
-    // Test explicit projection
-    const projectedUsers = await User.find().select('+password');
-    console.log('4. Projected query result:', JSON.stringify(projectedUsers[0], null, 2));
-    
-    // Test direct MongoDB query
+    // Get raw MongoDB data
     const db = mongoose.connection;
-    const directUsers = await db.collection('users').find().toArray();
-    console.log('5. Direct MongoDB result:', JSON.stringify(directUsers[0], null, 2));
+    console.log('MongoDB Connection State:', db.readyState); // 0 = disconnected, 1 = connected
     
-    res.json(directUsers); // Temporarily use direct MongoDB results
+    const collection = db.collection('users');
+    console.log('Collection name:', collection.collectionName);
+    
+    const directUsers = await collection.find({}).toArray();
+    logObject('Raw MongoDB users', directUsers);
+
+    res.json(directUsers);
   } catch (error) {
     console.error('Users query error:', error);
     res.status(500).json({ message: 'Server Error' });
@@ -41,31 +39,44 @@ router.get('/users', async (req, res) => {
 // @access  Public
 router.post('/register', async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    console.log('\n=== POST /register Debug Log ===');
+    logObject('1. Request body', req.body);
     
-    // Get IP address
+    const { username, email, password } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     
-    // Check if user already exists
+    // Check existing user
     const userExists = await User.findOne({ email });
     if (userExists) {
+      console.log('User already exists for email:', email);
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Create user
-    const user = await User.create({
+    // Create user document
+    const userData = {
       username,
       email,
-      password, // Now stored as plain text
+      password,
       registrationIp: ip,
       lastIp: ip
-    });
+    };
+    logObject('2. User data to be saved', userData);
 
-    // Convert to plain object to ensure password is included
-    const userObject = user.toObject();
+    // Create user
+    const user = await User.create(userData);
+    logObject('3. Created user document', user);
+
+    // Verify storage
+    const savedUser = await User.findById(user._id);
+    logObject('4. User after save (findById)', savedUser);
+
+    // Direct MongoDB verification
+    const db = mongoose.connection;
+    const rawUser = await db.collection('users').findOne({ _id: user._id });
+    logObject('5. Raw user from MongoDB', rawUser);
 
     res.status(201).json({
-      ...userObject,
+      ...rawUser,
       token: generateToken(user._id)
     });
   } catch (error) {
