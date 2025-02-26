@@ -21,8 +21,7 @@ const UserSchema = new mongoose.Schema({
   password: {
     type: String,
     required: [true, 'Please add a password'],
-    minlength: 6,
-    select: true  // Changed to true to always include password
+    minlength: 6
   },
   isAdmin: {
     type: Boolean,
@@ -57,14 +56,5 @@ const UserSchema = new mongoose.Schema({
 UserSchema.methods.matchPassword = async function(enteredPassword) {
   return enteredPassword === this.password; // Direct comparison for development
 };
-
-// Ensure password is always selected
-UserSchema.pre('find', function() {
-  this.select('+password');
-});
-
-UserSchema.pre('findOne', function() {
-  this.select('+password');
-});
 
 module.exports = mongoose.model('User', UserSchema); 
