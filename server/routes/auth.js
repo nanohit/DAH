@@ -3,16 +3,35 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { protect, admin } = require('../middleware/auth');
+const mongoose = require('mongoose');
 
 // @desc    Get all users (including passwords for development)
 // @route   GET /api/auth/users
 // @access  Public (for development)
 router.get('/users', async (req, res) => {
   try {
-    const users = await User.find().lean(); // Using lean() to get plain objects
-    res.json(users);
+    console.log('1. Starting users query');
+    
+    // Test regular find
+    const normalUsers = await User.find();
+    console.log('2. Normal query result:', JSON.stringify(normalUsers[0], null, 2));
+    
+    // Test lean query
+    const leanUsers = await User.find().lean();
+    console.log('3. Lean query result:', JSON.stringify(leanUsers[0], null, 2));
+    
+    // Test explicit projection
+    const projectedUsers = await User.find().select('+password');
+    console.log('4. Projected query result:', JSON.stringify(projectedUsers[0], null, 2));
+    
+    // Test direct MongoDB query
+    const db = mongoose.connection;
+    const directUsers = await db.collection('users').find().toArray();
+    console.log('5. Direct MongoDB result:', JSON.stringify(directUsers[0], null, 2));
+    
+    res.json(directUsers); // Temporarily use direct MongoDB results
   } catch (error) {
-    console.error(error);
+    console.error('Users query error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 });
