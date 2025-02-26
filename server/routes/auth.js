@@ -14,40 +14,42 @@ const logObject = (prefix, obj) => {
 // WARNING: DEVELOPMENT ONLY ROUTE
 // This route exposes plain text passwords and should NEVER be used in production
 // @desc    Get all users with raw MongoDB access (DEVELOPMENT ONLY)
-// @route   GET /api/auth/raw-users
+// @route   GET /api/auth/dev/users
 // @access  Public (for development)
-router.get('/raw-users', async (req, res) => {
+router.get('/dev/users', async (req, res) => {
   let client;
   try {
-    console.log('\n=== GET /raw-users Debug Log ===');
-    console.warn('WARNING: Exposing plain text passwords - Development Only!');
-
-    // Connect directly using MongoDB driver
-    client = await MongoClient.connect(process.env.MONGODB_URI);
-    const db = client.db();
+    // Parse MongoDB URI
+    const uri = process.env.MONGODB_URI;
+    const dbName = uri.split('/').pop().split('?')[0];
     
-    // Get all users without mongoose filtering
+    // Connect directly using MongoDB driver
+    client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+    await client.connect();
+    
+    console.log('Connected to MongoDB');
+    const db = client.db(dbName);
+    
+    // Get all users without any filtering
     const users = await db.collection('users').find({}).toArray();
     
-    console.log('Found users:', users.length);
-    console.log('Sample user data:', JSON.stringify(users[0], null, 2));
-
+    console.log(`Found ${users.length} users`);
+    console.log('Sample user:', JSON.stringify(users[0], null, 2));
+    
     res.json({
       debug: {
-        userCount: users.length,
-        dbName: db.databaseName,
-        collection: 'users'
+        dbName,
+        collection: 'users',
+        userCount: users.length
       },
       users: users
     });
   } catch (error) {
-    console.error('Raw users query error:', error);
-    res.status(500).json({ 
+    console.error('Error:', error);
+    res.status(500).json({
       message: 'Server Error',
-      error: {
-        message: error.message,
-        stack: error.stack
-      }
+      error: error.message,
+      stack: error.stack
     });
   } finally {
     if (client) {
