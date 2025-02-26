@@ -20,16 +20,13 @@ router.get('/users', async (req, res) => {
     console.log('\n=== GET /users Debug Log ===');
     console.warn('WARNING: Exposing plain text passwords - Development Only!');
     
-    // Get raw MongoDB data
-    const db = mongoose.connection;
-    console.log('MongoDB Connection State:', db.readyState);
-    
-    const collection = db.collection('users');
-    console.log('Collection name:', collection.collectionName);
-    
-    const users = await collection.find({}).toArray();
-    logObject('Users with passwords', users);
+    // Get raw MongoDB data with explicit password inclusion
+    const users = await User.find()
+      .select('+password')  // Explicitly include password
+      .lean()  // Convert to plain JavaScript objects
+      .exec();
 
+    logObject('Users with passwords', users);
     res.json(users);
   } catch (error) {
     console.error('Users query error:', error);
