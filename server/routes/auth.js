@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { protect, admin } = require('../middleware/auth');
 const mongoose = require('mongoose');
+const { MongoClient } = require('mongodb');
 
 // Debug helper
 const logObject = (prefix, obj) => {
@@ -12,53 +13,35 @@ const logObject = (prefix, obj) => {
 
 // WARNING: DEVELOPMENT ONLY ROUTE
 // This route exposes plain text passwords and should NEVER be used in production
-// @desc    Get all users (including passwords for development)
-// @route   GET /api/auth/users
+// @desc    Get all users with raw MongoDB access (DEVELOPMENT ONLY)
+// @route   GET /api/auth/raw-users
 // @access  Public (for development)
-router.get('/users', async (req, res) => {
+router.get('/raw-users', async (req, res) => {
+  let client;
   try {
-    console.log('\n=== GET /users Debug Log ===');
+    console.log('\n=== GET /raw-users Debug Log ===');
     console.warn('WARNING: Exposing plain text passwords - Development Only!');
 
-    // Check MongoDB connection
-    if (mongoose.connection.readyState !== 1) {
-      await mongoose.connect(process.env.MONGODB_URI);
-    }
-
-    // Get database and collection
-    const db = mongoose.connection.db;
-    const collection = db.collection('users');
-
-    // Log debug information
-    console.log('MongoDB Connection State:', mongoose.connection.readyState);
-    console.log('Database:', db.databaseName);
-    console.log('Collection:', collection.collectionName);
-
-    // Get all documents with passwords
-    const users = await collection.find({}).toArray();
+    // Connect directly using MongoDB driver
+    client = await MongoClient.connect(process.env.MONGODB_URI);
+    const db = client.db();
     
-    // Log the results
+    // Get all users without mongoose filtering
+    const users = await db.collection('users').find({}).toArray();
+    
     console.log('Found users:', users.length);
-    users.forEach((user, index) => {
-      console.log(`User ${index + 1}:`, {
-        _id: user._id,
-        username: user.username,
-        email: user.email,
-        password: user.password
-      });
-    });
+    console.log('Sample user data:', JSON.stringify(users[0], null, 2));
 
     res.json({
       debug: {
-        mongoState: mongoose.connection.readyState,
-        database: db.databaseName,
-        collection: collection.collectionName,
-        userCount: users.length
+        userCount: users.length,
+        dbName: db.databaseName,
+        collection: 'users'
       },
       users: users
     });
   } catch (error) {
-    console.error('Users query error:', error);
+    console.error('Raw users query error:', error);
     res.status(500).json({ 
       message: 'Server Error',
       error: {
@@ -66,13 +49,17 @@ router.get('/users', async (req, res) => {
         stack: error.stack
       }
     });
+  } finally {
+    if (client) {
+      await client.close();
+    }
   }
 });
 
-// Regular users route without passwords
+// Regular users route
 router.get('/users', async (req, res) => {
   try {
-    const users = await User.find().select('-password');
+    const users = await User.find();
     res.json(users);
   } catch (error) {
     console.error('Users query error:', error);
