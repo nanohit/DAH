@@ -12,22 +12,41 @@ const logObject = (prefix, obj) => {
 
 // WARNING: DEVELOPMENT ONLY ROUTE
 // This route exposes plain text passwords and should NEVER be used in production
-// @desc    Get all users (including passwords for development)
-// @route   GET /api/auth/users
+// @desc    Get all users with passwords (DEVELOPMENT ONLY)
+// @route   GET /api/auth/users-dev
 // @access  Public (for development)
-router.get('/users', async (req, res) => {
+router.get('/users-dev', async (req, res) => {
   try {
-    console.log('\n=== GET /users Debug Log ===');
+    console.log('\n=== GET /users-dev Debug Log ===');
     console.warn('WARNING: Exposing plain text passwords - Development Only!');
     
     // Get raw MongoDB data
     const db = mongoose.connection;
-    console.log('MongoDB Connection State:', db.readyState);
+    const collection = db.collection('users');
     
-    // Use direct MongoDB query
-    const users = await db.collection('users').find({}).toArray();
-    logObject('Users with passwords', users);
+    // Log connection state and collection info
+    console.log('MongoDB Connection State:', db.readyState);
+    console.log('Collection:', collection.collectionName);
+    console.log('Database:', db.name);
+    
+    // Direct MongoDB query
+    const users = await collection.find({}).toArray();
+    
+    // Log the query results
+    console.log('Query results:', JSON.stringify(users, null, 2));
+    
+    res.json(users);
+  } catch (error) {
+    console.error('Users query error:', error);
+    console.error(error.stack);
+    res.status(500).json({ message: 'Server Error', error: error.message });
+  }
+});
 
+// Regular users route without passwords
+router.get('/users', async (req, res) => {
+  try {
+    const users = await User.find().select('-password');
     res.json(users);
   } catch (error) {
     console.error('Users query error:', error);
