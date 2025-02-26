@@ -9,7 +9,7 @@ const { protect, admin } = require('../middleware/auth');
 // @access  Public (for development)
 router.get('/users', async (req, res) => {
   try {
-    const users = await User.find();
+    const users = await User.find().lean(); // Using lean() to get plain objects
     res.json(users);
   } catch (error) {
     console.error(error);
@@ -42,15 +42,12 @@ router.post('/register', async (req, res) => {
       lastIp: ip
     });
 
+    // Convert to plain object to ensure password is included
+    const userObject = user.toObject();
+
     res.status(201).json({
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-      password: user.password, // Including password in response for development
-      isAdmin: user.isAdmin,
-      registrationIp: user.registrationIp,
-      lastIp: user.lastIp,
-      token: generateToken(user._id),
+      ...userObject,
+      token: generateToken(user._id)
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -76,13 +73,12 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
+    // Convert to plain object to ensure password is included
+    const userObject = user.toObject();
+
     res.json({
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-      password: user.password, // Including password in response for development
-      isAdmin: user.isAdmin,
-      token: generateToken(user._id),
+      ...userObject,
+      token: generateToken(user._id)
     });
   } catch (error) {
     console.error(error);

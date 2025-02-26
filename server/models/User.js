@@ -19,8 +19,7 @@ const UserSchema = new mongoose.Schema({
   password: {
     type: String,
     required: [true, 'Please add a password'],
-    minlength: 6,
-    select: false
+    minlength: 6
   },
   isAdmin: {
     type: Boolean,
@@ -44,6 +43,11 @@ const UserSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true,
+  toJSON: { 
+    transform: function(doc, ret) {
+      return ret; // Return everything including password
+    }
+  }
 });
 
 // Comment out password hashing for development
