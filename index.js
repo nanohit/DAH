@@ -23,13 +23,6 @@ app.use(cors({
 
 app.use(express.json());
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.header('Access-Control-Allow-Origin', 'https://dah-omega.vercel.app');
-  res.status(500).json({ error: 'Internal server error' });
-});
-
 // Route files
 const authRoutes = require('./routes/auth');
 const postRoutes = require('./routes/posts');
@@ -44,6 +37,13 @@ app.use('/api/books', bookRoutes);
 
 // Connect to database
 connectDB();
+
+// Error handling middleware - should be after all routes
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.header('Access-Control-Allow-Origin', 'https://dah-omega.vercel.app');
+  res.status(500).json({ error: 'Internal server error' });
+});
 
 const PORT = process.env.PORT || 5000;
 
