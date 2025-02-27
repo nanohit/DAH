@@ -35,6 +35,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Function to fetch user data
   const fetchUserData = async (token: string) => {
     try {
+      console.log('Fetching user data with token:', token);
       const response = await fetch('https://dah-tyxc.onrender.com/api/auth/me', {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -42,12 +43,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
       
       if (!response.ok) {
+        console.error('Failed to fetch user data, status:', response.status);
         throw new Error('Failed to fetch user data');
       }
       
       const data = await response.json();
+      console.log('Received user data:', data);
       if (!data.error) {
         setUser(data);
+        console.log('User data set successfully');
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -81,28 +85,49 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const login = async (email: string, password: string) => {
-    const response = await fetch('https://dah-tyxc.onrender.com/api/auth/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ email, password })
-    });
+    try {
+      console.log('Attempting login...');
+      const loginResponse = await fetch('https://dah-tyxc.onrender.com/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password })
+      });
 
-    if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data.message || 'Failed to login');
+      if (!loginResponse.ok) {
+        const errorData = await loginResponse.json();
+        console.error('Login response not OK:', errorData);
+        throw new Error(errorData.message || 'Failed to login');
+      }
+
+      const data = await loginResponse.json();
+      console.log('Login response:', data);
+      
+      if (!data.token) {
+        console.error('No token in response');
+        throw new Error('No token received');
+      }
+
+      // Save token first
+      localStorage.setItem('token', data.token);
+      console.log('Token saved to localStorage');
+
+      // Then fetch fresh user data
+      await fetchUserData(data.token);
+
+      // Dispatch storage event for other tabs
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'token',
+        newValue: data.token
+      }));
+      console.log('Storage event dispatched');
+    } catch (error) {
+      console.error('Login error:', error);
+      localStorage.removeItem('token');
+      setUser(null);
+      throw error;
     }
-
-    const data = await response.json();
-    localStorage.setItem('token', data.token);
-    setUser(data);
-
-    // Dispatch storage event for other tabs
-    window.dispatchEvent(new StorageEvent('storage', {
-      key: 'token',
-      newValue: data.token
-    }));
   };
 
   const logout = () => {
