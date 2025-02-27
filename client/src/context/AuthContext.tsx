@@ -92,7 +92,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ emailOrUsername: email, password })
       });
 
       if (!loginResponse.ok) {
