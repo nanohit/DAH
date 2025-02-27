@@ -28,8 +28,10 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
 
       const response = await fetch('https://dah-tyxc.onrender.com/api/posts', {
         method: 'POST',
+        credentials: 'include',
+        mode: 'cors',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
         },
         body: formData
       });
