@@ -9,7 +9,10 @@ const api = axios.create({
 
 export const login = async (emailOrUsername: string, password: string) => {
   try {
-    const response = await api.post('/api/auth/login', { emailOrUsername, password });
+    const response = await api.post('/api/auth/login', { 
+      email: emailOrUsername,
+      password 
+    });
     const { token, ...user } = response.data;
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(user));
