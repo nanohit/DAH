@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const Post = require('../models/Post');
-const auth = require('../middleware/auth');
+const { protect } = require('../middleware/auth');
 
 // Create a new post
-router.post('/', auth, async (req, res) => {
+router.post('/', protect, async (req, res) => {
     try {
         const post = new Post({
             ...req.body,
@@ -31,7 +31,7 @@ router.get('/', async (req, res) => {
 });
 
 // Update a post
-router.patch('/:id', auth, async (req, res) => {
+router.patch('/:id', protect, async (req, res) => {
     try {
         const post = await Post.findOne({ _id: req.params.id, author: req.user._id });
         
@@ -57,7 +57,7 @@ router.patch('/:id', auth, async (req, res) => {
 });
 
 // Delete a post
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', protect, async (req, res) => {
     try {
         const post = await Post.findOneAndDelete({ _id: req.params.id, author: req.user._id });
         
