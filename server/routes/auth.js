@@ -64,41 +64,25 @@ router.get('/dev/users', async (req, res) => {
 // @access  Public (for development)
 router.get('/users', async (req, res) => {
   try {
-    console.log('\n=== GET /users Debug Log ===');
-    
-    // Get users with explicit password fields and all other fields
-    const users = await User.find()
-      .select('+password')
-      .lean();
-    
-    // Log for debugging
-    console.log('Found users:', users.length);
-    users.forEach((user, index) => {
-      console.log(`\nUser ${index + 1}:`, {
+    console.log('Fetching all users with password field...');
+    const users = await User.find().select('+password');
+    console.log(`Found ${users.length} users`);
+    users.forEach(user => {
+      console.log(`User ${user.username}:`, {
         _id: user._id,
         username: user.username,
         email: user.email,
         hasPassword: !!user.password,
-        passwordLength: user.password?.length,
+        passwordLength: user.password ? user.password.length : 0,
         password: user.password,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt
       });
     });
-
-    // Send response with full user data
-    res.json({
-      count: users.length,
-      users: users.map(user => ({
-        ...user,
-        hasPassword: !!user.password,
-        passwordLength: user.password?.length
-      }))
-    });
+    res.json(users);
   } catch (error) {
-    console.error('Users query error:', error);
-    console.error('Stack trace:', error.stack);
-    res.status(500).json({ message: error.message || 'Server Error' });
+    console.error('Error fetching users:', error);
+    res.status(500).json({ message: 'Error fetching users', error: error.message });
   }
 });
 
