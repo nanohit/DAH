@@ -249,21 +249,49 @@ router.use((req, res, next) => {
 // @route   GET /api/auth/me
 // @access  Private
 router.get('/me', protect, async (req, res) => {
-  console.log('Attempting to fetch user data in /me route');
-  console.log('User from token:', req.user);
+  console.log('\n=== /me Route Debug ===');
+  console.log('1. User from middleware:', {
+    exists: !!req.user,
+    id: req.user?._id,
+    username: req.user?.username
+  });
   
   try {
-    // User is already attached to req by the protect middleware
+    console.log('2. Attempting database query with ID:', req.user._id);
     const user = await User.findById(req.user._id).select('-password');
+    console.log('3. Database query result:', user ? {
+      found: true,
+      id: user._id,
+      username: user.username,
+      email: user.email
+    } : {
+      found: false,
+      queriedId: req.user._id
+    });
+
     if (!user) {
-      console.log('User not found in database:', req.user._id);
-      return res.status(404).json({ message: 'User not found' });
+      console.log('4. User not found in database');
+      return res.status(404).json({ 
+        message: 'User not found',
+        debug: {
+          queriedId: req.user._id,
+          tokenData: req.user
+        }
+      });
     }
-    console.log('User data fetched successfully');
+
+    console.log('5. Successfully retrieved user data');
     res.json(user);
   } catch (error) {
-    console.error('Error in /me route:', error);
-    res.status(500).json({ message: 'Server Error' });
+    console.error('6. Error in /me route:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({ 
+      message: 'Server Error',
+      error: error.message
+    });
   }
 });
 
@@ -312,6 +340,14 @@ router.delete('/users/:id', async (req, res) => {
     console.error('User deletion error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
+});
+
+// @desc    Test route
+// @route   GET /api/auth/test
+// @access  Public
+router.get('/test', (req, res) => {
+  console.log('Test route hit');
+  res.json({ message: 'Auth routes are working' });
 });
 
 module.exports = router; 
