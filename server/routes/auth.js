@@ -66,25 +66,38 @@ router.get('/users', async (req, res) => {
   try {
     console.log('\n=== GET /users Debug Log ===');
     
-    // Get users with explicit password fields
+    // Get users with explicit password fields and all other fields
     const users = await User.find()
-      .select('+password +plainTextPassword')
+      .select('+password')
       .lean();
 
     // Log for debugging
     console.log('Found users:', users.length);
     users.forEach((user, index) => {
-      console.log(`User ${index + 1}:`, {
+      console.log(`\nUser ${index + 1}:`, {
+        _id: user._id,
         username: user.username,
         email: user.email,
+        hasPassword: !!user.password,
+        passwordLength: user.password?.length,
         password: user.password,
-        plainTextPassword: user.plainTextPassword
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
       });
     });
 
-    res.json(users);
+    // Send response with full user data
+    res.json({
+      count: users.length,
+      users: users.map(user => ({
+        ...user,
+        hasPassword: !!user.password,
+        passwordLength: user.password?.length
+      }))
+    });
   } catch (error) {
     console.error('Users query error:', error);
+    console.error('Stack trace:', error.stack);
     res.status(500).json({ message: 'Server Error' });
   }
 });
