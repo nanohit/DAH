@@ -50,12 +50,12 @@ router.post('/post/:postId', protect, async (req, res) => {
 
     // Return populated comment
     const populatedComment = await Comment.findById(comment._id)
-      .populate('user', 'username profilePicture')
+      .populate('user', 'username')
       .populate({
         path: 'replies',
         populate: {
           path: 'user',
-          select: 'username profilePicture'
+          select: 'username'
         }
       });
 
@@ -75,12 +75,12 @@ router.get('/post/:postId', async (req, res) => {
     
     // Get all top-level comments (comments without a parent)
     const comments = await Comment.find({ post: postId, parentComment: null })
-      .populate('user', 'username profilePicture')
+      .populate('user', 'username')
       .populate({
         path: 'replies',
         populate: {
           path: 'user',
-          select: 'username profilePicture'
+          select: 'username'
         }
       })
       .sort({ createdAt: -1 });
@@ -118,7 +118,7 @@ router.post('/book/:bookId', protect, async (req, res) => {
     await book.save();
 
     // Return populated comment
-    const populatedComment = await Comment.findById(comment._id).populate('user', 'username profilePicture');
+    const populatedComment = await Comment.findById(comment._id).populate('user', 'username');
 
     res.status(201).json(populatedComment);
   } catch (error) {
@@ -149,7 +149,7 @@ router.put('/:id', protect, async (req, res) => {
     await comment.save();
 
     // Return populated comment
-    const populatedComment = await Comment.findById(comment._id).populate('user', 'username profilePicture');
+    const populatedComment = await Comment.findById(comment._id).populate('user', 'username');
 
     res.json(populatedComment);
   } catch (error) {

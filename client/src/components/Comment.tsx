@@ -4,7 +4,6 @@ import { useAuth } from '@/context/AuthContext';
 interface CommentUser {
   _id: string;
   username: string;
-  profilePicture?: string;
 }
 
 interface CommentType {
@@ -61,19 +60,11 @@ export default function Comment({ comment, onReply, onDelete, depth = 0 }: Comme
     <div className={`pl-${depth * 4} mt-4`}>
       <div className="bg-white rounded-lg p-4 shadow-sm">
         <div className="flex items-start space-x-3">
-          {comment.user.profilePicture ? (
-            <img
-              src={comment.user.profilePicture}
-              alt={comment.user.username}
-              className="w-8 h-8 rounded-full"
-            />
-          ) : (
-            <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-              <span className="text-gray-500 text-sm">
-                {comment.user.username.charAt(0).toUpperCase()}
-              </span>
-            </div>
-          )}
+          <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+            <span className="text-gray-500 text-sm">
+              {comment.user.username.charAt(0).toUpperCase()}
+            </span>
+          </div>
           <div className="flex-1">
             <div className="flex items-center space-x-2">
               <span className="font-medium">{comment.user.username}</span>

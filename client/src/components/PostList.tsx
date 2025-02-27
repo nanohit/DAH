@@ -7,14 +7,13 @@ import Comment from './Comment';
 interface User {
   _id: string;
   username: string;
-  profilePicture?: string;
 }
 
 interface CommentType {
   _id: string;
   content: string;
   user: User;
-  replies: CommentType[];
+  replies?: CommentType[];
   createdAt: string;
   parentComment?: string;
 }

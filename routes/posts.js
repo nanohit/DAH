@@ -90,13 +90,13 @@ router.get('/', async (req, res) => {
         populate: [
           {
             path: 'user',
-            select: 'username profilePicture'
+            select: 'username'
           },
           {
             path: 'replies',
             populate: {
               path: 'user',
-              select: 'username profilePicture'
+              select: 'username'
             }
           }
         ]
