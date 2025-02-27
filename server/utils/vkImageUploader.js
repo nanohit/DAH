@@ -10,7 +10,7 @@ class VKImageUploader {
 
     async getUploadServer() {
         try {
-            const response = await axios.get(`${this.baseUrl}/photos.getWallUploadServer`, {
+            const response = await axios.get(`${this.baseUrl}/photos.getUploadServer`, {
                 params: {
                     v: this.apiVersion
                 },
@@ -54,11 +54,11 @@ class VKImageUploader {
                 throw new Error(uploadResponse.data.error.error_msg);
             }
 
-            // Save photo to wall
-            const saveResponse = await axios.post(`${this.baseUrl}/photos.saveWallPhoto`, null, {
+            // Save photo
+            const saveResponse = await axios.post(`${this.baseUrl}/photos.save`, null, {
                 params: {
-                    photo: uploadResponse.data.photo,
                     server: uploadResponse.data.server,
+                    photos_list: uploadResponse.data.photos_list,
                     hash: uploadResponse.data.hash,
                     v: this.apiVersion
                 },
