@@ -15,11 +15,19 @@ const postSchema = new mongoose.Schema({
         type: String,
         trim: true
     },
+    vkPhotoId: {
+        type: String,
+        trim: true
+    },
     author: {
         type: mongoose.Schema.Types.ObjectId,
         required: true,
         ref: 'User'
-    }
+    },
+    comments: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Comment'
+    }]
 }, {
     timestamps: true
 });

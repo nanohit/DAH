@@ -43,14 +43,17 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
                 console.log('ImgBB upload result:', result);
                 
                 if (!result.success) {
-                    throw new Error(result.error || 'Failed to upload image');
+                    throw new Error(result.error);
                 }
                 postData.imageUrl = result.imageUrl;
                 console.log('Image URL added to post:', postData.imageUrl);
             } catch (error) {
                 console.error('Detailed error uploading image:', error);
                 console.error('Error stack:', error.stack);
-                return res.status(400).json({ error: `Failed to upload image: ${error.message}` });
+                return res.status(400).json({ 
+                    error: 'Failed to upload image',
+                    details: error.message
+                });
             }
         }
 
@@ -68,8 +71,9 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
         console.error('Error creating post:', error);
         console.error('Error stack:', error.stack);
         res.status(400).json({ 
-            error: error.message,
-            details: error.errors ? Object.values(error.errors).map(e => e.message) : undefined
+            error: 'Failed to create post',
+            details: error.message,
+            validationErrors: error.errors ? Object.values(error.errors).map(e => e.message) : undefined
         });
     }
 });

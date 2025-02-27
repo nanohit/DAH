@@ -19,6 +19,15 @@ const CommentSchema = new mongoose.Schema({
     required: [true, 'Please add a comment'],
     trim: true
   },
+  parentComment: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Comment',
+    default: null
+  },
+  replies: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Comment'
+  }],
   likes: [
     {
       type: mongoose.Schema.Types.ObjectId,
