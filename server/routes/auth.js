@@ -5,6 +5,7 @@ const User = require('../models/User');
 const { protect, admin } = require('../middleware/auth');
 const mongoose = require('mongoose');
 const { MongoClient } = require('mongodb');
+const bcrypt = require('bcrypt');
 
 // Debug helper
 const logObject = (prefix, obj) => {
@@ -217,28 +218,39 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Check password match using bcrypt
-    console.log('5. Attempting password match...');
-    console.log('   Entered password:', password);
-    console.log('   Stored password:', user.password);
-    const isMatch = await user.matchPassword(password);
-    console.log('6. Password match result:', isMatch);
-
-    if (!isMatch) {
-      console.log('Password match failed');
+    if (!user.password) {
+      console.log('No password stored for user');
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    console.log('7. Login successful, generating token...');
-    const token = generateToken(user._id);
+    // Check password match using bcrypt directly
+    console.log('5. Attempting password match...');
+    console.log('   Entered password:', password);
+    console.log('   Stored password:', user.password);
+    
+    try {
+      const isMatch = await bcrypt.compare(password, user.password);
+      console.log('6. Password match result:', isMatch);
 
-    res.json({
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-      isAdmin: user.isAdmin,
-      token
-    });
+      if (!isMatch) {
+        console.log('Password match failed');
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
+
+      console.log('7. Login successful, generating token...');
+      const token = generateToken(user._id);
+
+      res.json({
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        isAdmin: user.isAdmin,
+        token
+      });
+    } catch (bcryptError) {
+      console.error('Bcrypt compare error:', bcryptError);
+      return res.status(500).json({ message: 'Error comparing passwords' });
+    }
   } catch (error) {
     console.error('Login error:', error);
     console.error('Stack trace:', error.stack);
