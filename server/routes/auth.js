@@ -10,6 +10,13 @@ const mongoose = require('mongoose');
 const { MongoClient } = require('mongodb');
 const bcrypt = require('bcryptjs');
 
+// Log all requests to auth routes
+router.use((req, res, next) => {
+  console.log(`[Auth Route] ${req.method} ${req.path}`);
+  console.log('Headers:', req.headers);
+  next();
+});
+
 // Debug helper
 const logObject = (prefix, obj) => {
   console.log(`${prefix}:`, JSON.stringify(obj, null, 2));
@@ -236,13 +243,6 @@ router.get('/dev/user/:username', async (req, res) => {
       await client.close();
     }
   }
-});
-
-// Log all requests to auth routes
-router.use((req, res, next) => {
-  console.log(`[Auth Route] ${req.method} ${req.path}`);
-  console.log('Headers:', req.headers);
-  next();
 });
 
 // @desc    Get current user
