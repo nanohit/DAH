@@ -16,10 +16,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// Basic CORS setup
+// CORS configuration
 app.use(cors({
-  origin: true,
-  credentials: true
+  origin: ['https://dah-omega.vercel.app', 'http://localhost:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Body parsing middleware
@@ -58,7 +60,6 @@ app._router.stack.forEach((r) => {
 app.use((err, req, res, next) => {
   console.error('\n=== Error Handler ===');
   console.error('Error:', err);
-  res.header('Access-Control-Allow-Origin', 'https://dah-omega.vercel.app');
   res.status(500).json({ error: 'Internal server error' });
 });
 
