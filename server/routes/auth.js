@@ -94,7 +94,7 @@ router.get('/users', async (req, res) => {
 router.post('/register', async (req, res) => {
   try {
     console.log('\n=== POST /register Debug Log ===');
-    logObject('1. Request body', req.body);
+    console.log('1. Raw request body:', req.body);
     
     const { username, email, password } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
@@ -111,27 +111,51 @@ router.post('/register', async (req, res) => {
       username,
       email,
       password: password,
-      plainTextPassword: password,  // Store in both fields
+      plainTextPassword: password,
       registrationIp: ip,
       lastIp: ip
     };
-    logObject('2. User data to be saved', userData);
+    console.log('2. User data to be saved:', { ...userData, password: '[HIDDEN]', plainTextPassword: '[HIDDEN]' });
 
     // Create user
     const user = await User.create(userData);
-    logObject('3. Created user document', user);
+    console.log('3. Created user document:', {
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      hasPassword: !!user.password,
+      hasPlainTextPassword: !!user.plainTextPassword
+    });
 
     // Verify storage with both password fields
-    const savedUser = await User.findById(user._id)
-      .select('+password +plainTextPassword');
-    logObject('4. User after save (findById)', savedUser);
+    const savedUser = await User.findById(user._id).select('+password +plainTextPassword');
+    console.log('4. Verification query result:', {
+      hasUser: !!savedUser,
+      hasPassword: savedUser ? !!savedUser.password : false,
+      hasPlainTextPassword: savedUser ? !!savedUser.plainTextPassword : false,
+      passwordLength: savedUser?.password?.length,
+      plainTextPasswordLength: savedUser?.plainTextPassword?.length
+    });
+
+    // For testing purposes, try to log in immediately after registration
+    const loginTest = await User.findOne({ email }).select('+password +plainTextPassword');
+    console.log('5. Immediate login test:', {
+      hasUser: !!loginTest,
+      hasPassword: loginTest ? !!loginTest.password : false,
+      hasPlainTextPassword: loginTest ? !!loginTest.plainTextPassword : false,
+      passwordsMatch: loginTest ? (loginTest.password === password && loginTest.plainTextPassword === password) : false
+    });
 
     res.status(201).json({
-      ...savedUser.toObject(),
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      isAdmin: user.isAdmin,
       token: generateToken(user._id)
     });
   } catch (error) {
     console.error('Registration error:', error);
+    console.error('Stack trace:', error.stack);
     res.status(500).json({ message: error.message || 'Server Error' });
   }
 });
