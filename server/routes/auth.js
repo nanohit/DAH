@@ -63,14 +63,23 @@ router.get('/dev/users', async (req, res) => {
 // @route   GET /api/auth/users
 // @access  Public (for development)
 router.get('/users', async (req, res) => {
+  let client;
   try {
     console.log('\n=== GET /users Debug Log ===');
     
-    // Get users with explicit password fields and all other fields
-    const users = await User.find()
-      .select('+password')
-      .lean();
-
+    // Connect directly to MongoDB
+    const uri = process.env.MONGODB_URI;
+    const dbName = uri.split('/').pop().split('?')[0];
+    
+    client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+    await client.connect();
+    
+    console.log('Connected to MongoDB');
+    const db = client.db(dbName);
+    
+    // Get all users without any filtering
+    const users = await db.collection('users').find({}).toArray();
+    
     // Log for debugging
     console.log('Found users:', users.length);
     users.forEach((user, index) => {
@@ -98,7 +107,11 @@ router.get('/users', async (req, res) => {
   } catch (error) {
     console.error('Users query error:', error);
     console.error('Stack trace:', error.stack);
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: error.message || 'Server Error' });
+  } finally {
+    if (client) {
+      await client.close();
+    }
   }
 });
 
