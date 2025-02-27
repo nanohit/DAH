@@ -3,7 +3,7 @@ const router = express.Router();
 const Post = require('../models/Post');
 const { protect } = require('../middleware/auth');
 const multer = require('multer');
-const vkUploader = require('../utils/vkImageUploader');
+const { uploadImage } = require('../utils/imageUpload');
 
 // Configure multer for memory storage
 const upload = multer({
@@ -27,20 +27,16 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
         
         console.log('Post data to save:', postData);
 
-        // If there's an image, upload it to VK
+        // If there's an image, upload it to ImgBB
         if (req.file) {
             try {
-                const { url, vkPhotoId } = await vkUploader.uploadImage(req.file.buffer);
-                postData.imageUrl = url;
-                postData.vkPhotoId = vkPhotoId;
-                
-                // Verify the photo was saved
-                const isPhotoSaved = await vkUploader.verifyPhoto(vkPhotoId);
-                if (!isPhotoSaved) {
-                    throw new Error('Failed to verify photo upload');
+                const result = await uploadImage(req.file.buffer);
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to upload image');
                 }
+                postData.imageUrl = result.imageUrl;
             } catch (error) {
-                console.error('Error uploading image to VK:', error);
+                console.error('Error uploading image:', error);
                 return res.status(400).json({ error: 'Failed to upload image' });
             }
         }
@@ -100,20 +96,16 @@ router.patch('/:id', protect, upload.single('image'), async (req, res) => {
             return res.status(400).json({ error: 'Invalid updates!' });
         }
 
-        // If there's a new image, upload it to VK
+        // If there's a new image, upload it to ImgBB
         if (req.file) {
             try {
-                const { url, vkPhotoId } = await vkUploader.uploadImage(req.file.buffer);
-                post.imageUrl = url;
-                post.vkPhotoId = vkPhotoId;
-                
-                // Verify the photo was saved
-                const isPhotoSaved = await vkUploader.verifyPhoto(vkPhotoId);
-                if (!isPhotoSaved) {
-                    throw new Error('Failed to verify photo upload');
+                const result = await uploadImage(req.file.buffer);
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to upload image');
                 }
+                post.imageUrl = result.imageUrl;
             } catch (error) {
-                console.error('Error uploading image to VK:', error);
+                console.error('Error uploading image:', error);
                 return res.status(400).json({ error: 'Failed to upload image' });
             }
         }
