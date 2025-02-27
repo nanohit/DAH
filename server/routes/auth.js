@@ -119,7 +119,6 @@ router.get('/users', async (req, res) => {
 // @route   POST /api/auth/register
 // @access  Public
 router.post('/register', async (req, res) => {
-  let client;
   try {
     console.log('\n=== POST /register Debug Log ===');
     console.log('1. Raw request body:', {
@@ -137,73 +136,52 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Hash password
-    console.log('2. Hashing password...');
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-    console.log('3. Password hashed successfully');
-    console.log('   Original password length:', password.length);
-    console.log('   Hashed password length:', hashedPassword.length);
-    console.log('   Hashed password:', hashedPassword);
-
     // Create user document
     const userData = {
       username,
       email,
-      password: hashedPassword,
+      password,
       registrationIp: ip,
       lastIp: ip,
-      isAdmin: false,
-      createdAt: new Date(),
-      updatedAt: new Date()
+      isAdmin: false
     };
-    console.log('4. User data to be saved:', {
+    console.log('2. User data to be saved:', {
       ...userData,
       password: `[${userData.password.length} chars]`
     });
 
-    // Connect directly to MongoDB for debugging
-    const uri = process.env.MONGODB_URI;
-    const dbName = uri.split('/').pop().split('?')[0];
-    
-    client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
-    await client.connect();
-    
-    console.log('5. Connected to MongoDB');
-    const db = client.db(dbName);
-    
-    // Insert user directly
-    const result = await db.collection('users').insertOne(userData);
-    console.log('6. MongoDB insert result:', result);
+    // Create user (this will trigger the pre-save hook)
+    const user = await User.create(userData);
+    console.log('3. Created user document:', {
+      _id: user._id,
+      username: user.username,
+      email: user.email
+    });
 
-    // Verify the inserted document
-    const savedUser = await db.collection('users').findOne({ _id: result.insertedId });
-    console.log('7. Verification query result:', {
+    // Verify storage with password field
+    const savedUser = await User.findById(user._id).select('+password');
+    console.log('4. Verification query result:', {
       hasUser: !!savedUser,
       hasPassword: !!savedUser?.password,
       passwordLength: savedUser?.password?.length,
       storedPassword: savedUser?.password
     });
 
-    // Test password match
-    const isMatch = await bcrypt.compare(password, savedUser.password);
-    console.log('8. Immediate password match test:', isMatch);
+    // For testing purposes, try to match the password immediately after registration
+    const loginTest = await savedUser.matchPassword(password);
+    console.log('5. Immediate password match test:', loginTest);
 
     res.status(201).json({
-      _id: savedUser._id,
-      username: savedUser.username,
-      email: savedUser.email,
-      isAdmin: savedUser.isAdmin,
-      token: generateToken(savedUser._id)
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      isAdmin: user.isAdmin,
+      token: generateToken(user._id)
     });
   } catch (error) {
     console.error('Registration error:', error);
     console.error('Stack trace:', error.stack);
     res.status(500).json({ message: error.message || 'Server Error' });
-  } finally {
-    if (client) {
-      await client.close();
-    }
   }
 });
 
@@ -211,7 +189,6 @@ router.post('/register', async (req, res) => {
 // @route   POST /api/auth/login
 // @access  Public
 router.post('/login', async (req, res) => {
-  let client;
   try {
     console.log('\n=== POST /login Debug Log ===');
     console.log('1. Headers:', {
@@ -234,32 +211,21 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Please provide both email/username and password' });
     }
 
-    // Connect directly to MongoDB
-    const uri = process.env.MONGODB_URI;
-    const dbName = uri.split('/').pop().split('?')[0];
-    
-    client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
-    await client.connect();
-    
-    console.log('4. Connected to MongoDB');
-    const db = client.db(dbName);
-
     // Find user by email or username
-    const user = await db.collection('users').findOne({
+    const user = await User.findOne({
       $or: [
         { email: emailOrUsername },
         { username: emailOrUsername }
       ]
-    });
+    }).select('+password');
     
-    console.log('5. User lookup:', user ? {
+    console.log('4. User lookup:', user ? {
       _id: user._id.toString(),
       username: user.username,
       email: user.email,
       matchedBy: user.email === emailOrUsername ? 'email' : 'username',
       hasPassword: !!user.password,
-      passwordLength: user.password?.length,
-      storedPassword: user.password
+      passwordLength: user.password?.length
     } : 'No user found');
     
     if (!user) {
@@ -272,34 +238,30 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Compare password
-    console.log('6. Comparing passwords...');
-    console.log('   Input password length:', password.length);
-    console.log('   Stored hash length:', user.password.length);
-    
-    const isMatch = await bcrypt.compare(password, user.password);
-    console.log('7. Password match result:', isMatch);
+    // Check password match using matchPassword method
+    console.log('5. Attempting password match...');
+    const isMatch = await user.matchPassword(password);
+    console.log('6. Password match result:', isMatch);
 
     if (!isMatch) {
-      console.log('Password does not match');
+      console.log('Password match failed');
       return res.status(401).json({ message: 'Invalid credentials' });
     }
+
+    console.log('7. Login successful, generating token...');
+    const token = generateToken(user._id);
 
     res.json({
       _id: user._id,
       username: user.username,
       email: user.email,
       isAdmin: user.isAdmin,
-      token: generateToken(user._id)
+      token
     });
   } catch (error) {
     console.error('Login error:', error);
     console.error('Stack trace:', error.stack);
     res.status(500).json({ message: error.message || 'Server Error' });
-  } finally {
-    if (client) {
-      await client.close();
-    }
   }
 });
 
