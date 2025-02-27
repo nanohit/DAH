@@ -142,9 +142,12 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     console.log('\n=== POST /login Debug Log ===');
-    logObject('1. Request body', req.body);
+    console.log('Headers:', req.headers);
+    console.log('Raw Body:', req.body);
+    logObject('1. Parsed Request body', req.body);
     
     const { emailOrUsername, password } = req.body;
+    console.log('Extracted credentials:', { emailOrUsername, password: password ? '[PRESENT]' : '[MISSING]' });
 
     // Check for user by email or username and include both password fields
     const user = await User.findOne({
@@ -154,17 +157,26 @@ router.post('/login', async (req, res) => {
       ]
     });
     
-    logObject('2. Found user', user ? { ...user.toObject(), password: '[HIDDEN]' } : null);
+    console.log('Initial user query result:', user ? {
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      hasPlainTextPassword: !!user.plainTextPassword,
+      hasPassword: !!user.password
+    } : null);
     
     if (!user) {
+      console.log('No user found for:', emailOrUsername);
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     // Use the matchPassword method from the User model
+    console.log('Attempting password match...');
     const isMatch = await user.matchPassword(password);
-    logObject('3. Password match result:', isMatch);
+    console.log('Password match attempt completed. Result:', isMatch);
 
     if (!isMatch) {
+      console.log('Password match failed');
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
@@ -175,14 +187,17 @@ router.post('/login', async (req, res) => {
       isAdmin: user.isAdmin
     };
 
-    logObject('4. Sending response with user data', userData);
+    console.log('Login successful, generating token...');
+    const token = generateToken(user._id);
+    console.log('Token generated successfully');
 
     res.json({
       ...userData,
-      token: generateToken(user._id)
+      token
     });
   } catch (error) {
     console.error('Login error:', error);
+    console.error('Stack trace:', error.stack);
     res.status(500).json({ message: 'Server Error' });
   }
 });

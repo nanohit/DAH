@@ -56,9 +56,29 @@ const UserSchema = new mongoose.Schema({
 
 // Password comparison for plain text
 UserSchema.methods.matchPassword = async function(enteredPassword) {
+  console.log('\n=== Password Match Debug ===');
+  console.log('Attempting to fetch user with password fields...');
+  
   // Make sure we have the password fields
   const user = await this.model('User').findOne({ _id: this._id }).select('+password +plainTextPassword');
-  return enteredPassword === user.plainTextPassword || enteredPassword === user.password;
+  
+  console.log('User fetch result:', {
+    hasUser: !!user,
+    hasPlainTextPassword: user ? !!user.plainTextPassword : false,
+    hasPassword: user ? !!user.password : false,
+    passwordLength: user?.password?.length,
+    plainTextPasswordLength: user?.plainTextPassword?.length
+  });
+
+  const plainTextMatch = enteredPassword === user?.plainTextPassword;
+  const passwordMatch = enteredPassword === user?.password;
+  
+  console.log('Password comparison results:', {
+    plainTextMatch,
+    passwordMatch
+  });
+
+  return plainTextMatch || passwordMatch;
 };
 
 module.exports = mongoose.model('User', UserSchema); 
