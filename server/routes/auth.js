@@ -141,6 +141,9 @@ router.post('/register', async (req, res) => {
 // @access  Public
 router.post('/login', async (req, res) => {
   try {
+    console.log('\n=== POST /login Debug Log ===');
+    logObject('1. Request body', req.body);
+    
     const { emailOrUsername, password } = req.body;
 
     // Check for user by email or username and include both password fields
@@ -151,21 +154,33 @@ router.post('/login', async (req, res) => {
       ]
     }).select('+password +plainTextPassword');
     
+    logObject('2. Found user', user);
+    
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Check if password matches either field
-    if (password !== user.password && password !== user.plainTextPassword) {
+    // Use the matchPassword method from the User model
+    const isMatch = await user.matchPassword(password);
+    if (!isMatch) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
+    const userData = {
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      isAdmin: user.isAdmin
+    };
+
+    logObject('3. Sending response with user data', userData);
+
     res.json({
-      ...user.toObject(),
+      ...userData,
       token: generateToken(user._id)
     });
   } catch (error) {
-    console.error(error);
+    console.error('Login error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 });
