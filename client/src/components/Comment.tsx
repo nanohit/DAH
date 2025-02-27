@@ -11,7 +11,7 @@ interface CommentType {
   _id: string;
   content: string;
   user: CommentUser;
-  replies: CommentType[];
+  replies?: CommentType[];
   createdAt: string;
   parentComment?: string;
 }
@@ -53,8 +53,9 @@ export default function Comment({ comment, onReply, onDelete, depth = 0 }: Comme
     });
   };
 
-  const visibleReplies = showAllReplies ? comment.replies : comment.replies.slice(0, 2);
-  const hasMoreReplies = comment.replies.length > 2;
+  const replies = comment.replies || [];
+  const visibleReplies = showAllReplies ? replies : replies.slice(0, 2);
+  const hasMoreReplies = replies.length > 2;
 
   return (
     <div className={`pl-${depth * 4} mt-4`}>
@@ -126,7 +127,7 @@ export default function Comment({ comment, onReply, onDelete, depth = 0 }: Comme
           </div>
         </div>
       </div>
-      {visibleReplies.length > 0 && (
+      {replies.length > 0 && (
         <div className="ml-8 mt-2">
           {visibleReplies.map((reply) => (
             <Comment
@@ -142,7 +143,7 @@ export default function Comment({ comment, onReply, onDelete, depth = 0 }: Comme
               onClick={() => setShowAllReplies(true)}
               className="mt-2 text-sm text-blue-600 hover:text-blue-800"
             >
-              Show {comment.replies.length - 2} more {comment.replies.length - 2 === 1 ? 'reply' : 'replies'}
+              Show {replies.length - 2} more {replies.length - 2 === 1 ? 'reply' : 'replies'}
             </button>
           )}
           {showAllReplies && hasMoreReplies && (

@@ -28,7 +28,7 @@ interface Post {
     _id: string;
     username: string;
   };
-  comments: CommentType[];
+  comments?: CommentType[];
   createdAt: string;
   updatedAt: string;
 }
@@ -317,7 +317,7 @@ export default function PostList({ onPostUpdated }: PostListProps) {
                   </div>
                 )}
                 <div className="space-y-4">
-                  {post.comments.map((comment) => (
+                  {post.comments?.map((comment) => (
                     <Comment
                       key={comment._id}
                       comment={comment}
