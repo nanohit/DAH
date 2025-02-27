@@ -79,10 +79,16 @@ router.get('/', async (req, res) => {
 // Update a post
 router.patch('/:id', protect, upload.single('image'), async (req, res) => {
     try {
+        console.log('=== Update Post Debug ===');
+        console.log('Request user:', req.user);
+        console.log('Request body:', req.body);
+        console.log('Post ID:', req.params.id);
+
         const post = await Post.findOne({ _id: req.params.id, author: req.user._id });
         
         if (!post) {
-            return res.status(404).send();
+            console.log('Post not found or user not authorized');
+            return res.status(404).json({ error: 'Post not found or not authorized' });
         }
 
         const updates = Object.keys(req.body);
@@ -90,7 +96,8 @@ router.patch('/:id', protect, upload.single('image'), async (req, res) => {
         const isValidOperation = updates.every((update) => allowedUpdates.includes(update));
 
         if (!isValidOperation) {
-            return res.status(400).send({ error: 'Invalid updates!' });
+            console.log('Invalid updates requested:', updates);
+            return res.status(400).json({ error: 'Invalid updates!' });
         }
 
         // If there's a new image, upload it to VK
@@ -112,11 +119,21 @@ router.patch('/:id', protect, upload.single('image'), async (req, res) => {
         }
 
         updates.forEach((update) => post[update] = req.body[update]);
+        console.log('Updated post data:', post);
+
         await post.save();
+        console.log('Post saved successfully');
+
         await post.populate('author', 'username');
-        res.send(post);
+        console.log('Post populated with author');
+
+        res.json(post);
     } catch (error) {
-        res.status(400).send(error);
+        console.error('Error updating post:', error);
+        res.status(400).json({ 
+            error: error.message,
+            details: error.errors ? Object.values(error.errors).map(e => e.message) : undefined
+        });
     }
 });
 
