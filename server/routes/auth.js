@@ -171,13 +171,15 @@ router.post('/login', async (req, res) => {
       password: req.body.password ? `[${req.body.password.length} chars]` : '[MISSING]'
     });
     
-    const { emailOrUsername, password } = req.body;
+    const { email, emailOrUsername, password } = req.body;
+    const loginIdentifier = email || emailOrUsername;
+    
     console.log('3. Extracted credentials:', { 
-      emailOrUsername, 
+      loginIdentifier, 
       password: password ? `[${password.length} chars]` : '[MISSING]'
     });
 
-    if (!emailOrUsername || !password) {
+    if (!loginIdentifier || !password) {
       console.log('Missing credentials');
       return res.status(400).json({ message: 'Please provide both email/username and password' });
     }
@@ -185,8 +187,8 @@ router.post('/login', async (req, res) => {
     // Find user by email or username
     const user = await User.findOne({
       $or: [
-        { email: emailOrUsername },
-        { username: emailOrUsername }
+        { email: loginIdentifier },
+        { username: loginIdentifier }
       ]
     }).select('+password');
     
@@ -194,13 +196,13 @@ router.post('/login', async (req, res) => {
       _id: user._id.toString(),
       username: user.username,
       email: user.email,
-      matchedBy: user.email === emailOrUsername ? 'email' : 'username',
+      matchedBy: user.email === loginIdentifier ? 'email' : 'username',
       hasPassword: !!user.password,
       passwordLength: user.password?.length
     } : 'No user found');
     
     if (!user) {
-      console.log('No user found for:', emailOrUsername);
+      console.log('No user found for:', loginIdentifier);
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
