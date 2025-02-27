@@ -12,12 +12,18 @@ export default function RegisterPage() {
   const [formData, setFormData] = useState({
     username: '',
     email: '',
-    password: ''
+    password: '',
+    confirmPassword: ''
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
     
     try {
       const user = await register(formData.username, formData.email, formData.password);
@@ -86,6 +92,21 @@ export default function RegisterPage() {
               id="password"
               name="password"
               value={formData.password}
+              onChange={handleChange}
+              required
+              minLength={6}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="confirmPassword" className="block text-sm font-medium">
+              Confirm Password
+            </label>
+            <input
+              type="password"
+              id="confirmPassword"
+              name="confirmPassword"
+              value={formData.confirmPassword}
               onChange={handleChange}
               required
               minLength={6}

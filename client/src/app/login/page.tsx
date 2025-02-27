@@ -10,7 +10,7 @@ export default function LoginPage() {
   const { login: authLogin } = useAuth();
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
-    email: '',
+    emailOrUsername: '',
     password: ''
   });
 
@@ -19,7 +19,7 @@ export default function LoginPage() {
     setError('');
     
     try {
-      const user = await login(formData.email, formData.password);
+      const user = await login(formData.emailOrUsername, formData.password);
       authLogin(user);
       router.push('/');
     } catch (err) {
@@ -49,14 +49,14 @@ export default function LoginPage() {
         )}
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
-            <label htmlFor="email" className="block text-sm font-medium">
-              Email
+            <label htmlFor="emailOrUsername" className="block text-sm font-medium">
+              Email or Username
             </label>
             <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
+              type="text"
+              id="emailOrUsername"
+              name="emailOrUsername"
+              value={formData.emailOrUsername}
               onChange={handleChange}
               required
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"

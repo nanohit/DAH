@@ -141,11 +141,15 @@ router.post('/register', async (req, res) => {
 // @access  Public
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { emailOrUsername, password } = req.body;
 
-    // Check for user email and include both password fields
-    const user = await User.findOne({ email })
-      .select('+password +plainTextPassword');
+    // Check for user by email or username and include both password fields
+    const user = await User.findOne({
+      $or: [
+        { email: emailOrUsername },
+        { username: emailOrUsername }
+      ]
+    }).select('+password +plainTextPassword');
     
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
