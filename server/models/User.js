@@ -99,7 +99,9 @@ UserSchema.pre('save', async function(next) {
   console.log('4. Document state:', {
     isNew: this.isNew,
     modifiedPaths: this.modifiedPaths(),
-    hasPassword: !!this.password
+    hasPassword: !!this.password,
+    passwordType: typeof this.password,
+    passwordValue: this.password
   });
   
   if (!this.isModified('password')) {
@@ -110,15 +112,19 @@ UserSchema.pre('save', async function(next) {
   try {
     console.log('6. Generating salt...');
     const salt = await bcrypt.genSalt(10);
-    console.log('7. Hashing password...');
-    this.password = await bcrypt.hash(this.password, salt);
-    console.log('8. Password hashed successfully:', {
-      hashedLength: this.password.length,
-      hashedValue: this.password
+    console.log('7. Generated salt:', salt);
+    console.log('8. Hashing password...');
+    const hashedPassword = await bcrypt.hash(this.password, salt);
+    console.log('9. Password hashed successfully:', {
+      originalLength: this.password.length,
+      hashedLength: hashedPassword.length,
+      hashedValue: hashedPassword
     });
+    this.password = hashedPassword;
     next();
   } catch (error) {
     console.error('Password hashing error:', error);
+    console.error('Error stack:', error.stack);
     next(error);
   }
 });
