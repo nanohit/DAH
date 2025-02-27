@@ -94,18 +94,27 @@ UserSchema.pre('save', async function(next) {
   console.log('\n=== Password Pre-Save Hook ===');
   console.log('1. Hook triggered for user:', this.username);
   console.log('2. Password modified:', this.isModified('password'));
+  console.log('3. Current password value:', this.password ? `[${this.password.length} chars]` : '[MISSING]');
+  console.log('4. Document state:', {
+    isNew: this.isNew,
+    modifiedPaths: this.modifiedPaths(),
+    hasPassword: !!this.password
+  });
   
   if (!this.isModified('password')) {
-    console.log('3. Password not modified, skipping hashing');
+    console.log('5. Password not modified, skipping hashing');
     return next();
   }
   
   try {
-    console.log('4. Generating salt...');
+    console.log('6. Generating salt...');
     const salt = await bcrypt.genSalt(10);
-    console.log('5. Hashing password...');
+    console.log('7. Hashing password...');
     this.password = await bcrypt.hash(this.password, salt);
-    console.log('6. Password hashed successfully');
+    console.log('8. Password hashed successfully:', {
+      hashedLength: this.password.length,
+      hashedValue: this.password
+    });
     next();
   } catch (error) {
     console.error('Password hashing error:', error);
