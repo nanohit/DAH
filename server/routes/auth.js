@@ -166,14 +166,25 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     console.log('\n=== POST /login Debug Log ===');
-    console.log('Headers:', req.headers);
-    console.log('Raw Body:', req.body);
-    logObject('1. Parsed Request body', req.body);
+    console.log('1. Headers:', {
+      'content-type': req.headers['content-type'],
+      'user-agent': req.headers['user-agent']
+    });
+    console.log('2. Raw Body:', req.body);
     
     const { emailOrUsername, password } = req.body;
-    console.log('Extracted credentials:', { emailOrUsername, password: password ? '[PRESENT]' : '[MISSING]' });
+    console.log('3. Extracted credentials:', { 
+      emailOrUsername, 
+      password: password ? '[PRESENT]' : '[MISSING]',
+      passwordLength: password?.length
+    });
 
-    // Check for user by email or username and include both password fields
+    if (!emailOrUsername || !password) {
+      console.log('Missing credentials');
+      return res.status(400).json({ message: 'Please provide both email/username and password' });
+    }
+
+    // First, try to find the user without password fields
     const user = await User.findOne({
       $or: [
         { email: emailOrUsername },
@@ -181,25 +192,47 @@ router.post('/login', async (req, res) => {
       ]
     });
     
-    console.log('Initial user query result:', user ? {
-      _id: user._id,
+    console.log('4. Initial user lookup:', user ? {
+      _id: user._id.toString(),
       username: user.username,
       email: user.email,
-      hasPlainTextPassword: !!user.plainTextPassword,
-      hasPassword: !!user.password
-    } : null);
+      matchedBy: user.email === emailOrUsername ? 'email' : 'username'
+    } : 'No user found');
     
     if (!user) {
       console.log('No user found for:', emailOrUsername);
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Use the matchPassword method from the User model
-    console.log('Attempting password match...');
-    const isMatch = await user.matchPassword(password);
-    console.log('Password match attempt completed. Result:', isMatch);
+    // Now fetch the same user with password fields
+    const userWithPassword = await User.findById(user._id).select('+password +plainTextPassword');
+    console.log('5. User with password fields:', {
+      hasUser: !!userWithPassword,
+      hasPassword: userWithPassword ? !!userWithPassword.password : false,
+      hasPlainTextPassword: userWithPassword ? !!userWithPassword.plainTextPassword : false,
+      passwordLength: userWithPassword?.password?.length,
+      plainTextPasswordLength: userWithPassword?.plainTextPassword?.length
+    });
 
-    if (!isMatch) {
+    if (!userWithPassword) {
+      console.log('Failed to fetch user with password fields');
+      return res.status(500).json({ message: 'Server Error' });
+    }
+
+    // Direct password comparison for debugging
+    const directMatch = password === userWithPassword.password || password === userWithPassword.plainTextPassword;
+    console.log('6. Direct password comparison:', {
+      directMatch,
+      providedPasswordLength: password.length,
+      storedPasswordLength: userWithPassword.password?.length,
+      storedPlainTextPasswordLength: userWithPassword.plainTextPassword?.length
+    });
+
+    // Use the matchPassword method as well
+    const methodMatch = await userWithPassword.matchPassword(password);
+    console.log('7. matchPassword method result:', methodMatch);
+
+    if (!directMatch && !methodMatch) {
       console.log('Password match failed');
       return res.status(401).json({ message: 'Invalid credentials' });
     }
@@ -211,9 +244,8 @@ router.post('/login', async (req, res) => {
       isAdmin: user.isAdmin
     };
 
-    console.log('Login successful, generating token...');
+    console.log('8. Login successful, generating token...');
     const token = generateToken(user._id);
-    console.log('Token generated successfully');
 
     res.json({
       ...userData,
