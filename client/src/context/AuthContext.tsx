@@ -1,18 +1,20 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 interface User {
+  _id: string;
   username: string;
   email: string;
-  isAdmin?: boolean;
+  isAdmin: boolean;
 }
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
-  login: (user: User) => void;
+  setUser: (user: User | null) => void;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -20,45 +22,74 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   isAuthenticated: false,
   isAdmin: false,
-  login: () => {},
-  logout: () => {},
+  setUser: () => {},
+  login: async () => {},
+  logout: () => {}
 });
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export const useAuth = () => useContext(AuthContext);
+
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    // Check for stored user data on component mount
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      const parsedUser = JSON.parse(storedUser);
-      setUser(parsedUser);
-      setIsAuthenticated(true);
-      setIsAdmin(!!parsedUser.isAdmin);
+    const token = localStorage.getItem('token');
+    if (token) {
+      // Fetch user data if token exists
+      fetch('https://dah-backend.onrender.com/api/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (!data.error) {
+            setUser(data);
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching user data:', error);
+          localStorage.removeItem('token');
+        });
     }
   }, []);
 
-  const login = (userData: User) => {
-    setUser(userData);
-    setIsAuthenticated(true);
-    setIsAdmin(!!userData.isAdmin);
-    localStorage.setItem('user', JSON.stringify(userData));
+  const login = async (email: string, password: string) => {
+    const response = await fetch('https://dah-backend.onrender.com/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email, password })
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.message || 'Failed to login');
+    }
+
+    const data = await response.json();
+    localStorage.setItem('token', data.token);
+    setUser(data);
   };
 
   const logout = () => {
+    localStorage.removeItem('token');
     setUser(null);
-    setIsAuthenticated(false);
-    setIsAdmin(false);
-    localStorage.removeItem('user');
+  };
+
+  const value = {
+    user,
+    isAuthenticated: !!user,
+    isAdmin: user?.isAdmin || false,
+    setUser,
+    login,
+    logout
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, isAdmin, login, logout }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
-}
-
-export const useAuth = () => useContext(AuthContext);
+};
