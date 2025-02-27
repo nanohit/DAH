@@ -198,6 +198,7 @@ router.post('/register', async (req, res) => {
 // @route   POST /api/auth/login
 // @access  Public
 router.post('/login', async (req, res) => {
+  let client;
   try {
     console.log('\n=== POST /login Debug Log ===');
     console.log('1. Headers:', {
@@ -220,15 +221,25 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Please provide both email/username and password' });
     }
 
+    // Connect directly to MongoDB
+    const uri = process.env.MONGODB_URI;
+    const dbName = uri.split('/').pop().split('?')[0];
+    
+    client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+    await client.connect();
+    
+    console.log('4. Connected to MongoDB');
+    const db = client.db(dbName);
+
     // Find user by email or username
-    const user = await User.findOne({
+    const user = await db.collection('users').findOne({
       $or: [
         { email: emailOrUsername },
         { username: emailOrUsername }
       ]
-    }).select('+password');
+    });
     
-    console.log('4. User lookup:', user ? {
+    console.log('5. User lookup:', user ? {
       _id: user._id.toString(),
       username: user.username,
       email: user.email,
@@ -248,38 +259,34 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Check password match using bcrypt directly
-    console.log('5. Attempting password match...');
-    console.log('   Entered password:', password);
-    console.log('   Stored password:', user.password);
+    // Compare password
+    console.log('6. Comparing passwords...');
+    console.log('   Input password length:', password.length);
+    console.log('   Stored hash length:', user.password.length);
     
-    try {
-      const isMatch = await bcrypt.compare(password, user.password);
-      console.log('6. Password match result:', isMatch);
+    const isMatch = await bcrypt.compare(password, user.password);
+    console.log('7. Password match result:', isMatch);
 
-      if (!isMatch) {
-        console.log('Password match failed');
-        return res.status(401).json({ message: 'Invalid credentials' });
-      }
-
-      console.log('7. Login successful, generating token...');
-      const token = generateToken(user._id);
-
-      res.json({
-        _id: user._id,
-        username: user.username,
-        email: user.email,
-        isAdmin: user.isAdmin,
-        token
-      });
-    } catch (bcryptError) {
-      console.error('Bcrypt compare error:', bcryptError);
-      return res.status(500).json({ message: 'Error comparing passwords' });
+    if (!isMatch) {
+      console.log('Password does not match');
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
+
+    res.json({
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      isAdmin: user.isAdmin,
+      token: generateToken(user._id)
+    });
   } catch (error) {
     console.error('Login error:', error);
     console.error('Stack trace:', error.stack);
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: error.message || 'Server Error' });
+  } finally {
+    if (client) {
+      await client.close();
+    }
   }
 });
 
