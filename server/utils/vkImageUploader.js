@@ -1,3 +1,8 @@
+/**
+ * VK Image Uploader
+ * Handles image uploads to VK using the photos API
+ * Uses user access token with photos permission
+ */
 const axios = require('axios');
 const FormData = require('form-data');
 
