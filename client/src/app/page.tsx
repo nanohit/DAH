@@ -1,19 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
-
-const Posts = dynamic(() => import('../components/Posts'), { ssr: false });
 
 export default function HomePage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-4xl font-bold mb-8">Welcome to Book Library</h1>
-      
-      <div className="mb-8">
-        <Posts />
-      </div>
-
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <div className="bg-white p-6 rounded-lg shadow-md">
           <h2 className="text-xl font-semibold mb-4">Browse Books</h2>
