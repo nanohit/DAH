@@ -1,3 +1,6 @@
+// Debug logging for route registration
+console.log('Registering auth routes...');
+
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
@@ -235,19 +238,31 @@ router.get('/dev/user/:username', async (req, res) => {
   }
 });
 
+// Log all requests to auth routes
+router.use((req, res, next) => {
+  console.log(`[Auth Route] ${req.method} ${req.path}`);
+  console.log('Headers:', req.headers);
+  next();
+});
+
 // @desc    Get current user
 // @route   GET /api/auth/me
 // @access  Private
 router.get('/me', protect, async (req, res) => {
+  console.log('Attempting to fetch user data in /me route');
+  console.log('User from token:', req.user);
+  
   try {
     // User is already attached to req by the protect middleware
     const user = await User.findById(req.user._id).select('-password');
     if (!user) {
+      console.log('User not found in database:', req.user._id);
       return res.status(404).json({ message: 'User not found' });
     }
+    console.log('User data fetched successfully');
     res.json(user);
   } catch (error) {
-    console.error('Error fetching user data:', error);
+    console.error('Error in /me route:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 });
