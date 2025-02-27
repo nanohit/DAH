@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { uploadImage } = require('../utils/imageUpload');
-const auth = require('../middleware/auth');
+const { protect } = require('../middleware/auth');
 
 // Configure multer for memory storage
 const storage = multer.memoryStorage();
@@ -14,7 +14,7 @@ const upload = multer({
 });
 
 // Route to handle image upload
-router.post('/', auth, upload.single('image'), async (req, res) => {
+router.post('/', protect, upload.single('image'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ message: 'No image file provided' });
