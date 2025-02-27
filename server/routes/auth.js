@@ -161,80 +161,30 @@ router.post('/register', async (req, res) => {
 // @access  Public
 router.post('/login', async (req, res) => {
   try {
-    console.log('\n=== POST /login Debug Log ===');
-    console.log('1. Headers:', {
-      'content-type': req.headers['content-type'],
-      'user-agent': req.headers['user-agent']
-    });
-    console.log('2. Raw Body:', {
-      ...req.body,
-      password: req.body.password ? `[${req.body.password.length} chars]` : '[MISSING]'
-    });
-    
-    const { email, emailOrUsername, password } = req.body;
-    const loginIdentifier = email || emailOrUsername;
-    
-    console.log('3. Extracted credentials:', { 
-      loginIdentifier, 
-      password: password ? `[${password.length} chars]` : '[MISSING]'
-    });
+    const { email, password } = req.body;
 
-    if (!loginIdentifier || !password) {
-      console.log('Missing credentials');
-      return res.status(400).json({ message: 'Please provide both email/username and password' });
-    }
-
-    // Find user by email or username
-    const user = await User.findOne({
-      $or: [
-        { email: loginIdentifier },
-        { username: loginIdentifier }
-      ]
-    }).select('+password');
-    
-    console.log('4. User lookup:', user ? {
-      _id: user._id.toString(),
-      username: user.username,
-      email: user.email,
-      matchedBy: user.email === loginIdentifier ? 'email' : 'username',
-      hasPassword: !!user.password,
-      passwordLength: user.password?.length
-    } : 'No user found');
-    
+    // Check for user email
+    const user = await User.findOne({ email }).select('+password');
     if (!user) {
-      console.log('No user found for:', loginIdentifier);
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    if (!user.password) {
-      console.log('No password stored for user');
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
-
-    // Check password match using matchPassword method
-    console.log('5. Attempting password match...');
+    // Check if password matches
     const isMatch = await user.matchPassword(password);
-    console.log('6. Password match result:', isMatch);
-
     if (!isMatch) {
-      console.log('Password match failed');
       return res.status(401).json({ message: 'Invalid credentials' });
     }
-
-    console.log('7. Login successful, generating token...');
-    const token = generateToken(user._id);
 
     res.json({
       _id: user._id,
       username: user.username,
       email: user.email,
       isAdmin: user.isAdmin,
-      token
+      token: generateToken(user._id),
     });
   } catch (error) {
     console.error('Login error:', error);
-    console.error('Stack trace:', error.stack);
-    res.status(500).json({ message: error.message || 'Server Error' });
+    res.status(500).json({ message: 'Server Error' });
   }
 });
 
