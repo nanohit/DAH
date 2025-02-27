@@ -106,6 +106,7 @@ router.get('/users', async (req, res) => {
 // @route   POST /api/auth/register
 // @access  Public
 router.post('/register', async (req, res) => {
+  let client;
   try {
     console.log('\n=== POST /register Debug Log ===');
     console.log('1. Raw request body:', {
@@ -123,62 +124,73 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
 
+    // Hash password
+    console.log('2. Hashing password...');
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    console.log('3. Password hashed successfully');
+    console.log('   Original password length:', password.length);
+    console.log('   Hashed password length:', hashedPassword.length);
+    console.log('   Hashed password:', hashedPassword);
+
     // Create user document
     const userData = {
       username,
       email,
-      password, // The pre-save hook will hash this
+      password: hashedPassword,
       registrationIp: ip,
-      lastIp: ip
+      lastIp: ip,
+      isAdmin: false,
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
-    console.log('2. User data to be saved:', {
+    console.log('4. User data to be saved:', {
       ...userData,
       password: `[${userData.password.length} chars]`
     });
 
-    // Create user (this will trigger the pre-save hook)
-    const user = await User.create(userData);
-    console.log('3. Created user document:', {
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-      hasPassword: !!user.password,
-      passwordLength: user.password?.length
-    });
+    // Connect directly to MongoDB for debugging
+    const uri = process.env.MONGODB_URI;
+    const dbName = uri.split('/').pop().split('?')[0];
+    
+    client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+    await client.connect();
+    
+    console.log('5. Connected to MongoDB');
+    const db = client.db(dbName);
+    
+    // Insert user directly
+    const result = await db.collection('users').insertOne(userData);
+    console.log('6. MongoDB insert result:', result);
 
-    // Verify storage with password field
-    const savedUser = await User.findById(user._id).select('+password');
-    console.log('4. Verification query result:', {
+    // Verify the inserted document
+    const savedUser = await db.collection('users').findOne({ _id: result.insertedId });
+    console.log('7. Verification query result:', {
       hasUser: !!savedUser,
-      hasPassword: savedUser ? !!savedUser.password : false,
+      hasPassword: !!savedUser?.password,
       passwordLength: savedUser?.password?.length,
       storedPassword: savedUser?.password
     });
 
-    // For testing purposes, try to match the password immediately after registration
-    const loginTest = await savedUser.matchPassword(password);
-    console.log('5. Immediate password match test:', loginTest);
-    if (!loginTest) {
-      console.log('   Failed password match details:');
-      console.log('   Original password:', password);
-      console.log('   Stored hashed password:', savedUser.password);
-      console.log('   Lengths:', {
-        originalLength: password.length,
-        hashedLength: savedUser.password.length
-      });
-    }
+    // Test password match
+    const isMatch = await bcrypt.compare(password, savedUser.password);
+    console.log('8. Immediate password match test:', isMatch);
 
     res.status(201).json({
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-      isAdmin: user.isAdmin,
-      token: generateToken(user._id)
+      _id: savedUser._id,
+      username: savedUser.username,
+      email: savedUser.email,
+      isAdmin: savedUser.isAdmin,
+      token: generateToken(savedUser._id)
     });
   } catch (error) {
     console.error('Registration error:', error);
     console.error('Stack trace:', error.stack);
     res.status(500).json({ message: error.message || 'Server Error' });
+  } finally {
+    if (client) {
+      await client.close();
+    }
   }
 });
 
