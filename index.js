@@ -10,7 +10,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5000'],
+  origin: ['http://localhost:3000', 'http://localhost:5000', 'https://dah-omega.vercel.app'],
   credentials: true
 }));
 app.use(express.json());
