@@ -16,7 +16,7 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch('https://dah-backend.onrender.com/api/posts', {
+      const response = await fetch('https://dah-tyxc.onrender.com/api/posts', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

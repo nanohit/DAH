@@ -36,7 +36,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const token = localStorage.getItem('token');
     if (token) {
       // Fetch user data if token exists
-      fetch('https://dah-backend.onrender.com/api/auth/me', {
+      fetch('https://dah-tyxc.onrender.com/api/auth/me', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -55,7 +55,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const login = async (email: string, password: string) => {
-    const response = await fetch('https://dah-backend.onrender.com/api/auth/login', {
+    const response = await fetch('https://dah-tyxc.onrender.com/api/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

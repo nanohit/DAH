@@ -27,7 +27,7 @@ export default function PostList({ onPostUpdated }: PostListProps) {
 
   const fetchPosts = async () => {
     try {
-      const response = await fetch('https://dah-backend.onrender.com/api/posts');
+      const response = await fetch('https://dah-tyxc.onrender.com/api/posts');
       if (!response.ok) {
         throw new Error('Failed to fetch posts');
       }
@@ -56,7 +56,7 @@ export default function PostList({ onPostUpdated }: PostListProps) {
 
   const handleUpdate = async (postId: string) => {
     try {
-      const response = await fetch(`https://dah-backend.onrender.com/api/posts/${postId}`, {
+      const response = await fetch(`https://dah-tyxc.onrender.com/api/posts/${postId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -86,7 +86,7 @@ export default function PostList({ onPostUpdated }: PostListProps) {
     }
 
     try {
-      const response = await fetch(`https://dah-backend.onrender.com/api/posts/${postId}`, {
+      const response = await fetch(`https://dah-tyxc.onrender.com/api/posts/${postId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
