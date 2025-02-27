@@ -106,19 +106,24 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
 
+    // Hash password
+    console.log('2. Hashing password...');
+    const hashedPassword = await User.hashPassword(password);
+    console.log('3. Password hashed successfully');
+
     // Create user document
     const userData = {
       username,
       email,
-      password,
+      password: hashedPassword,
       registrationIp: ip,
       lastIp: ip
     };
-    console.log('2. User data to be saved:', { ...userData, password: '[HIDDEN]' });
+    console.log('4. User data to be saved:', { ...userData, password: '[HIDDEN]' });
 
     // Create user
     const user = await User.create(userData);
-    console.log('3. Created user document:', {
+    console.log('5. Created user document:', {
       _id: user._id,
       username: user.username,
       email: user.email,
@@ -127,7 +132,7 @@ router.post('/register', async (req, res) => {
 
     // Verify storage with password field
     const savedUser = await User.findById(user._id).select('+password');
-    console.log('4. Verification query result:', {
+    console.log('6. Verification query result:', {
       hasUser: !!savedUser,
       hasPassword: savedUser ? !!savedUser.password : false,
       passwordLength: savedUser?.password?.length
@@ -135,7 +140,7 @@ router.post('/register', async (req, res) => {
 
     // For testing purposes, try to match the password immediately after registration
     const loginTest = await savedUser.matchPassword(password);
-    console.log('5. Immediate password match test:', loginTest);
+    console.log('7. Immediate password match test:', loginTest);
 
     res.status(201).json({
       _id: user._id,

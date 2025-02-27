@@ -48,30 +48,6 @@ const UserSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Encrypt password using bcrypt
-UserSchema.pre('save', async function(next) {
-  console.log('\n=== Password Encryption Hook ===');
-  console.log('1. Hook triggered for user:', this.username);
-  console.log('2. Password modified:', this.isModified('password'));
-  
-  if (!this.isModified('password')) {
-    console.log('3. Password not modified, skipping encryption');
-    return next();
-  }
-  
-  try {
-    console.log('4. Generating salt...');
-    const salt = await bcrypt.genSalt(10);
-    console.log('5. Hashing password...');
-    this.password = await bcrypt.hash(this.password, salt);
-    console.log('6. Password hashed successfully');
-    next();
-  } catch (error) {
-    console.error('Password encryption error:', error);
-    next(error);
-  }
-});
-
 // Match user entered password to hashed password in database
 UserSchema.methods.matchPassword = async function(enteredPassword) {
   console.log('\n=== Password Match Debug ===');
@@ -106,6 +82,17 @@ UserSchema.methods.matchPassword = async function(enteredPassword) {
     console.error('Password match error:', error);
     return false;
   }
+};
+
+// Hash password before saving
+UserSchema.statics.hashPassword = async function(password) {
+  console.log('\n=== Password Hashing ===');
+  console.log('1. Generating salt...');
+  const salt = await bcrypt.genSalt(10);
+  console.log('2. Hashing password...');
+  const hashedPassword = await bcrypt.hash(password, salt);
+  console.log('3. Password hashed successfully');
+  return hashedPassword;
 };
 
 module.exports = mongoose.model('User', UserSchema); 
