@@ -7,6 +7,7 @@ interface Post {
   _id: string;
   headline: string;
   text: string;
+  imageUrl?: string;
   author: {
     _id: string;
     username: string;
@@ -146,6 +147,15 @@ export default function PostList({ onPostUpdated }: PostListProps) {
               <div className="text-sm text-gray-600 mb-4">
                 Posted by {post.author.username} on {formatDate(post.createdAt)}
               </div>
+              {post.imageUrl && (
+                <div className="mb-4">
+                  <img 
+                    src={post.imageUrl} 
+                    alt={post.headline}
+                    className="w-full h-auto rounded-lg shadow-sm"
+                  />
+                </div>
+              )}
               <p className="text-gray-800 mb-4 whitespace-pre-wrap">{post.text}</p>
               {user && user._id === post.author._id && (
                 <div className="flex justify-end space-x-2">

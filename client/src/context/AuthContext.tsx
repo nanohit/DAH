@@ -32,25 +32,51 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
 
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      // Fetch user data if token exists
-      fetch('https://dah-tyxc.onrender.com/api/auth/me', {
+  // Function to fetch user data
+  const fetchUserData = async (token: string) => {
+    try {
+      const response = await fetch('https://dah-tyxc.onrender.com/api/auth/me', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (!data.error) {
-            setUser(data);
-          }
-        })
-        .catch(error => {
-          console.error('Error fetching user data:', error);
-          localStorage.removeItem('token');
-        });
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch user data');
+      }
+      
+      const data = await response.json();
+      if (!data.error) {
+        setUser(data);
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      localStorage.removeItem('token');
+      setUser(null);
+    }
+  };
+
+  // Handle storage events (for cross-tab synchronization)
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'token') {
+        if (e.newValue) {
+          fetchUserData(e.newValue);
+        } else {
+          setUser(null);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  // Initial auth check
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetchUserData(token);
     }
   }, []);
 
@@ -71,11 +97,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const data = await response.json();
     localStorage.setItem('token', data.token);
     setUser(data);
+
+    // Dispatch storage event for other tabs
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'token',
+      newValue: data.token
+    }));
   };
 
   const logout = () => {
     localStorage.removeItem('token');
     setUser(null);
+    
+    // Dispatch storage event for other tabs
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'token',
+      newValue: null
+    }));
   };
 
   const value = {

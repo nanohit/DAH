@@ -11,18 +11,27 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [headline, setHeadline] = useState('');
   const [text, setText] = useState('');
+  const [image, setImage] = useState<File | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { user } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
+      const formData = new FormData();
+      formData.append('headline', headline);
+      formData.append('text', text);
+      if (image) {
+        formData.append('image', image);
+      }
+
       const response = await fetch('https://dah-tyxc.onrender.com/api/posts', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ headline, text })
+        body: formData
       });
 
       if (!response.ok) {
@@ -31,10 +40,19 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
 
       setHeadline('');
       setText('');
+      setImage(null);
       setIsOpen(false);
       onPostCreated();
     } catch (error) {
       console.error('Error creating post:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setImage(e.target.files[0]);
     }
   };
 
@@ -77,19 +95,33 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
                 required
               />
             </div>
+            <div className="mb-4">
+              <label htmlFor="image" className="block text-sm font-medium text-gray-700 mb-1">
+                Image (optional)
+              </label>
+              <input
+                type="file"
+                id="image"
+                accept="image/*"
+                onChange={handleImageChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
             <div className="flex justify-end space-x-2">
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
                 className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                disabled={isSubmitting}
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
+                disabled={isSubmitting}
               >
-                Post
+                {isSubmitting ? 'Posting...' : 'Post'}
               </button>
             </div>
           </form>
