@@ -94,7 +94,10 @@ router.get('/users', async (req, res) => {
 router.post('/register', async (req, res) => {
   try {
     console.log('\n=== POST /register Debug Log ===');
-    console.log('1. Raw request body:', req.body);
+    console.log('1. Raw request body:', {
+      ...req.body,
+      password: req.body.password ? `[${req.body.password.length} chars]` : '[MISSING]'
+    });
     
     const { username, email, password } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
@@ -108,8 +111,11 @@ router.post('/register', async (req, res) => {
 
     // Hash password
     console.log('2. Hashing password...');
+    console.log('   Original password length:', password.length);
     const hashedPassword = await User.hashPassword(password);
     console.log('3. Password hashed successfully');
+    console.log('   Hashed password length:', hashedPassword.length);
+    console.log('   Hashed password:', hashedPassword);
 
     // Create user document
     const userData = {
@@ -119,7 +125,10 @@ router.post('/register', async (req, res) => {
       registrationIp: ip,
       lastIp: ip
     };
-    console.log('4. User data to be saved:', { ...userData, password: '[HIDDEN]' });
+    console.log('4. User data to be saved:', {
+      ...userData,
+      password: `[${userData.password.length} chars]`
+    });
 
     // Create user
     const user = await User.create(userData);
@@ -127,7 +136,8 @@ router.post('/register', async (req, res) => {
       _id: user._id,
       username: user.username,
       email: user.email,
-      hasPassword: !!user.password
+      hasPassword: !!user.password,
+      passwordLength: user.password?.length
     });
 
     // Verify storage with password field
@@ -135,12 +145,22 @@ router.post('/register', async (req, res) => {
     console.log('6. Verification query result:', {
       hasUser: !!savedUser,
       hasPassword: savedUser ? !!savedUser.password : false,
-      passwordLength: savedUser?.password?.length
+      passwordLength: savedUser?.password?.length,
+      storedPassword: savedUser?.password
     });
 
     // For testing purposes, try to match the password immediately after registration
     const loginTest = await savedUser.matchPassword(password);
     console.log('7. Immediate password match test:', loginTest);
+    if (!loginTest) {
+      console.log('   Failed password match details:');
+      console.log('   Original password:', password);
+      console.log('   Stored hashed password:', savedUser.password);
+      console.log('   Lengths:', {
+        originalLength: password.length,
+        hashedLength: savedUser.password.length
+      });
+    }
 
     res.status(201).json({
       _id: user._id,
@@ -166,13 +186,15 @@ router.post('/login', async (req, res) => {
       'content-type': req.headers['content-type'],
       'user-agent': req.headers['user-agent']
     });
-    console.log('2. Raw Body:', req.body);
+    console.log('2. Raw Body:', {
+      ...req.body,
+      password: req.body.password ? `[${req.body.password.length} chars]` : '[MISSING]'
+    });
     
     const { emailOrUsername, password } = req.body;
     console.log('3. Extracted credentials:', { 
       emailOrUsername, 
-      password: password ? '[PRESENT]' : '[MISSING]',
-      passwordLength: password?.length
+      password: password ? `[${password.length} chars]` : '[MISSING]'
     });
 
     if (!emailOrUsername || !password) {
@@ -194,7 +216,8 @@ router.post('/login', async (req, res) => {
       email: user.email,
       matchedBy: user.email === emailOrUsername ? 'email' : 'username',
       hasPassword: !!user.password,
-      passwordLength: user.password?.length
+      passwordLength: user.password?.length,
+      storedPassword: user.password
     } : 'No user found');
     
     if (!user) {
@@ -203,15 +226,18 @@ router.post('/login', async (req, res) => {
     }
 
     // Check password match using bcrypt
+    console.log('5. Attempting password match...');
+    console.log('   Entered password:', password);
+    console.log('   Stored password:', user.password);
     const isMatch = await user.matchPassword(password);
-    console.log('5. Password match result:', isMatch);
+    console.log('6. Password match result:', isMatch);
 
     if (!isMatch) {
       console.log('Password match failed');
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    console.log('6. Login successful, generating token...');
+    console.log('7. Login successful, generating token...');
     const token = generateToken(user._id);
 
     res.json({
