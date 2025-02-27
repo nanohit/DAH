@@ -1,13 +1,15 @@
 services:
   - type: web
-    name: dah
+    name: dah-backend
     env: node
+    plan: free
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: node index.js
     envVars:
       - key: NODE_ENV
         value: production
       - key: MONGODB_URI
         sync: false
       - key: JWT_SECRET
-        sync: false 
+        sync: false
+    healthCheckPath: /api/auth/test 
