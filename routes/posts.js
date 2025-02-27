@@ -16,8 +16,14 @@ const upload = multer({
 // Create a new post with optional image
 router.post('/', protect, upload.single('image'), async (req, res) => {
     try {
-        console.log('=== Create Post Debug ===');
-        console.log('Request user:', req.user);
+        console.log('\n=== Create Post Debug ===');
+        console.log('Request headers:', req.headers);
+        console.log('Request file:', req.file ? {
+            fieldname: req.file.fieldname,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+            buffer: req.file.buffer ? 'Buffer exists' : 'No buffer'
+        } : 'No file');
         console.log('Request body:', req.body);
         
         const postData = {
@@ -25,19 +31,26 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
             author: req.user._id
         };
         
-        console.log('Post data to save:', postData);
+        console.log('Post data before image:', postData);
 
         // If there's an image, upload it to ImgBB
         if (req.file) {
             try {
+                console.log('Attempting to upload image to ImgBB');
+                console.log('Image buffer size:', req.file.buffer.length);
+                
                 const result = await uploadImage(req.file.buffer);
+                console.log('ImgBB upload result:', result);
+                
                 if (!result.success) {
                     throw new Error(result.error || 'Failed to upload image');
                 }
                 postData.imageUrl = result.imageUrl;
+                console.log('Image URL added to post:', postData.imageUrl);
             } catch (error) {
-                console.error('Error uploading image:', error);
-                return res.status(400).json({ error: 'Failed to upload image' });
+                console.error('Detailed error uploading image:', error);
+                console.error('Error stack:', error.stack);
+                return res.status(400).json({ error: `Failed to upload image: ${error.message}` });
             }
         }
 
@@ -53,6 +66,7 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
         res.status(201).json(post);
     } catch (error) {
         console.error('Error creating post:', error);
+        console.error('Error stack:', error.stack);
         res.status(400).json({ 
             error: error.message,
             details: error.errors ? Object.values(error.errors).map(e => e.message) : undefined
