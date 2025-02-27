@@ -8,15 +8,22 @@ const postSchema = new mongoose.Schema({
     },
     text: {
         type: String,
-        required: true
+        required: true,
+        trim: true
+    },
+    imageUrl: {
+        type: String,
+        trim: true
+    },
+    vkPhotoId: {
+        type: String,
+        trim: true
     },
     author: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
+        required: true,
+        ref: 'User'
     }
 }, {
     timestamps: true
-});
-
-module.exports = mongoose.model('Post', postSchema);
+}); 

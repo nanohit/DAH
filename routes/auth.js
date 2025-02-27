@@ -1,54 +1,159 @@
+// Debug logging for route registration
+console.log('Registering auth routes...');
+
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { protect, admin } = require('../middleware/auth');
+const mongoose = require('mongoose');
+const { MongoClient } = require('mongodb');
+const bcrypt = require('bcryptjs');
 
-// @desc    Get all users
+// Log all requests to auth routes
+router.use((req, res, next) => {
+  console.log('\n=== Auth Route Request ===');
+  console.log('Method:', req.method);
+  console.log('Path:', req.path);
+  console.log('Headers:', req.headers);
+  console.log('Body:', req.body);
+  next();
+});
+
+// Debug helper
+const logObject = (prefix, obj) => {
+  console.log(`${prefix}:`, JSON.stringify(obj, null, 2));
+};
+
+// @desc    Test route
+// @route   GET /api/auth/test
+// @access  Public
+router.get('/test', (req, res) => {
+  console.log('Test route hit');
+  res.json({ message: 'Auth routes are working' });
+});
+
+// @desc    Get current user
+// @route   GET /api/auth/me
+// @access  Private
+router.get('/me', protect, async (req, res) => {
+  console.log('\n=== /me Route Debug ===');
+  console.log('1. User from middleware:', {
+    exists: !!req.user,
+    id: req.user?._id,
+    username: req.user?.username
+  });
+  
+  try {
+    console.log('2. Attempting database query with ID:', req.user._id);
+    const user = await User.findById(req.user._id).select('-password');
+    console.log('3. Database query result:', user ? {
+      found: true,
+      id: user._id,
+      username: user.username,
+      email: user.email
+    } : {
+      found: false,
+      queriedId: req.user._id
+    });
+
+    if (!user) {
+      console.log('4. User not found in database');
+      return res.status(404).json({ 
+        message: 'User not found',
+        debug: {
+          queriedId: req.user._id,
+          tokenData: req.user
+        }
+      });
+    }
+
+    console.log('5. Successfully retrieved user data');
+    res.json(user);
+  } catch (error) {
+    console.error('6. Error in /me route:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({ 
+      message: 'Server Error',
+      error: error.message
+    });
+  }
+});
+
+// WARNING: DEVELOPMENT ONLY ROUTE
+// This route exposes plain text passwords and should NEVER be used in production
+// @desc    Get all users with raw MongoDB access (DEVELOPMENT ONLY)
+// @route   GET /api/auth/dev/users
+// @access  Public (for development)
+router.get('/dev/users', async (req, res) => {
+  let client;
+  try {
+    // Parse MongoDB URI
+    const uri = process.env.MONGODB_URI;
+    const dbName = uri.split('/').pop().split('?')[0];
+    
+    // Connect directly using MongoDB driver
+    client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+    await client.connect();
+    
+    console.log('Connected to MongoDB');
+    const db = client.db(dbName);
+    
+    // Get all users without any filtering
+    const users = await db.collection('users').find({}).toArray();
+    
+    console.log(`Found ${users.length} users`);
+    console.log('Sample user:', JSON.stringify(users[0], null, 2));
+    
+    res.json({
+      debug: {
+        dbName,
+        collection: 'users',
+        userCount: users.length
+      },
+      users: users
+    });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({
+      message: 'Server Error',
+      error: error.message,
+      stack: error.stack
+    });
+  } finally {
+    if (client) {
+      await client.close();
+    }
+  }
+});
+
+// @desc    Get all users with passwords
 // @route   GET /api/auth/users
 // @access  Public (for development)
 router.get('/users', async (req, res) => {
   try {
-    const users = await User.find().select('-password').select('+registrationIp +lastIp');
-    const usersWithIp = users.map(user => ({
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-      isAdmin: user.isAdmin,
-      registrationIp: user.registrationIp,
-      lastIp: user.lastIp,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt
-    }));
-    res.json(usersWithIp);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server Error' });
-  }
-});
-
-// @desc    Make a user admin
-// @route   PUT /api/auth/users/:id/make-admin
-// @access  Private/Admin
-router.put('/users/:id/make-admin', protect, admin, async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    
-    user.isAdmin = true;
-    await user.save();
-    
-    res.json({
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-      isAdmin: user.isAdmin
+    console.log('Fetching all users with password field...');
+    const users = await User.find().select('+password');
+    console.log(`Found ${users.length} users`);
+    users.forEach(user => {
+      console.log(`User ${user.username}:`, {
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        hasPassword: !!user.password,
+        passwordLength: user.password ? user.password.length : 0,
+        password: user.password,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+      });
     });
+    res.json(users);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server Error' });
+    console.error('Error fetching users:', error);
+    res.status(500).json({ message: 'Error fetching users', error: error.message });
   }
 });
 
@@ -57,64 +162,67 @@ router.put('/users/:id/make-admin', protect, admin, async (req, res) => {
 // @access  Public
 router.post('/register', async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    console.log('\n=== POST /register Debug Log ===');
+    console.log('1. Raw request body:', {
+      ...req.body,
+      password: req.body.password ? `[${req.body.password.length} chars]` : '[MISSING]'
+    });
     
-    // Get IP address (considering proxies and forwarded requests)
+    const { username, email, password } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     
-    console.log('Registration attempt:', { 
-      username, 
-      email,
-      ip,
-      headers: req.headers,
-      userAgent: req.headers['user-agent']
-    });
-
-    // Check if user already exists
+    // Check existing user
     const userExists = await User.findOne({ email });
     if (userExists) {
-      console.log('User already exists:', email);
+      console.log('User already exists for email:', email);
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Create user
-    const user = await User.create({
+    // Create user document
+    const userData = {
       username,
       email,
       password,
       registrationIp: ip,
-      lastIp: ip
+      lastIp: ip,
+      isAdmin: false
+    };
+    console.log('2. User data to be saved:', {
+      ...userData,
+      password: `[${userData.password.length} chars]`
     });
 
-    if (user) {
-      // Check if JWT_SECRET is defined
-      if (!process.env.JWT_SECRET) {
-        console.error('JWT_SECRET is not defined');
-        return res.status(500).json({ message: 'Server configuration error' });
-      }
+    // Create user (this will trigger the pre-save hook)
+    const user = await User.create(userData);
+    console.log('3. Created user document:', {
+      _id: user._id,
+      username: user.username,
+      email: user.email
+    });
 
-      const token = generateToken(user._id);
-      console.log('User created successfully:', { 
-        id: user._id, 
-        username: user.username,
-        ip 
-      });
+    // Verify storage with password field
+    const savedUser = await User.findById(user._id).select('+password');
+    console.log('4. Verification query result:', {
+      hasUser: !!savedUser,
+      hasPassword: !!savedUser?.password,
+      passwordLength: savedUser?.password?.length,
+      storedPassword: savedUser?.password
+    });
 
-      res.status(201).json({
-        _id: user._id,
-        username: user.username,
-        email: user.email,
-        isAdmin: user.isAdmin,
-        registrationIp: user.registrationIp,
-        lastIp: user.lastIp,
-        token,
-      });
-    } else {
-      console.log('Invalid user data');
-      res.status(400).json({ message: 'Invalid user data' });
-    }
+    // For testing purposes, try to match the password immediately after registration
+    const loginTest = await savedUser.matchPassword(password);
+    console.log('5. Immediate password match test:', loginTest);
+
+    res.status(201).json({
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      isAdmin: user.isAdmin,
+      token: generateToken(user._id)
+    });
   } catch (error) {
     console.error('Registration error:', error);
+    console.error('Stack trace:', error.stack);
     res.status(500).json({ message: error.message || 'Server Error' });
   }
 });
@@ -146,42 +254,55 @@ router.post('/login', async (req, res) => {
       token: generateToken(user._id),
     });
   } catch (error) {
-    console.error(error);
+    console.error('Login error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 });
 
-// @desc    Setup first admin user (one-time only)
-// @route   POST /api/auth/setup-admin
-// @access  Public (but only works if no users exist)
-router.post('/setup-admin', async (req, res) => {
+// @desc    Get raw user data from MongoDB (DEVELOPMENT ONLY)
+// @route   GET /api/auth/dev/user/:username
+// @access  Public (for development)
+router.get('/dev/user/:username', async (req, res) => {
+  let client;
   try {
-    // Check if any users exist
-    const userCount = await User.countDocuments();
-    if (userCount > 0) {
-      return res.status(400).json({ message: 'Setup has already been completed' });
+    // Parse MongoDB URI
+    const uri = process.env.MONGODB_URI;
+    const dbName = uri.split('/').pop().split('?')[0];
+    
+    // Connect directly using MongoDB driver
+    client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+    await client.connect();
+    
+    console.log('Connected to MongoDB');
+    const db = client.db(dbName);
+    
+    // Get user data without any filtering
+    const user = await db.collection('users').findOne({ username: req.params.username });
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
     }
-
-    const { username, email, password } = req.body;
-
-    // Create admin user
-    const user = await User.create({
-      username,
-      email,
-      password,
-      isAdmin: true // This is the only place where isAdmin is set to true directly
-    });
-
-    res.status(201).json({
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-      isAdmin: user.isAdmin,
-      token: generateToken(user._id),
+    
+    console.log('Raw user data:', JSON.stringify(user, null, 2));
+    
+    res.json({
+      debug: {
+        dbName,
+        collection: 'users'
+      },
+      user: user
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server Error' });
+    console.error('Error:', error);
+    res.status(500).json({
+      message: 'Server Error',
+      error: error.message,
+      stack: error.stack
+    });
+  } finally {
+    if (client) {
+      await client.close();
+    }
   }
 });
 
@@ -192,15 +313,52 @@ const generateToken = (id) => {
   });
 };
 
-// Basic route for testing
-router.get('/test', async (req, res) => {
+// @desc    Update user password
+// @route   PUT /api/auth/users/:id/password
+// @access  Public (for development)
+router.put('/users/:id/password', async (req, res) => {
   try {
-    const users = await User.find().select('-password');
-    res.json(users);
+    const { password } = req.body;
+    
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.password = password;
+    await user.save();
+
+    res.json({ message: 'Password updated successfully' });
   } catch (error) {
-    console.error(error);
+    console.error('Password update error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 });
 
-module.exports = router;
+// @desc    Delete a user
+// @route   DELETE /api/auth/users/:id
+// @access  Public (for development)
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    await user.deleteOne();
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('User deletion error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Log all registered routes
+console.log('\n=== Registered Auth Routes ===');
+router.stack.forEach((r) => {
+  if (r.route && r.route.path) {
+    console.log(`${Object.keys(r.route.methods).join(', ').toUpperCase()}\t${r.route.path}`);
+  }
+});
+
+module.exports = router; 
