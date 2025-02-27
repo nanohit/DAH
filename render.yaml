@@ -3,7 +3,6 @@ services:
     name: dah-backend
     env: node
     plan: free
-    rootDir: server
     buildCommand: npm install
     startCommand: node index.js
     envVars:
