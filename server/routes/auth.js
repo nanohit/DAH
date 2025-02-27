@@ -12,8 +12,11 @@ const bcrypt = require('bcryptjs');
 
 // Log all requests to auth routes
 router.use((req, res, next) => {
-  console.log(`[Auth Route] ${req.method} ${req.path}`);
+  console.log('\n=== Auth Route Request ===');
+  console.log('Method:', req.method);
+  console.log('Path:', req.path);
   console.log('Headers:', req.headers);
+  console.log('Body:', req.body);
   next();
 });
 
@@ -348,6 +351,14 @@ router.delete('/users/:id', async (req, res) => {
 router.get('/test', (req, res) => {
   console.log('Test route hit');
   res.json({ message: 'Auth routes are working' });
+});
+
+// Log all registered routes
+console.log('\n=== Registered Auth Routes ===');
+router.stack.forEach((r) => {
+  if (r.route && r.route.path) {
+    console.log(`${Object.keys(r.route.methods).join(', ').toUpperCase()}\t${r.route.path}`);
+  }
 });
 
 module.exports = router; 
