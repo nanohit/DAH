@@ -152,9 +152,9 @@ router.post('/login', async (req, res) => {
         { email: emailOrUsername },
         { username: emailOrUsername }
       ]
-    }).select('+password +plainTextPassword');
+    });
     
-    logObject('2. Found user', user);
+    logObject('2. Found user', user ? { ...user.toObject(), password: '[HIDDEN]' } : null);
     
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
@@ -162,6 +162,8 @@ router.post('/login', async (req, res) => {
 
     // Use the matchPassword method from the User model
     const isMatch = await user.matchPassword(password);
+    logObject('3. Password match result:', isMatch);
+
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
@@ -173,7 +175,7 @@ router.post('/login', async (req, res) => {
       isAdmin: user.isAdmin
     };
 
-    logObject('3. Sending response with user data', userData);
+    logObject('4. Sending response with user data', userData);
 
     res.json({
       ...userData,

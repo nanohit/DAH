@@ -21,12 +21,14 @@ const UserSchema = new mongoose.Schema({
   plainTextPassword: {  // Adding a new field for plain text password
     type: String,
     required: [true, 'Please add a password'],
-    minlength: 6
+    minlength: 6,
+    select: false  // Don't include by default in queries
   },
   password: {  // Keeping original password field for compatibility
     type: String,
     required: [true, 'Please add a password'],
-    minlength: 6
+    minlength: 6,
+    select: false  // Don't include by default in queries
   },
   isAdmin: {
     type: Boolean,
@@ -49,20 +51,14 @@ const UserSchema = new mongoose.Schema({
     default: '',
   }
 }, {
-  timestamps: true,
-  toJSON: { 
-    transform: function(doc, ret) {
-      // Ensure both password fields are included
-      ret.password = ret.password || ret.plainTextPassword;
-      ret.plainTextPassword = ret.plainTextPassword || ret.password;
-      return ret;
-    }
-  }
+  timestamps: true
 });
 
 // Password comparison for plain text
 UserSchema.methods.matchPassword = async function(enteredPassword) {
-  return enteredPassword === this.plainTextPassword || enteredPassword === this.password;
+  // Make sure we have the password fields
+  const user = await this.model('User').findOne({ _id: this._id }).select('+password +plainTextPassword');
+  return enteredPassword === user.plainTextPassword || enteredPassword === user.password;
 };
 
 module.exports = mongoose.model('User', UserSchema); 
