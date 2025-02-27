@@ -16,10 +16,16 @@ const upload = multer({
 // Create a new post with optional image
 router.post('/', protect, upload.single('image'), async (req, res) => {
     try {
+        console.log('=== Create Post Debug ===');
+        console.log('Request user:', req.user);
+        console.log('Request body:', req.body);
+        
         const postData = {
             ...req.body,
             author: req.user._id
         };
+        
+        console.log('Post data to save:', postData);
 
         // If there's an image, upload it to VK
         if (req.file) {
@@ -40,11 +46,21 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
         }
 
         const post = new Post(postData);
+        console.log('Created post instance:', post);
+        
         await post.save();
+        console.log('Post saved successfully');
+        
         await post.populate('author', 'username');
-        res.status(201).send(post);
+        console.log('Post populated with author');
+        
+        res.status(201).json(post);
     } catch (error) {
-        res.status(400).send(error);
+        console.error('Error creating post:', error);
+        res.status(400).json({ 
+            error: error.message,
+            details: error.errors ? Object.values(error.errors).map(e => e.message) : undefined
+        });
     }
 });
 
