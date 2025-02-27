@@ -13,6 +13,7 @@ interface Post {
     username: string;
   };
   createdAt: string;
+  updatedAt: string;
 }
 
 interface PostListProps {
@@ -106,7 +107,42 @@ export default function PostList({ onPostUpdated }: PostListProps) {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+    const date = new Date(dateString);
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const time = `${hours}:${minutes}`;
+    
+    // Check if the date is today
+    if (date.toDateString() === now.toDateString()) {
+      return `${time} Today`;
+    }
+    
+    // Check if the date was yesterday
+    if (date.toDateString() === yesterday.toDateString()) {
+      return `${time} Yesterday`;
+    }
+    
+    // For older dates, show the full date
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${time} ${day}.${month}.${year}`;
+  };
+
+  const getPostTimestamp = (post: Post) => {
+    const createdTime = formatDate(post.createdAt);
+    const wasEdited = post.updatedAt && new Date(post.updatedAt).getTime() > new Date(post.createdAt).getTime();
+    
+    if (wasEdited) {
+      const editedTime = formatDate(post.updatedAt);
+      return `${post.author.username} ${createdTime}   Edited ${editedTime}`;
+    }
+    
+    return `${post.author.username} ${createdTime}`;
   };
 
   return (
@@ -145,7 +181,7 @@ export default function PostList({ onPostUpdated }: PostListProps) {
             <>
               <h2 className="text-2xl font-bold mb-2">{post.headline}</h2>
               <div className="text-sm text-gray-600 mb-4">
-                Posted by {post.author.username} on {formatDate(post.createdAt)}
+                {getPostTimestamp(post)}
               </div>
               {post.imageUrl && (
                 <div className="mb-4">
