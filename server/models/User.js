@@ -18,17 +18,11 @@ const UserSchema = new mongoose.Schema({
       'Please add a valid email',
     ],
   },
-  plainTextPassword: {  // Adding a new field for plain text password
+  password: {
     type: String,
     required: [true, 'Please add a password'],
     minlength: 6,
-    select: false  // Don't include by default in queries
-  },
-  password: {  // Keeping original password field for compatibility
-    type: String,
-    required: [true, 'Please add a password'],
-    minlength: 6,
-    select: false  // Don't include by default in queries
+    select: false,
   },
   isAdmin: {
     type: Boolean,
@@ -54,31 +48,34 @@ const UserSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Password comparison for plain text
+// Encrypt password using bcrypt
+UserSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) {
+    next();
+  }
+  
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
+});
+
+// Match user entered password to hashed password in database
 UserSchema.methods.matchPassword = async function(enteredPassword) {
   console.log('\n=== Password Match Debug ===');
-  console.log('Attempting to fetch user with password fields...');
+  console.log('Attempting to match password...');
   
-  // Make sure we have the password fields
-  const user = await this.model('User').findOne({ _id: this._id }).select('+password +plainTextPassword');
+  // Make sure we have the password field
+  const user = await this.model('User').findOne({ _id: this._id }).select('+password');
   
-  console.log('User fetch result:', {
-    hasUser: !!user,
-    hasPlainTextPassword: user ? !!user.plainTextPassword : false,
-    hasPassword: user ? !!user.password : false,
-    passwordLength: user?.password?.length,
-    plainTextPasswordLength: user?.plainTextPassword?.length
-  });
+  if (!user || !user.password) {
+    console.log('No user or password found');
+    return false;
+  }
 
-  const plainTextMatch = enteredPassword === user?.plainTextPassword;
-  const passwordMatch = enteredPassword === user?.password;
-  
-  console.log('Password comparison results:', {
-    plainTextMatch,
-    passwordMatch
-  });
+  console.log('Found user with password, attempting bcrypt compare...');
+  const isMatch = await bcrypt.compare(enteredPassword, user.password);
+  console.log('Password match result:', isMatch);
 
-  return plainTextMatch || passwordMatch;
+  return isMatch;
 };
 
 module.exports = mongoose.model('User', UserSchema); 

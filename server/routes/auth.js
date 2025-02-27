@@ -106,16 +106,15 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Create user document with both password fields
+    // Create user document
     const userData = {
       username,
       email,
-      password: password,
-      plainTextPassword: password,
+      password,
       registrationIp: ip,
       lastIp: ip
     };
-    console.log('2. User data to be saved:', { ...userData, password: '[HIDDEN]', plainTextPassword: '[HIDDEN]' });
+    console.log('2. User data to be saved:', { ...userData, password: '[HIDDEN]' });
 
     // Create user
     const user = await User.create(userData);
@@ -123,28 +122,20 @@ router.post('/register', async (req, res) => {
       _id: user._id,
       username: user.username,
       email: user.email,
-      hasPassword: !!user.password,
-      hasPlainTextPassword: !!user.plainTextPassword
+      hasPassword: !!user.password
     });
 
-    // Verify storage with both password fields
-    const savedUser = await User.findById(user._id).select('+password +plainTextPassword');
+    // Verify storage with password field
+    const savedUser = await User.findById(user._id).select('+password');
     console.log('4. Verification query result:', {
       hasUser: !!savedUser,
       hasPassword: savedUser ? !!savedUser.password : false,
-      hasPlainTextPassword: savedUser ? !!savedUser.plainTextPassword : false,
-      passwordLength: savedUser?.password?.length,
-      plainTextPasswordLength: savedUser?.plainTextPassword?.length
+      passwordLength: savedUser?.password?.length
     });
 
-    // For testing purposes, try to log in immediately after registration
-    const loginTest = await User.findOne({ email }).select('+password +plainTextPassword');
-    console.log('5. Immediate login test:', {
-      hasUser: !!loginTest,
-      hasPassword: loginTest ? !!loginTest.password : false,
-      hasPlainTextPassword: loginTest ? !!loginTest.plainTextPassword : false,
-      passwordsMatch: loginTest ? (loginTest.password === password && loginTest.plainTextPassword === password) : false
-    });
+    // For testing purposes, try to match the password immediately after registration
+    const loginTest = await savedUser.matchPassword(password);
+    console.log('5. Immediate password match test:', loginTest);
 
     res.status(201).json({
       _id: user._id,
@@ -184,19 +175,21 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Please provide both email/username and password' });
     }
 
-    // First, try to find the user without password fields
+    // Find user by email or username
     const user = await User.findOne({
       $or: [
         { email: emailOrUsername },
         { username: emailOrUsername }
       ]
-    });
+    }).select('+password');
     
-    console.log('4. Initial user lookup:', user ? {
+    console.log('4. User lookup:', user ? {
       _id: user._id.toString(),
       username: user.username,
       email: user.email,
-      matchedBy: user.email === emailOrUsername ? 'email' : 'username'
+      matchedBy: user.email === emailOrUsername ? 'email' : 'username',
+      hasPassword: !!user.password,
+      passwordLength: user.password?.length
     } : 'No user found');
     
     if (!user) {
@@ -204,51 +197,23 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Now fetch the same user with password fields
-    const userWithPassword = await User.findById(user._id).select('+password +plainTextPassword');
-    console.log('5. User with password fields:', {
-      hasUser: !!userWithPassword,
-      hasPassword: userWithPassword ? !!userWithPassword.password : false,
-      hasPlainTextPassword: userWithPassword ? !!userWithPassword.plainTextPassword : false,
-      passwordLength: userWithPassword?.password?.length,
-      plainTextPasswordLength: userWithPassword?.plainTextPassword?.length
-    });
+    // Check password match using bcrypt
+    const isMatch = await user.matchPassword(password);
+    console.log('5. Password match result:', isMatch);
 
-    if (!userWithPassword) {
-      console.log('Failed to fetch user with password fields');
-      return res.status(500).json({ message: 'Server Error' });
-    }
-
-    // Direct password comparison for debugging
-    const directMatch = password === userWithPassword.password || password === userWithPassword.plainTextPassword;
-    console.log('6. Direct password comparison:', {
-      directMatch,
-      providedPasswordLength: password.length,
-      storedPasswordLength: userWithPassword.password?.length,
-      storedPlainTextPasswordLength: userWithPassword.plainTextPassword?.length
-    });
-
-    // Use the matchPassword method as well
-    const methodMatch = await userWithPassword.matchPassword(password);
-    console.log('7. matchPassword method result:', methodMatch);
-
-    if (!directMatch && !methodMatch) {
+    if (!isMatch) {
       console.log('Password match failed');
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const userData = {
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-      isAdmin: user.isAdmin
-    };
-
-    console.log('8. Login successful, generating token...');
+    console.log('6. Login successful, generating token...');
     const token = generateToken(user._id);
 
     res.json({
-      ...userData,
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      isAdmin: user.isAdmin,
       token
     });
   } catch (error) {
