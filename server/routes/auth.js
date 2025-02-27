@@ -5,7 +5,7 @@ const User = require('../models/User');
 const { protect, admin } = require('../middleware/auth');
 const mongoose = require('mongoose');
 const { MongoClient } = require('mongodb');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 // Debug helper
 const logObject = (prefix, obj) => {
@@ -255,6 +255,53 @@ router.post('/login', async (req, res) => {
     console.error('Login error:', error);
     console.error('Stack trace:', error.stack);
     res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// @desc    Get raw user data from MongoDB (DEVELOPMENT ONLY)
+// @route   GET /api/auth/dev/user/:username
+// @access  Public (for development)
+router.get('/dev/user/:username', async (req, res) => {
+  let client;
+  try {
+    // Parse MongoDB URI
+    const uri = process.env.MONGODB_URI;
+    const dbName = uri.split('/').pop().split('?')[0];
+    
+    // Connect directly using MongoDB driver
+    client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+    await client.connect();
+    
+    console.log('Connected to MongoDB');
+    const db = client.db(dbName);
+    
+    // Get user data without any filtering
+    const user = await db.collection('users').findOne({ username: req.params.username });
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    console.log('Raw user data:', JSON.stringify(user, null, 2));
+    
+    res.json({
+      debug: {
+        dbName,
+        collection: 'users'
+      },
+      user: user
+    });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({
+      message: 'Server Error',
+      error: error.message,
+      stack: error.stack
+    });
+  } finally {
+    if (client) {
+      await client.close();
+    }
   }
 });
 
