@@ -35,7 +35,8 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create post');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create post');
       }
 
       setHeadline('');
@@ -45,6 +46,7 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
       onPostCreated();
     } catch (error) {
       console.error('Error creating post:', error);
+      alert(error instanceof Error ? error.message : 'Failed to create post');
     } finally {
       setIsSubmitting(false);
     }
