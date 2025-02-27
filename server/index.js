@@ -10,7 +10,8 @@ const app = express();
 
 // Debug middleware
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  console.log(`\n=== Request Debug ===`);
+  console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
   console.log('Headers:', req.headers);
   next();
 });
@@ -21,7 +22,11 @@ app.use(cors({
   credentials: true
 }));
 
+// Body parsing middleware
 app.use(express.json());
+
+// Connect to database
+connectDB();
 
 // Route files
 const authRoutes = require('./routes/auth');
@@ -29,24 +34,37 @@ const postRoutes = require('./routes/posts');
 const commentRoutes = require('./routes/comments');
 const bookRoutes = require('./routes/booksRouter');
 
+// Debug route registration
+console.log('\n=== Route Registration ===');
+console.log('Registering /api/auth routes');
+
 // Mount routes
 app.use('/api/auth', authRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/books', bookRoutes);
 
-// Connect to database
-connectDB();
+// Log registered routes
+console.log('\n=== Registered Routes ===');
+app._router.stack.forEach((r) => {
+  if (r.route && r.route.path) {
+    console.log(`${Object.keys(r.route.methods).join(', ').toUpperCase()}\t${r.route.path}`);
+  } else if (r.name === 'router') {
+    console.log(`Router: ${r.regexp}`);
+  }
+});
 
 // Error handling middleware - should be after all routes
 app.use((err, req, res, next) => {
+  console.error('\n=== Error Handler ===');
   console.error('Error:', err);
   res.header('Access-Control-Allow-Origin', 'https://dah-omega.vercel.app');
   res.status(500).json({ error: 'Internal server error' });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 app.listen(PORT, () => {
+  console.log(`\n=== Server Started ===`);
   console.log(`Server running on port ${PORT}`);
 });

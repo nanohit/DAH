@@ -25,6 +25,64 @@ const logObject = (prefix, obj) => {
   console.log(`${prefix}:`, JSON.stringify(obj, null, 2));
 };
 
+// @desc    Test route
+// @route   GET /api/auth/test
+// @access  Public
+router.get('/test', (req, res) => {
+  console.log('Test route hit');
+  res.json({ message: 'Auth routes are working' });
+});
+
+// @desc    Get current user
+// @route   GET /api/auth/me
+// @access  Private
+router.get('/me', protect, async (req, res) => {
+  console.log('\n=== /me Route Debug ===');
+  console.log('1. User from middleware:', {
+    exists: !!req.user,
+    id: req.user?._id,
+    username: req.user?.username
+  });
+  
+  try {
+    console.log('2. Attempting database query with ID:', req.user._id);
+    const user = await User.findById(req.user._id).select('-password');
+    console.log('3. Database query result:', user ? {
+      found: true,
+      id: user._id,
+      username: user.username,
+      email: user.email
+    } : {
+      found: false,
+      queriedId: req.user._id
+    });
+
+    if (!user) {
+      console.log('4. User not found in database');
+      return res.status(404).json({ 
+        message: 'User not found',
+        debug: {
+          queriedId: req.user._id,
+          tokenData: req.user
+        }
+      });
+    }
+
+    console.log('5. Successfully retrieved user data');
+    res.json(user);
+  } catch (error) {
+    console.error('6. Error in /me route:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({ 
+      message: 'Server Error',
+      error: error.message
+    });
+  }
+});
+
 // WARNING: DEVELOPMENT ONLY ROUTE
 // This route exposes plain text passwords and should NEVER be used in production
 // @desc    Get all users with raw MongoDB access (DEVELOPMENT ONLY)
@@ -248,56 +306,6 @@ router.get('/dev/user/:username', async (req, res) => {
   }
 });
 
-// @desc    Get current user
-// @route   GET /api/auth/me
-// @access  Private
-router.get('/me', protect, async (req, res) => {
-  console.log('\n=== /me Route Debug ===');
-  console.log('1. User from middleware:', {
-    exists: !!req.user,
-    id: req.user?._id,
-    username: req.user?.username
-  });
-  
-  try {
-    console.log('2. Attempting database query with ID:', req.user._id);
-    const user = await User.findById(req.user._id).select('-password');
-    console.log('3. Database query result:', user ? {
-      found: true,
-      id: user._id,
-      username: user.username,
-      email: user.email
-    } : {
-      found: false,
-      queriedId: req.user._id
-    });
-
-    if (!user) {
-      console.log('4. User not found in database');
-      return res.status(404).json({ 
-        message: 'User not found',
-        debug: {
-          queriedId: req.user._id,
-          tokenData: req.user
-        }
-      });
-    }
-
-    console.log('5. Successfully retrieved user data');
-    res.json(user);
-  } catch (error) {
-    console.error('6. Error in /me route:', {
-      name: error.name,
-      message: error.message,
-      stack: error.stack
-    });
-    res.status(500).json({ 
-      message: 'Server Error',
-      error: error.message
-    });
-  }
-});
-
 // Generate JWT
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -343,14 +351,6 @@ router.delete('/users/:id', async (req, res) => {
     console.error('User deletion error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
-});
-
-// @desc    Test route
-// @route   GET /api/auth/test
-// @access  Public
-router.get('/test', (req, res) => {
-  console.log('Test route hit');
-  res.json({ message: 'Auth routes are working' });
 });
 
 // Log all registered routes
