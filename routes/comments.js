@@ -5,6 +5,23 @@ const Post = require('../models/Post');
 const Book = require('../models/Book');
 const { protect } = require('../middleware/auth');
 
+// Recursive population function for nested replies
+const populateReplies = (depth = 0) => {
+  const maxDepth = 10; // Safety limit to prevent infinite recursion
+  if (depth >= maxDepth) return null;
+
+  return {
+    path: 'replies',
+    populate: [
+      {
+        path: 'user',
+        select: 'username'
+      },
+      populateReplies(depth + 1)
+    ].filter(Boolean)
+  };
+};
+
 // @desc    Add comment to a post
 // @route   POST /api/comments/post/:postId
 // @access  Private
@@ -51,16 +68,10 @@ router.post('/post/:postId', protect, async (req, res) => {
       await post.save();
     }
 
-    // Return populated comment
+    // Return populated comment with nested replies
     const populatedComment = await Comment.findById(comment._id)
       .populate('user', 'username')
-      .populate({
-        path: 'replies',
-        populate: {
-          path: 'user',
-          select: 'username'
-        }
-      });
+      .populate(populateReplies());
 
     res.status(201).json(populatedComment);
   } catch (error) {
@@ -82,13 +93,7 @@ router.get('/post/:postId', async (req, res) => {
       parentComment: null 
     })
     .populate('user', 'username')
-    .populate({
-      path: 'replies',
-      populate: {
-        path: 'user',
-        select: 'username'
-      }
-    })
+    .populate(populateReplies())
     .sort({ createdAt: -1 });
 
     res.json(comments);

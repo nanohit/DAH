@@ -16,13 +16,15 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.54.2",
-    "react-hot-toast": "^2.5.2"
+    "react-hot-toast": "^2.5.2",
+    "socket.io-client": "^4.5.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/socket.io-client": "^1.4.36",
     "eslint": "^9",
     "eslint-config-next": "15.1.7",
     "postcss": "^8.5.3",

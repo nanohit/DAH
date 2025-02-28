@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import FormatToolbar from './FormatToolbar';
 
 interface CreatePostProps {
   onPostCreated: () => void;
@@ -13,7 +14,59 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
   const [text, setText] = useState('');
   const [image, setImage] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showFormatToolbar, setShowFormatToolbar] = useState(false);
+  const textInputRef = useRef<HTMLTextAreaElement>(null);
   const { user } = useAuth();
+
+  const handleFormat = (type: string, selection: { start: number; end: number }) => {
+    if (!textInputRef.current) return;
+
+    const input = textInputRef.current;
+    const currentText = input.value;
+    let newText = currentText;
+    let newCursorPos = selection.end;
+
+    switch (type) {
+      case 'bold':
+        newText = currentText.slice(0, selection.start) + `**${currentText.slice(selection.start, selection.end)}**` + currentText.slice(selection.end);
+        newCursorPos += 2;
+        break;
+      case 'italic':
+        newText = currentText.slice(0, selection.start) + `*${currentText.slice(selection.start, selection.end)}*` + currentText.slice(selection.end);
+        newCursorPos += 1;
+        break;
+      case 'link':
+        const url = prompt('Enter URL:');
+        if (url) {
+          newText = currentText.slice(0, selection.start) + `[${currentText.slice(selection.start, selection.end)}](${url})` + currentText.slice(selection.end);
+          newCursorPos = selection.start + newText.length;
+        }
+        break;
+      case 'clear':
+        // Remove markdown formatting
+        newText = currentText.slice(selection.start, selection.end)
+          .replace(/\*\*/g, '')  // Remove bold
+          .replace(/\*/g, '')    // Remove italic
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1'); // Remove links
+        newText = currentText.slice(0, selection.start) + newText + currentText.slice(selection.end);
+        break;
+    }
+
+    setText(newText);
+    input.value = newText;
+    input.focus();
+    input.setSelectionRange(newCursorPos, newCursorPos);
+    setShowFormatToolbar(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      setShowFormatToolbar(true);
+    } else if (e.key === 'Escape') {
+      setShowFormatToolbar(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +79,7 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
         formData.append('image', image);
       }
 
-      const response = await fetch('https://dah-tyxc.onrender.com/api/posts', {
+      const response = await fetch('/api/posts', {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -90,13 +143,24 @@ export default function CreatePost({ onPostCreated }: CreatePostProps) {
               <label htmlFor="text" className="block text-sm font-medium text-gray-700 mb-1">
                 Text
               </label>
-              <textarea
-                id="text"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
-                required
-              />
+              <div className="relative">
+                <textarea
+                  ref={textInputRef}
+                  id="text"
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                  placeholder="Post text (Press Tab for formatting options)"
+                  required
+                />
+                <FormatToolbar
+                  inputRef={textInputRef}
+                  isVisible={showFormatToolbar}
+                  onClose={() => setShowFormatToolbar(false)}
+                  onFormat={handleFormat}
+                />
+              </div>
             </div>
             <div className="mb-4">
               <label htmlFor="image" className="block text-sm font-medium text-gray-700 mb-1">
