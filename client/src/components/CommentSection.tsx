@@ -3,12 +3,12 @@
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
-interface User {
+export interface User {
   _id: string;
   username: string;
 }
 
-interface Comment {
+export interface Comment {
   _id: string;
   content: string;
   user: User;
@@ -17,7 +17,7 @@ interface Comment {
   parentComment: string | null;
 }
 
-interface CommentSectionProps {
+export interface CommentSectionProps {
   postId: string;
   initialComments?: Comment[];
 }

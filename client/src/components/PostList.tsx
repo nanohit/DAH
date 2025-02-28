@@ -2,20 +2,18 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import CommentSection from './CommentSection';
+import CommentSection, { Comment, User } from './CommentSection';
+import Image from 'next/image';
 
 interface Post {
   _id: string;
   headline: string;
   text: string;
   imageUrl?: string;
-  author: {
-    _id: string;
-    username: string;
-  };
+  author: User;
   createdAt: string;
   updatedAt: string;
-  comments: any[];
+  comments: Comment[];
 }
 
 interface PostListProps {
@@ -186,11 +184,13 @@ export default function PostList({ onPostUpdated }: PostListProps) {
                 {getPostTimestamp(post)}
               </div>
               {post.imageUrl && (
-                <div className="mb-4">
-                  <img 
+                <div className="mb-4 relative w-full" style={{ height: '400px' }}>
+                  <Image 
                     src={post.imageUrl} 
                     alt={post.headline}
-                    className="w-full h-auto rounded-lg shadow-sm"
+                    fill
+                    style={{ objectFit: 'contain' }}
+                    className="rounded-lg"
                   />
                 </div>
               )}
