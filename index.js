@@ -20,6 +20,7 @@ app.use((req, res, next) => {
 const allowedOrigins = [
   'https://dah-omega.vercel.app',
   'https://dah.vercel.app',
+  'https://dah-git-main-nanohit.vercel.app', // Preview deployments
   'http://localhost:3000',
   'http://localhost:3001'
 ];
@@ -28,21 +29,37 @@ app.use(cors({
   origin: function(origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) {
+      console.log('Request with no origin');
       return callback(null, true);
     }
 
     if (allowedOrigins.indexOf(origin) === -1) {
       console.log(`Blocked origin: ${origin}`);
-      return callback(new Error('The CORS policy for this site does not allow access from the specified Origin.'), false);
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
     }
+
     console.log(`Allowed origin: ${origin}`);
     return callback(null, true);
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   credentials: true,
-  maxAge: 86400 // 24 hours
+  maxAge: 86400, // 24 hours
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
+
+// Add a debug endpoint
+app.get('/api/debug', (req, res) => {
+  res.json({
+    headers: req.headers,
+    origin: req.get('origin'),
+    host: req.get('host'),
+    url: req.url,
+    method: req.method
+  });
+});
 
 // Body parsing middleware
 app.use(express.json());
