@@ -78,35 +78,32 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
     }
 });
 
-// @desc    Get all posts
-// @route   GET /api/posts
-// @access  Public
+// Get all posts
 router.get('/', async (req, res) => {
-  try {
-    const posts = await Post.find({})
-      .populate('author', 'username')
-      .populate({
-        path: 'comments',
-        populate: [
-          {
-            path: 'user',
-            select: 'username'
-          },
-          {
-            path: 'replies',
-            populate: {
-              path: 'user',
-              select: 'username'
-            }
-          }
-        ]
-      })
-      .sort({ createdAt: -1 });
-    res.send(posts);
-  } catch (error) {
-    console.error('Error fetching posts:', error);
-    res.status(500).send();
-  }
+    try {
+        const posts = await Post.find({})
+            .populate('author', 'username')
+            .populate({
+                path: 'comments',
+                populate: [
+                    {
+                        path: 'user',
+                        select: 'username'
+                    },
+                    {
+                        path: 'replies',
+                        populate: {
+                            path: 'user',
+                            select: 'username'
+                        }
+                    }
+                ]
+            })
+            .sort({ createdAt: -1 });
+        res.send(posts);
+    } catch (error) {
+        res.status(500).send();
+    }
 });
 
 // Update a post

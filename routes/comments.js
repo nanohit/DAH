@@ -19,6 +19,7 @@ router.post('/post/:postId', protect, async (req, res) => {
       return res.status(404).json({ message: 'Post not found' });
     }
 
+    // Create comment data
     const commentData = {
       user: req.user.id,
       post: postId,
@@ -44,9 +45,11 @@ router.post('/post/:postId', protect, async (req, res) => {
       });
     }
 
-    // Add comment to post
-    post.comments.push(comment._id);
-    await post.save();
+    // Add comment to post if it's a top-level comment
+    if (!parentCommentId) {
+      post.comments.push(comment._id);
+      await post.save();
+    }
 
     // Return populated comment
     const populatedComment = await Comment.findById(comment._id)
@@ -73,17 +76,20 @@ router.get('/post/:postId', async (req, res) => {
   try {
     const postId = req.params.postId;
     
-    // Get all top-level comments (comments without a parent)
-    const comments = await Comment.find({ post: postId, parentComment: null })
-      .populate('user', 'username')
-      .populate({
-        path: 'replies',
-        populate: {
-          path: 'user',
-          select: 'username'
-        }
-      })
-      .sort({ createdAt: -1 });
+    // Get only top-level comments (no parent)
+    const comments = await Comment.find({ 
+      post: postId,
+      parentComment: null 
+    })
+    .populate('user', 'username')
+    .populate({
+      path: 'replies',
+      populate: {
+        path: 'user',
+        select: 'username'
+      }
+    })
+    .sort({ createdAt: -1 });
 
     res.json(comments);
   } catch (error) {
@@ -118,7 +124,7 @@ router.post('/book/:bookId', protect, async (req, res) => {
     await book.save();
 
     // Return populated comment
-    const populatedComment = await Comment.findById(comment._id).populate('user', 'username');
+    const populatedComment = await Comment.findById(comment._id).populate('user', 'username profilePicture');
 
     res.status(201).json(populatedComment);
   } catch (error) {
@@ -142,16 +148,15 @@ router.put('/:id', protect, async (req, res) => {
 
     // Check if user is the comment owner
     if (comment.user.toString() !== req.user.id) {
-      return res.status(401).json({ message: 'Not authorized to update this comment' });
+      return res.status(403).json({ message: 'User not authorized' });
     }
 
     comment.content = content;
     await comment.save();
 
-    // Return populated comment
-    const populatedComment = await Comment.findById(comment._id).populate('user', 'username');
+    comment = await comment.populate('user', 'username');
 
-    res.json(populatedComment);
+    res.json(comment);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server Error' });
@@ -159,46 +164,41 @@ router.put('/:id', protect, async (req, res) => {
 });
 
 // @desc    Delete a comment
-// @route   DELETE /api/comments/:commentId
+// @route   DELETE /api/comments/:id
 // @access  Private
-router.delete('/:commentId', protect, async (req, res) => {
+router.delete('/:id', protect, async (req, res) => {
   try {
-    const comment = await Comment.findById(req.params.commentId);
+    const comment = await Comment.findById(req.params.id);
 
     if (!comment) {
       return res.status(404).json({ message: 'Comment not found' });
     }
 
-    // Check if user owns the comment
+    // Check if user is the comment owner
     if (comment.user.toString() !== req.user.id) {
-      return res.status(401).json({ message: 'User not authorized' });
+      return res.status(403).json({ message: 'User not authorized' });
     }
 
-    // Remove comment from parent's replies if it's a reply
-    if (comment.parentComment) {
+    // If this is a top-level comment, remove it from the post's comments
+    if (!comment.parentComment) {
+      if (comment.post) {
+        await Post.findByIdAndUpdate(comment.post, {
+          $pull: { comments: comment._id }
+        });
+      }
+    } else {
+      // If this is a reply, remove it from parent comment's replies
       await Comment.findByIdAndUpdate(comment.parentComment, {
         $pull: { replies: comment._id }
       });
     }
 
-    // Remove comment from post's comments
-    if (comment.post) {
-      await Post.findByIdAndUpdate(comment.post, {
-        $pull: { comments: comment._id }
-      });
+    // Delete all replies if this is a parent comment
+    if (comment.replies && comment.replies.length > 0) {
+      await Comment.deleteMany({ _id: { $in: comment.replies } });
     }
 
-    // Delete all replies recursively
-    async function deleteReplies(commentId) {
-      const replies = await Comment.find({ parentComment: commentId });
-      for (const reply of replies) {
-        await deleteReplies(reply._id);
-        await Comment.findByIdAndDelete(reply._id);
-      }
-    }
-
-    await deleteReplies(comment._id);
-    await comment.remove();
+    await comment.deleteOne();
 
     res.json({ message: 'Comment removed' });
   } catch (error) {

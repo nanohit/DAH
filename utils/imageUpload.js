@@ -5,7 +5,11 @@ const uploadImage = async (imageBuffer) => {
     try {
         console.log('\n=== ImgBB Upload Debug ===');
         console.log('Received buffer size:', imageBuffer.length);
-        console.log('API Key exists:', !!process.env.IMGBB_API_KEY);
+        
+        if (!process.env.IMGBB_API_KEY) {
+            throw new Error('ImgBB API key is not configured');
+        }
+        console.log('API Key exists:', true);
 
         const formData = new FormData();
         const base64Image = imageBuffer.toString('base64');
@@ -31,15 +35,18 @@ const uploadImage = async (imageBuffer) => {
                 deleteUrl: response.data.data.delete_url
             };
         } else {
-            throw new Error('Failed to upload image to ImgBB');
+            throw new Error('Failed to upload image to ImgBB: Response indicated failure');
         }
     } catch (error) {
         console.error('\n=== ImgBB Upload Error ===');
-        console.error('Error details:', error.response?.data || error.message);
+        if (error.response?.data) {
+            console.error('API Error:', error.response.data);
+        }
+        console.error('Error message:', error.message);
         console.error('Error stack:', error.stack);
         return {
             success: false,
-            error: error.response?.data?.error || error.message
+            error: error.message
         };
     }
 };
