@@ -9,14 +9,14 @@ const nextConfig = {
     ],
   },
   async rewrites() {
-    return process.env.NODE_ENV === 'production' 
-      ? [] // В продакшене используем прямые запросы к бэкенду
-      : [
-          {
-            source: '/api/:path*',
-            destination: 'http://localhost:5001/api/:path*',
-          },
-        ];
+    return [
+      {
+        source: '/api/:path*',
+        destination: process.env.NODE_ENV === 'production'
+          ? 'https://dah-backend.onrender.com/api/:path*'
+          : 'http://localhost:5001/api/:path*',
+      },
+    ];
   },
 };
 
