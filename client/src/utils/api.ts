@@ -1,5 +1,5 @@
 const API_BASE_URL = process.env.NODE_ENV === 'production'
-  ? 'https://dah-backend.onrender.com/api'
+  ? 'https://dah-tyxc.onrender.com/api'
   : 'http://localhost:5001/api';
 
 export const api = {

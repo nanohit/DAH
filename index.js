@@ -22,17 +22,20 @@ const allowedOrigins = [
   'https://dah.vercel.app',
   'https://dah-git-main-nanohit.vercel.app',
   'http://localhost:3000',
-  'http://localhost:3001'
+  'http://localhost:3001',
+  'https://dah-tyxc.onrender.com'
 ];
 
 app.use(cors({
   origin: function(origin, callback) {
     // В режиме разработки или без origin разрешаем все запросы
     if (!origin || process.env.NODE_ENV === 'development') {
+      console.log('Allowing request with no origin or in development mode');
       return callback(null, true);
     }
 
     if (allowedOrigins.includes(origin)) {
+      console.log(`Allowing origin: ${origin}`);
       callback(null, true);
     } else {
       console.log(`Blocked origin: ${origin}`);
