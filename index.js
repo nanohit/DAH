@@ -90,6 +90,16 @@ app._router.stack.forEach((r) => {
   }
 });
 
+// Add root route
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'DAH Backend API is running',
+    environment: process.env.NODE_ENV,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Error handling middleware - should be after all routes
 app.use((err, req, res, next) => {
   console.error('\n=== Error Handler ===');
