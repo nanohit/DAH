@@ -1,7 +1,11 @@
+const API_BASE_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://dah-backend.onrender.com/api'
+  : '/api';
+
 export const api = {
   get: async (endpoint: string) => {
     try {
-      const response = await fetch(`/api${endpoint}`, {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
@@ -19,7 +23,7 @@ export const api = {
 
   post: async (endpoint: string, data: any) => {
     try {
-      const response = await fetch(`/api${endpoint}`, {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -39,7 +43,7 @@ export const api = {
 
   put: async (endpoint: string, data: any) => {
     try {
-      const response = await fetch(`/api${endpoint}`, {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'PUT',
         credentials: 'include',
         headers: {
@@ -59,7 +63,7 @@ export const api = {
 
   delete: async (endpoint: string) => {
     try {
-      const response = await fetch(`/api${endpoint}`, {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'DELETE',
         credentials: 'include',
         headers: {

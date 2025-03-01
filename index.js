@@ -22,14 +22,18 @@ const allowedOrigins = [
   'https://dah.vercel.app',
   'https://dah-git-main-nanohit.vercel.app',
   'http://localhost:3000',
-  'http://localhost:3001',
-  'https://dah-backend.onrender.com'
+  'http://localhost:3001'
 ];
 
-const corsOptions = {
+app.use(cors({
   origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin || process.env.NODE_ENV === 'development') {
+    // В режиме разработки разрешаем все запросы
+    if (process.env.NODE_ENV === 'development') {
+      return callback(null, true);
+    }
+    
+    // Разрешаем запросы без origin (например, от Postman)
+    if (!origin) {
       return callback(null, true);
     }
 
@@ -44,10 +48,7 @@ const corsOptions = {
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   exposedHeaders: ['Set-Cookie'],
-  maxAge: 86400
-};
-
-app.use(cors(corsOptions));
+}));
 
 // Add a debug endpoint
 app.get('/api/debug', (req, res) => {
