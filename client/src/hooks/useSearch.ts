@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { BookSearchResult } from '@/types';
+import { UseSearchReturn } from '@/types/hooks';
 
 interface SearchResults {
   books: BookSearchResult[];
   total: number;
 }
 
-export const useSearch = () => {
+export function useSearch(): UseSearchReturn {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<BookSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -242,4 +243,4 @@ export const useSearch = () => {
     handleSearch,
     resultsPerPage
   };
-}; 
+} 

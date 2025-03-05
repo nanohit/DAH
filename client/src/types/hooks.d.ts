@@ -1,25 +1,25 @@
 import { BookSearchResult } from './index';
 
-declare module '@/hooks/useSearch' {
-  export interface UseSearchReturn {
-    searchTerm: string;
-    setSearchTerm: (term: string) => void;
-    searchResults: BookSearchResult[];
-    isLoading: boolean;
-    currentPage: number;
-    totalResults: number;
-    activeApi: 'openlib' | 'google' | 'alphy';
-    setActiveApi: (api: 'openlib' | 'google' | 'alphy') => void;
-    error: string | null;
-    displayAll: boolean;
-    setDisplayAll: (display: boolean) => void;
-    hasSearched: boolean;
-    setHasSearched: (searched: boolean) => void;
-    handleSearch: (page: number) => Promise<void>;
-    resultsPerPage: number;
-  }
+export interface UseSearchReturn {
+  searchTerm: string;
+  setSearchTerm: (term: string) => void;
+  searchResults: BookSearchResult[];
+  isLoading: boolean;
+  currentPage: number;
+  totalResults: number;
+  activeApi: 'openlib' | 'google' | 'alphy';
+  setActiveApi: (api: 'openlib' | 'google' | 'alphy') => void;
+  error: string | null;
+  displayAll: boolean;
+  setDisplayAll: (display: boolean) => void;
+  hasSearched: boolean;
+  setHasSearched: (searched: boolean) => void;
+  handleSearch: (page: number) => Promise<void>;
+  resultsPerPage: number;
+}
 
-  export const useSearch: () => UseSearchReturn;
+declare module '@/hooks/useSearch' {
+  export function useSearch(): UseSearchReturn;
 }
 
 export interface UseBookDetailsReturn {
