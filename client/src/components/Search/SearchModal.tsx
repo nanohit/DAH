@@ -1,8 +1,7 @@
 import { useSearch } from '@/hooks/useSearch';
 import { useBookDetails } from '@/hooks/useBookDetails';
 import { BookSearchResult } from '@/types';
-import { useMemo, useState, useEffect } from 'react';
-import api from '@/services/api';
+import { useMemo } from 'react';
 
 interface SearchModalProps {
   onClose: () => void;
@@ -76,6 +75,11 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
     if (confirmedBook) {
       try {
         if (shouldSaveToDb) {
+          const token = localStorage.getItem('token');
+          if (!token) {
+            throw new Error('You must be logged in to add books');
+          }
+
           // Ensure required fields have valid values
           const bookData = {
             title: confirmedBook.title.trim(),
@@ -84,7 +88,7 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
               : (confirmedBook.author_name || 'Unknown').trim(),
             description: confirmedBook.description?.trim() || 'No description available.',
             coverImage: confirmedBook.source === 'openlib'
-              ? (confirmedBook.thumbnail?.replace('-S.jpg', '-L.jpg') || 'https://via.placeholder.com/300x400?text=No+Cover')
+              ? confirmedBook.thumbnail.replace('-S.jpg', '-L.jpg') // Use large resolution for database
               : confirmedBook.highResThumbnail || confirmedBook.thumbnail || 'https://via.placeholder.com/300x400?text=No+Cover',
             publishedYear: confirmedBook.first_publish_year
           };
@@ -98,10 +102,19 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
           }
 
           // Save book to database
-          const response = await api.post('/api/books', bookData);
+          const response = await fetch('/api/books', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(bookData),
+          });
+
+          const data = await response.json();
           
-          if (!response.data) {
-            throw new Error('Failed to save book');
+          if (!response.ok) {
+            throw new Error(data.message || 'Failed to save book');
           }
         }
 
@@ -111,16 +124,6 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
         console.error('Error in handleFinalSubmit:', error);
         throw error;
       }
-    }
-  };
-
-  const handleAlphySearch = async (page = 1) => {
-    try {
-      const response = await api.get(`/api/books?search=${encodeURIComponent(searchTerm)}&limit=5`);
-      return response.data;
-    } catch (error) {
-      console.error('Error searching Alphy books:', error);
-      throw error;
     }
   };
 

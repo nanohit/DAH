@@ -1,14 +1,12 @@
 import { useState } from 'react';
 import { BookSearchResult } from '@/types';
-import { UseSearchReturn } from '@/types/hooks';
-import api from '@/services/api';
 
 interface SearchResults {
   books: BookSearchResult[];
   total: number;
 }
 
-export function useSearch(): UseSearchReturn {
+export const useSearch = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<BookSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -100,12 +98,18 @@ export function useSearch(): UseSearchReturn {
 
   const handleAlphySearch = async (page = 1) => {
     try {
+      const token = localStorage.getItem('token');
       const endpoint = displayAll 
-        ? `/books?page=${page}&limit=${resultsPerPage}` 
-        : `/books?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${resultsPerPage}`;
+        ? `/api/books?page=${page}&limit=${resultsPerPage}` 
+        : `/api/books?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${resultsPerPage}`;
 
-      const response = await api.get(endpoint);
-      const data = response.data;
+      const response = await fetch(endpoint, {
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+      if (!response.ok) throw new Error('Failed to fetch from Alphy database');
+      const data = await response.json();
       
       const books = data.books.map((book: any) => ({
         key: book._id,
@@ -129,8 +133,14 @@ export function useSearch(): UseSearchReturn {
 
   const searchDatabase = async (searchTerm: string) => {
     try {
-      const response = await api.get(`/books?search=${encodeURIComponent(searchTerm)}&limit=5`);
-      const data = response.data;
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/books?search=${encodeURIComponent(searchTerm)}&limit=5`, {
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+      if (!response.ok) throw new Error('Failed to fetch from database');
+      const data = await response.json();
       
       return data.books.map((book: any) => ({
         key: book._id,
@@ -232,4 +242,4 @@ export function useSearch(): UseSearchReturn {
     handleSearch,
     resultsPerPage
   };
-} 
+}; 

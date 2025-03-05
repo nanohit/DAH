@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { BookSearchResult } from '@/types';
-import { UseBookDetailsReturn } from '@/types/hooks';
 
-export function useBookDetails(): UseBookDetailsReturn {
+export const useBookDetails = () => {
   const [selectedBook, setSelectedBook] = useState<BookSearchResult | null>(null);
   const [confirmedBook, setConfirmedBook] = useState<BookSearchResult | null>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
@@ -88,4 +87,4 @@ export function useBookDetails(): UseBookDetailsReturn {
     handleBackToSearch,
     handleSubmit
   };
-} 
+}; 
