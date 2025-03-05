@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { SearchModal } from '@/components/Search/SearchModal';
 import { BookSearchResult } from '@/types';
-import api from '@/services/api';
+import api from '@/services/auth';
 
 interface BookData {
   _id: string;

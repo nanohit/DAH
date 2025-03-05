@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import api from '@/services/api';
+import api from '@/services/auth';
 import { format } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
 import PostList, { Post } from '@/components/PostList';

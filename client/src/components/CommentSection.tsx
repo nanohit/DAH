@@ -8,7 +8,7 @@ import ReactMarkdown from 'react-markdown';
 import CommentInput from './CommentInput';
 import Link from 'next/link';
 import UserBadge from './UserBadge';
-import api from '@/services/api';
+import api from '@/services/auth';
 
 export interface User {
   _id: string;

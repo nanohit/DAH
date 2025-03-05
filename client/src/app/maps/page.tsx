@@ -5,7 +5,7 @@ import { DndContext, useDraggable, useDroppable, DragEndEvent, DragStartEvent, D
 import { restrictToParentElement } from '@dnd-kit/modifiers';
 import Xarrow, { Xwrapper } from 'react-xarrows';
 import Link from 'next/link';
-import api from '@/services/api';
+import api from '@/services/auth';
 
 interface MapElement {
   id: string;

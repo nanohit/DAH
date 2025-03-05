@@ -11,7 +11,7 @@ import Link from 'next/link';
 import { useParticles } from '@/hooks/useParticles';
 import UserBadge from './UserBadge';
 import { usePathname } from 'next/navigation';
-import api from '@/services/api';
+import api from '@/services/auth';
 
 export interface Post {
   _id: string;
