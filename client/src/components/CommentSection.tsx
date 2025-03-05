@@ -7,6 +7,8 @@ import FormatToolbar from './FormatToolbar';
 import ReactMarkdown from 'react-markdown';
 import CommentInput from './CommentInput';
 import Link from 'next/link';
+import UserBadge from './UserBadge';
+import api from '@/services/api';
 
 export interface User {
   _id: string;
@@ -89,25 +91,17 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     input.setSelectionRange(newCursorPos, newCursorPos);
   };
 
-  useEffect(() => {
-    const fetchComments = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const response = await fetch(`/api/comments/post/${postId}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch comments');
-        }
-        const data = await response.json();
-        setComments(data);
-      } catch (err) {
-        console.error('Error fetching comments:', err);
-        setError(err instanceof Error ? err.message : 'Failed to fetch comments');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const fetchComments = async () => {
+    try {
+      const response = await api.get(`/api/comments/post/${postId}`);
+      setComments(response.data);
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+      throw new Error('Failed to fetch comments');
+    }
+  };
 
+  useEffect(() => {
     fetchComments();
   }, [postId]);
 
@@ -168,25 +162,14 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     if (!content.trim()) return;
 
     try {
-      const response = await fetch('/api/comments/post/' + postId, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          content,
-          parentCommentId: parentId
-        })
+      await api.post(`/api/comments/post/${postId}`, {
+        content,
+        parentCommentId: parentId
       });
-
-      if (!response.ok) throw new Error('Failed to post comment');
-
-      const newCommentData = await response.json();
       
       if (parentId) {
         const formattedComment = {
-          ...newCommentData,
+          ...comments.find(c => c._id === parentId)!,
           replies: [],
           parentComment: parentId
         };
@@ -196,18 +179,13 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
           [parentId]: false
         }));
         
-        const refreshResponse = await fetch(`/api/comments/post/${postId}`);
-        if (refreshResponse.ok) {
-          const refreshedComments = await refreshResponse.json();
-          setComments(refreshedComments);
-        } else {
-          setComments(prevComments => updateRepliesRecursively(prevComments, parentId, formattedComment));
-        }
+        const refreshedComments = await fetchComments();
+        setComments(refreshedComments);
         
         setNewReply('');
       } else {
         const formattedComment = {
-          ...newCommentData,
+          ...comments.find(c => c._id === parentId)!,
           replies: []
         };
         setComments(prevComments => [formattedComment, ...prevComments]);
@@ -225,25 +203,10 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     if (!user || !editContent.trim()) return;
 
     try {
-      const response = await fetch(`/api/comments/${commentId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ content: editContent })
-      });
-
-      if (!response.ok) throw new Error('Failed to edit comment');
-
-      const updatedComment = await response.json();
-
-      setComments(prevComments => 
-        updateCommentContentRecursively(prevComments, commentId, updatedComment.content)
-      );
-
+      await api.patch(`/api/comments/${commentId}`, { content: editContent });
       setEditingComment(null);
       setEditContent('');
+      fetchComments();
     } catch (error) {
       console.error('Error editing comment:', error);
     }
@@ -269,15 +232,8 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     if (!user || !window.confirm('Are you sure you want to delete this comment?')) return;
 
     try {
-      const response = await fetch(`/api/comments/${commentId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
-      if (!response.ok) throw new Error('Failed to delete comment');
-
+      await api.delete(`/api/comments/${commentId}`);
+      
       if (parentId) {
         setComments(prevComments => deleteReplyRecursively(prevComments, commentId));
       } else {
@@ -291,37 +247,19 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
   const handleLikeComment = async (commentId: string) => {
     if (!user) return;
     try {
-      const response = await fetch(`/api/comments/${commentId}/like`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+      await api.post(`/api/comments/${commentId}/like`);
+      setComments(comments.map(comment => {
+        if (comment._id === commentId) {
+          return {
+            ...comment,
+            likes: comment.likes.includes(user._id)
+              ? comment.likes.filter(id => id !== user._id)
+              : [...comment.likes, user._id],
+            dislikes: comment.dislikes.filter(id => id !== user._id)
+          };
         }
-      });
-      const data = await response.json();
-      
-      const updateLikesRecursively = (comments: Comment[], targetId: string): Comment[] => {
-        return comments.map(comment => {
-          if (comment._id === targetId) {
-            return {
-              ...comment,
-              likes: comment.likes.includes(user._id)
-                ? comment.likes.filter(id => id !== user._id)
-                : [...comment.likes, user._id],
-              dislikes: comment.dislikes.filter(id => id !== user._id)
-            };
-          }
-          if (comment.replies.length > 0) {
-            return {
-              ...comment,
-              replies: updateLikesRecursively(comment.replies, targetId)
-            };
-          }
-          return comment;
-        });
-      };
-
-      setComments(updateLikesRecursively(comments, commentId));
+        return comment;
+      }));
     } catch (error) {
       console.error('Error liking comment:', error);
     }
@@ -330,37 +268,19 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
   const handleDislikeComment = async (commentId: string) => {
     if (!user) return;
     try {
-      const response = await fetch(`/api/comments/${commentId}/dislike`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+      await api.post(`/api/comments/${commentId}/dislike`);
+      setComments(comments.map(comment => {
+        if (comment._id === commentId) {
+          return {
+            ...comment,
+            dislikes: comment.dislikes.includes(user._id)
+              ? comment.dislikes.filter(id => id !== user._id)
+              : [...comment.dislikes, user._id],
+            likes: comment.likes.filter(id => id !== user._id)
+          };
         }
-      });
-      const data = await response.json();
-      
-      const updateDislikesRecursively = (comments: Comment[], targetId: string): Comment[] => {
-        return comments.map(comment => {
-          if (comment._id === targetId) {
-            return {
-              ...comment,
-              dislikes: comment.dislikes.includes(user._id)
-                ? comment.dislikes.filter(id => id !== user._id)
-                : [...comment.dislikes, user._id],
-              likes: comment.likes.filter(id => id !== user._id)
-            };
-          }
-          if (comment.replies.length > 0) {
-            return {
-              ...comment,
-              replies: updateDislikesRecursively(comment.replies, targetId)
-            };
-          }
-          return comment;
-        });
-      };
-
-      setComments(updateDislikesRecursively(comments, commentId));
+        return comment;
+      }));
     } catch (error) {
       console.error('Error disliking comment:', error);
     }

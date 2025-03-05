@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import api from '@/services/api';
 
 interface BookFormat {
   id: string;
@@ -34,34 +35,19 @@ export const FlibustaSearch = () => {
     setError(null);
 
     try {
-      const response = await fetch(`/api/books/flibusta/search?query=${encodeURIComponent(searchTerm)}`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        let errorMessage = data.error || 'Failed to search books';
-        let isWarning = false;
-
-        // Handle specific error codes
-        if (data.code === 'REGION_BLOCKED') {
-          errorMessage = 'Access to Flibusta is blocked in your region. Please wait while we try to connect through a proxy...';
-          isWarning = true;
-        } else if (data.code === 'CONNECTION_ERROR') {
-          errorMessage = 'Having trouble connecting to Flibusta. Please try again in a few moments...';
-          isWarning = true;
-        }
-
-        throw new Error(errorMessage, { cause: { code: data.code, isWarning } });
-      }
+      const response = await api.get(`/api/books/flibusta/search?query=${encodeURIComponent(searchTerm)}`);
+      const data = response.data;
 
       setSearchResults(data.data || []);
-    } catch (err) {
-      const error = err as Error;
-      const cause = error.cause as { code?: string; isWarning?: boolean };
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.error || err.message || 'Failed to search books';
+      const errorCode = err.response?.data?.code;
+      const isWarning = errorCode === 'REGION_BLOCKED' || errorCode === 'CONNECTION_ERROR';
       
       setError({
-        message: error.message,
-        code: cause?.code,
-        isWarning: cause?.isWarning
+        message: errorMessage,
+        code: errorCode,
+        isWarning
       });
     } finally {
       setIsLoading(false);
@@ -70,18 +56,14 @@ export const FlibustaSearch = () => {
 
   const handleDownload = async (bookId: string, format: string) => {
     try {
-      const response = await fetch(`/api/books/flibusta/download/${bookId}/${format}`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to get download link');
-      }
+      const response = await api.get(`/api/books/flibusta/download/${bookId}/${format}`);
+      const data = response.data;
 
       // Open the download URL in a new tab
       window.open(data.data.downloadUrl, '_blank');
-    } catch (err) {
+    } catch (err: any) {
       setError({
-        message: err instanceof Error ? err.message : 'Failed to get download link',
+        message: err.response?.data?.error || err.message || 'Failed to get download link',
         code: 'DOWNLOAD_ERROR'
       });
     }

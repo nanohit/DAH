@@ -1,7 +1,8 @@
 import { useSearch } from '@/hooks/useSearch';
 import { useBookDetails } from '@/hooks/useBookDetails';
 import { BookSearchResult } from '@/types';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import api from '@/services/api';
 
 interface SearchModalProps {
   onClose: () => void;
@@ -124,6 +125,16 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
         console.error('Error in handleFinalSubmit:', error);
         throw error;
       }
+    }
+  };
+
+  const handleAlphySearch = async (page = 1) => {
+    try {
+      const response = await api.get(`/api/books?search=${encodeURIComponent(searchTerm)}&limit=5`);
+      return response.data;
+    } catch (error) {
+      console.error('Error searching Alphy books:', error);
+      throw error;
     }
   };
 
