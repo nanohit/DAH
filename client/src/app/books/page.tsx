@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { SearchModal } from '@/components/Search/SearchModal';
 import { BookSearchResult } from '@/types';
+import api from '@/services/api';
 
 interface BookData {
   _id: string;
@@ -38,16 +39,8 @@ export default function BooksPage() {
   useEffect(() => {
     const fetchBooks = async () => {
       try {
-        const token = localStorage.getItem('token');
-        const response = await fetch('/api/books', {
-          headers: {
-            'Authorization': token ? `Bearer ${token}` : ''
-          }
-        });
-        if (!response.ok) {
-          throw new Error('Failed to fetch books');
-        }
-        const data: BooksResponse = await response.json();
+        const response = await api.get('/api/books');
+        const data = response.data;
         setBooks(data.books);
         setPagination(data.pagination);
       } catch (error) {
@@ -63,46 +56,21 @@ export default function BooksPage() {
 
   const handleBookSubmit = async (bookData: BookSearchResult) => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('You must be logged in to add books');
-      }
-
       // Save book to database
-      const response = await fetch('/api/books', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          title: bookData.title,
-          author: Array.isArray(bookData.author_name) 
-            ? bookData.author_name.join(', ') 
-            : bookData.author_name || 'Unknown',
-          description: bookData.description || '',
-          coverImage: bookData.thumbnail || '',
-          publishedYear: bookData.first_publish_year
-        }),
+      const response = await api.post('/api/books', {
+        title: bookData.title,
+        author: Array.isArray(bookData.author_name) 
+          ? bookData.author_name.join(', ') 
+          : bookData.author_name || 'Unknown',
+        description: bookData.description || '',
+        coverImage: bookData.thumbnail || '',
+        publishedYear: bookData.first_publish_year
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save book');
-      }
 
       // Refresh the books list
-      const booksResponse = await fetch('/api/books', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (!booksResponse.ok) {
-        throw new Error('Failed to fetch updated books');
-      }
-      const data: BooksResponse = await booksResponse.json();
-      setBooks(data.books);
-      setPagination(data.pagination);
+      const booksResponse = await api.get('/api/books');
+      setBooks(booksResponse.data.books);
+      setPagination(booksResponse.data.pagination);
 
       // Close the modal
       setIsSearchModalOpen(false);
@@ -115,22 +83,7 @@ export default function BooksPage() {
   const handleDeleteBook = async (bookId: string) => {
     try {
       setIsDeleting(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('You must be logged in to delete books');
-      }
-
-      const response = await fetch(`/api/books/${bookId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to delete book');
-      }
+      await api.delete(`/api/books/${bookId}`);
 
       // Remove the book from the local state
       setBooks(books.filter(book => book._id !== bookId));

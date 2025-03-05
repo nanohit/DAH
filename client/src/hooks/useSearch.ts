@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BookSearchResult } from '@/types';
 import { UseSearchReturn } from '@/types/hooks';
+import api from '@/services/api';
 
 interface SearchResults {
   books: BookSearchResult[];
@@ -99,18 +100,12 @@ export function useSearch(): UseSearchReturn {
 
   const handleAlphySearch = async (page = 1) => {
     try {
-      const token = localStorage.getItem('token');
       const endpoint = displayAll 
         ? `/api/books?page=${page}&limit=${resultsPerPage}` 
         : `/api/books?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${resultsPerPage}`;
 
-      const response = await fetch(endpoint, {
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : ''
-        }
-      });
-      if (!response.ok) throw new Error('Failed to fetch from Alphy database');
-      const data = await response.json();
+      const response = await api.get(endpoint);
+      const data = response.data;
       
       const books = data.books.map((book: any) => ({
         key: book._id,
@@ -134,14 +129,8 @@ export function useSearch(): UseSearchReturn {
 
   const searchDatabase = async (searchTerm: string) => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/books?search=${encodeURIComponent(searchTerm)}&limit=5`, {
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : ''
-        }
-      });
-      if (!response.ok) throw new Error('Failed to fetch from database');
-      const data = await response.json();
+      const response = await api.get(`/api/books?search=${encodeURIComponent(searchTerm)}&limit=5`);
+      const data = response.data;
       
       return data.books.map((book: any) => ({
         key: book._id,

@@ -76,11 +76,6 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
     if (confirmedBook) {
       try {
         if (shouldSaveToDb) {
-          const token = localStorage.getItem('token');
-          if (!token) {
-            throw new Error('You must be logged in to add books');
-          }
-
           // Ensure required fields have valid values
           const bookData = {
             title: confirmedBook.title.trim(),
@@ -103,19 +98,10 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
           }
 
           // Save book to database
-          const response = await fetch('/api/books', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(bookData),
-          });
-
-          const data = await response.json();
+          const response = await api.post('/api/books', bookData);
           
-          if (!response.ok) {
-            throw new Error(data.message || 'Failed to save book');
+          if (!response.data) {
+            throw new Error('Failed to save book');
           }
         }
 
