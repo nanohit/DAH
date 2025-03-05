@@ -8,14 +8,6 @@ const nextConfig = {
       },
     ],
   },
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: 'https://dah-tyxc.onrender.com/api/:path*',
-      },
-    ];
-  },
 };
 
 module.exports = nextConfig; 
