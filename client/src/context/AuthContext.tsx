@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import api from '@/services/api';
 
 interface User {
   _id: string;
@@ -37,21 +38,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const fetchUserData = async (token: string) => {
     try {
       console.log('Fetching user data with token:', token);
-      const response = await fetch('http://localhost:5001/api/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const response = await api.get('/api/auth/me');
       
-      if (!response.ok) {
-        console.error('Failed to fetch user data, status:', response.status);
-        throw new Error('Failed to fetch user data');
-      }
-      
-      const data = await response.json();
-      console.log('Received user data:', data);
-      if (!data.error) {
-        setUser(data);
+      console.log('Received user data:', response.data);
+      if (!response.data.error) {
+        setUser(response.data);
         console.log('User data set successfully');
       }
     } catch (error) {
@@ -88,21 +79,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (login: string, password: string) => {
     try {
       console.log('Attempting login...');
-      const loginResponse = await fetch('http://localhost:5001/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ login: login, password })
-      });
-
-      if (!loginResponse.ok) {
-        const errorData = await loginResponse.json();
-        console.error('Login response not OK:', errorData);
-        throw new Error(errorData.message || 'Failed to login');
-      }
-
-      const data = await loginResponse.json();
+      const response = await api.post('/api/auth/login', { login, password });
+      const data = response.data;
+      
       console.log('Login response:', data);
       
       if (!data.token) {

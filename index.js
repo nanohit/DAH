@@ -26,16 +26,14 @@ const allowedOrigins = [
   'https://dah-tyxc.onrender.com'
 ];
 
-app.use(cors({
+const corsOptions = {
   origin: function(origin, callback) {
-    // В режиме разработки или без origin разрешаем все запросы
+    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin || process.env.NODE_ENV === 'development') {
-      console.log('Allowing request with no origin or in development mode');
       return callback(null, true);
     }
 
     if (allowedOrigins.includes(origin)) {
-      console.log(`Allowing origin: ${origin}`);
       callback(null, true);
     } else {
       console.log(`Blocked origin: ${origin}`);
@@ -46,7 +44,9 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   exposedHeaders: ['Set-Cookie']
-}));
+};
+
+app.use(cors(corsOptions));
 
 // Add a debug endpoint
 app.get('/api/debug', (req, res) => {
