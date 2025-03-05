@@ -88,7 +88,7 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
               : (confirmedBook.author_name || 'Unknown').trim(),
             description: confirmedBook.description?.trim() || 'No description available.',
             coverImage: confirmedBook.source === 'openlib'
-              ? confirmedBook.thumbnail.replace('-S.jpg', '-L.jpg') // Use large resolution for database
+              ? (confirmedBook.thumbnail?.replace('-S.jpg', '-L.jpg') || 'https://via.placeholder.com/300x400?text=No+Cover')
               : confirmedBook.highResThumbnail || confirmedBook.thumbnail || 'https://via.placeholder.com/300x400?text=No+Cover',
             publishedYear: confirmedBook.first_publish_year
           };
