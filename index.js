@@ -23,17 +23,21 @@ const allowedOrigins = [
   'https://dah-git-main-nanohit.vercel.app',
   'http://localhost:3000',
   'http://localhost:3001',
-  'https://dah-tyxc.onrender.com'
+  'https://dah-tyxc.onrender.com',
+  'https://alphy.tech',
+  'https://www.alphy.tech'
 ];
 
 const corsOptions = {
   origin: function(origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin || process.env.NODE_ENV === 'development') {
+      console.log('Allowing request with no origin or in development mode');
       return callback(null, true);
     }
 
     if (allowedOrigins.includes(origin)) {
+      console.log(`Allowing origin: ${origin}`);
       callback(null, true);
     } else {
       console.log(`Blocked origin: ${origin}`);
