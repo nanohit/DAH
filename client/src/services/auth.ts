@@ -1,7 +1,8 @@
 import axios, { AxiosError } from 'axios';
+import { API_BASE_URL } from '@/config/api';
 
 const api = axios.create({
-  baseURL: process.env.NODE_ENV === 'development' ? 'http://localhost:5001' : 'https://dah-tyxc.onrender.com',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },

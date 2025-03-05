@@ -8,6 +8,16 @@ const nextConfig = {
       },
     ],
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: process.env.NODE_ENV === 'development'
+          ? 'http://localhost:5001/api/:path*'
+          : 'https://dah-tyxc.onrender.com/api/:path*',
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig; 
