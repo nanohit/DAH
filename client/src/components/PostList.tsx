@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { useParticles } from '@/hooks/useParticles';
 import UserBadge from './UserBadge';
 import { usePathname } from 'next/navigation';
+import api from '@/services/api';
 
 export interface Post {
   _id: string;
@@ -94,30 +95,14 @@ export default function PostList({
     try {
       setLoading(true);
       const endpoint = isBookmarksPage ? '/api/posts/bookmarked' : '/api/posts';
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-      
-      if (isBookmarksPage || isAuthenticated) {
-        headers['Authorization'] = `Bearer ${localStorage.getItem('token')}`;
-      }
-
-      const response = await fetch(`${endpoint}?limit=${LIMIT}&skip=${skipCount}`, {
-        headers
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch posts');
-      }
-
-      const data = await response.json();
+      const response = await api.get(`${endpoint}?limit=${LIMIT}&skip=${skipCount}`);
       
       if (skipCount === 0) {
-        setPosts(data.posts);
+        setPosts(response.data.posts);
       } else {
-        setPosts(prevPosts => [...prevPosts, ...data.posts]);
+        setPosts(prevPosts => [...prevPosts, ...response.data.posts]);
       }
-      setHasMore(data.hasMore);
+      setHasMore(response.data.hasMore);
       setSkip(skipCount + LIMIT);
     } catch (error) {
       console.error('Error fetching posts:', error);
@@ -157,21 +142,10 @@ export default function PostList({
 
   const handleUpdate = async (postId: string) => {
     try {
-      const response = await fetch(`/api/posts/${postId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          headline: editHeadline,
-          text: editText
-        })
+      await api.patch(`/api/posts/${postId}`, {
+        headline: editHeadline,
+        text: editText
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to update post');
-      }
 
       handleCancelEdit();
       onPostUpdated();
@@ -187,17 +161,7 @@ export default function PostList({
     }
 
     try {
-      const response = await fetch(`/api/posts/${postId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete post');
-      }
-
+      await api.delete(`/api/posts/${postId}`);
       onPostUpdated();
       fetchPosts();
     } catch (error) {
@@ -271,25 +235,14 @@ export default function PostList({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!headline.trim() && !text.trim() && !imageUrl) return; // Only require at least one of: headline, text, or image
+    if (!headline.trim() && !text.trim() && !imageUrl) return;
 
     try {
-      const response = await fetch('/api/posts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          headline: headline.trim() || undefined,
-          text: text.trim() || undefined,
-          imageUrl
-        })
+      await api.post('/api/posts', {
+        headline: headline.trim() || undefined,
+        text: text.trim() || undefined,
+        imageUrl
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to create post');
-      }
 
       setHeadline('');
       setText('');
@@ -401,22 +354,11 @@ export default function PostList({
 
   const handleBookmark = async (postId: string) => {
     try {
-      const response = await fetch(`/api/posts/${postId}/bookmark`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to bookmark post');
-      }
+      await api.post(`/api/posts/${postId}/bookmark`);
 
       if (isBookmarksPage) {
-        // If we're on the bookmarks page and unbookmarking, remove the post immediately
         setPosts(prevPosts => prevPosts.filter(post => post._id !== postId));
       } else {
-        // On the main page, just update the bookmark status
         setPosts(prevPosts => prevPosts.map(post => {
           if (post._id === postId) {
             const isCurrentlyBookmarked = isPostBookmarked(post);
@@ -469,14 +411,7 @@ export default function PostList({
   const handleLike = async (postId: string) => {
     if (!user) return;
     try {
-      const response = await fetch(`/api/posts/${postId}/like`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      const data = await response.json();
+      await api.post(`/api/posts/${postId}/like`);
       setPosts(posts.map(post => {
         if (post._id === postId) {
           return {
@@ -497,14 +432,7 @@ export default function PostList({
   const handleDislike = async (postId: string) => {
     if (!user) return;
     try {
-      const response = await fetch(`/api/posts/${postId}/dislike`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      const data = await response.json();
+      await api.post(`/api/posts/${postId}/dislike`);
       setPosts(posts.map(post => {
         if (post._id === postId) {
           return {
