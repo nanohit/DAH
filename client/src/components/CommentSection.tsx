@@ -94,7 +94,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
   const fetchComments = async () => {
     try {
       const response = await api.get(`/api/comments/post/${postId}`);
-      setComments(response.data);
+      return response.data;
     } catch (error) {
       console.error('Error fetching comments:', error);
       throw new Error('Failed to fetch comments');
@@ -102,7 +102,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
   };
 
   useEffect(() => {
-    fetchComments();
+    fetchComments().then(setComments);
   }, [postId]);
 
   const updateRepliesRecursively = (comments: Comment[], parentId: string, newReply: Comment): Comment[] => {
