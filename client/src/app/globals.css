@@ -2,6 +2,71 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Map styles */
+.map-container {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 8rem);
+  border: 2px solid rgb(229, 231, 235);
+  border-radius: 0.5rem;
+  background-color: rgb(249, 250, 251);
+}
+
+.map-container.with-grid {
+  background-image: radial-gradient(circle, #e5e7eb 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.map-element {
+  position: absolute;
+  width: 10rem;
+  height: 8rem;
+  background-color: white;
+  border: 2px solid rgb(209, 213, 219);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: move;
+  z-index: 10;
+  transition: border-color 0.2s;
+}
+
+.map-element.selected {
+  border-color: rgb(59, 130, 246);
+  border-width: 2px;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+.connection-point {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background-color: rgb(59, 130, 246);
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 20;
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+.connection-point:hover {
+  transform: scale(1.2);
+  background-color: rgb(37, 99, 235);
+}
+
+@layer components {
+  .map-container {
+    @apply relative w-full h-[600px] border-2 border-gray-200 rounded-lg bg-gray-50;
+  }
+
+  .map-element {
+    @apply absolute w-40 h-32 bg-white border-2 border-gray-300 rounded-lg p-4 shadow-md flex items-center justify-center text-center cursor-move z-10;
+  }
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -18,4 +83,16 @@ body {
   color: var(--foreground);
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+.relative {
+  position: relative;
+}
+
+.h-[600px] {
+  height: 600px;
+}
+
+.w-full {
+  width: 100%;
 }

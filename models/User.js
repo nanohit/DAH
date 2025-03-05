@@ -25,6 +25,11 @@ const UserSchema = new mongoose.Schema({
     // Temporarily disable select: false for debugging
     // select: false,
   },
+  badge: {
+    type: String,
+    enum: ['Platinum shitposter', 'Aesthete', 'Lurker👁', 'Dialectician (debater)', 'Researcher', 'Architector', ''],
+    default: '',
+  },
   isAdmin: {
     type: Boolean,
     default: false,

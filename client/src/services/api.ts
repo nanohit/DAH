@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'https://dah-tyxc.onrender.com',
+  baseURL: process.env.NODE_ENV === 'development' ? 'http://localhost:5001' : 'https://dah-tyxc.onrender.com',
   headers: {
     'Content-Type': 'application/json',
   },

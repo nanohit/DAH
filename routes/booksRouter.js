@@ -2,24 +2,61 @@ const express = require('express');
 const router = express.Router();
 const Book = require('../models/Book');
 const { protect, admin } = require('../middleware/auth');
+const { requestDownloadLinks, getDownloadVariants, selectVariant, searchBooks, getVariantDetails, getDownloadLink } = require('../controllers/flibustaController');
+
+// Flibusta routes - must be before other routes
+router.get('/flibusta/search', searchBooks);
+router.get('/flibusta/variant/:id', getVariantDetails);
+router.get('/flibusta/download/:id/:format', getDownloadLink);
 
 // @desc    Get all books
 // @route   GET /api/books
 // @access  Public
 router.get('/', async (req, res) => {
   try {
-    const books = await Book.find()
-      .sort({ createdAt: -1 })
+    const { search, page = 1, limit = 10 } = req.query;
+    const skip = (page - 1) * limit;
+
+    let query = {};
+    let sortOptions = { createdAt: -1 };
+    
+    if (search) {
+      // Use regex to match title only, case insensitive
+      query = { 
+        title: { 
+          $regex: search, 
+          $options: 'i' 
+        }
+      };
+    }
+
+    const books = await Book.find(query)
+      .select('title author description coverImage publishedYear addedBy comments')
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean()
       .populate('addedBy', 'username')
       .populate({
         path: 'comments',
+        options: { limit: 5 },
         populate: {
           path: 'user',
           select: 'username profilePicture'
         }
       });
 
-    res.json(books);
+    // Get total count for pagination
+    const total = await Book.countDocuments(query);
+
+    res.json({
+      books,
+      pagination: {
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / limit)
+      }
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server Error' });
@@ -54,8 +91,8 @@ router.get('/:id', async (req, res) => {
 
 // @desc    Create a new book
 // @route   POST /api/books
-// @access  Private/Admin
-router.post('/', protect, admin, async (req, res) => {
+// @access  Private
+router.post('/', protect, async (req, res) => {
   try {
     const { title, author, description, coverImage, publishedYear, genres } = req.body;
     
@@ -153,5 +190,20 @@ router.put('/:id/like', protect, async (req, res) => {
     res.status(500).json({ message: 'Server Error' });
   }
 });
+
+// @desc    Request download links from Flibusta
+// @route   POST /api/books/:id/request-download-links
+// @access  Private
+router.post('/:id/request-download-links', protect, requestDownloadLinks);
+
+// @desc    Get available variants for a book
+// @route   GET /api/books/:id/download-variants
+// @access  Private
+router.get('/:id/download-variants', protect, getDownloadVariants);
+
+// @desc    Select and save a specific variant
+// @route   POST /api/books/:id/select-variant
+// @access  Private
+router.post('/:id/select-variant', protect, selectVariant);
 
 module.exports = router; 

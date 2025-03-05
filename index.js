@@ -71,6 +71,7 @@ const postRoutes = require('./routes/posts');
 const commentRoutes = require('./routes/comments');
 const bookRoutes = require('./routes/booksRouter');
 const uploadRoutes = require('./routes/upload');
+const userRoutes = require('./routes/users');
 
 // Debug route registration
 console.log('\n=== Route Registration ===');
@@ -82,6 +83,7 @@ app.use('/api/posts', postRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/books', bookRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/users', userRoutes);
 
 // Log registered routes
 console.log('\n=== Registered Routes ===');

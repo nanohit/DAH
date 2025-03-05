@@ -3,12 +3,10 @@ const mongoose = require('mongoose');
 const postSchema = new mongoose.Schema({
     headline: {
         type: String,
-        required: true,
         trim: true
     },
     text: {
         type: String,
-        required: true,
         trim: true
     },
     imageUrl: {
@@ -23,6 +21,24 @@ const postSchema = new mongoose.Schema({
     comments: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Comment'
+    }],
+    likes: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    dislikes: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    bookmarks: [{
+        user: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+        },
+        timestamp: {
+            type: Date,
+            default: Date.now
+        }
     }]
 }, {
     timestamps: true

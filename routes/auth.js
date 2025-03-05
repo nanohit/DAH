@@ -162,57 +162,33 @@ router.get('/users', async (req, res) => {
 // @access  Public
 router.post('/register', async (req, res) => {
   try {
-    console.log('\n=== POST /register Debug Log ===');
-    console.log('1. Raw request body:', {
-      ...req.body,
-      password: req.body.password ? `[${req.body.password.length} chars]` : '[MISSING]'
-    });
-    
     const { username, email, password } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     
     // Check existing user
-    const userExists = await User.findOne({ email });
+    const userExists = await User.findOne({ 
+      $or: [
+        { email },
+        { username }
+      ]
+    });
+    
     if (userExists) {
-      console.log('User already exists for email:', email);
-      return res.status(400).json({ message: 'User already exists' });
+      const field = userExists.email === email ? 'email' : 'username';
+      return res.status(400).json({ message: `User with this ${field} already exists` });
     }
 
     // Create user document
-    const userData = {
+    const user = await User.create({
       username,
       email,
       password,
       registrationIp: ip,
       lastIp: ip,
       isAdmin: false
-    };
-    console.log('2. User data to be saved:', {
-      ...userData,
-      password: `[${userData.password.length} chars]`
     });
 
-    // Create user (this will trigger the pre-save hook)
-    const user = await User.create(userData);
-    console.log('3. Created user document:', {
-      _id: user._id,
-      username: user.username,
-      email: user.email
-    });
-
-    // Verify storage with password field
-    const savedUser = await User.findById(user._id).select('+password');
-    console.log('4. Verification query result:', {
-      hasUser: !!savedUser,
-      hasPassword: !!savedUser?.password,
-      passwordLength: savedUser?.password?.length,
-      storedPassword: savedUser?.password
-    });
-
-    // For testing purposes, try to match the password immediately after registration
-    const loginTest = await savedUser.matchPassword(password);
-    console.log('5. Immediate password match test:', loginTest);
-
+    // Return user data with token
     res.status(201).json({
       _id: user._id,
       username: user.username,
@@ -222,7 +198,6 @@ router.post('/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
-    console.error('Stack trace:', error.stack);
     res.status(500).json({ message: error.message || 'Server Error' });
   }
 });
@@ -232,10 +207,20 @@ router.post('/register', async (req, res) => {
 // @access  Public
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { login, password } = req.body;
 
-    // Check for user email
-    const user = await User.findOne({ email }).select('+password');
+    if (!login || !password) {
+      return res.status(400).json({ message: 'Please provide login credentials' });
+    }
+
+    // Check for user by email or username
+    const user = await User.findOne({
+      $or: [
+        { email: login },
+        { username: login }
+      ]
+    }).select('+password');
+
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
@@ -349,6 +334,43 @@ router.delete('/users/:id', async (req, res) => {
     res.json({ message: 'User deleted successfully' });
   } catch (error) {
     console.error('User deletion error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// @desc    Update user admin status and badge
+// @route   POST /api/auth/update-user-role
+// @access  Public (for development)
+router.post('/update-user-role', async (req, res) => {
+  try {
+    const { username, password, isAdmin, badge } = req.body;
+
+    // Find user by username
+    const user = await User.findOne({ username }).select('+password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Verify password
+    const isMatch = await user.matchPassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid password' });
+    }
+
+    // Update user
+    user.isAdmin = isAdmin;
+    user.badge = badge;
+    await user.save();
+
+    res.json({
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      isAdmin: user.isAdmin,
+      badge: user.badge
+    });
+  } catch (error) {
+    console.error('Update user role error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 });

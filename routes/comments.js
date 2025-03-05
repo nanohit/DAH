@@ -151,8 +151,8 @@ router.put('/:id', protect, async (req, res) => {
       return res.status(404).json({ message: 'Comment not found' });
     }
 
-    // Check if user is the comment owner
-    if (comment.user.toString() !== req.user.id) {
+    // Check if user is the comment owner or admin
+    if (comment.user.toString() !== req.user.id && !req.user.isAdmin) {
       return res.status(403).json({ message: 'User not authorized' });
     }
 
@@ -179,8 +179,8 @@ router.delete('/:id', protect, async (req, res) => {
       return res.status(404).json({ message: 'Comment not found' });
     }
 
-    // Check if user is the comment owner
-    if (comment.user.toString() !== req.user.id) {
+    // Check if user is the comment owner or admin
+    if (comment.user.toString() !== req.user.id && !req.user.isAdmin) {
       return res.status(403).json({ message: 'User not authorized' });
     }
 
@@ -239,6 +239,68 @@ router.put('/:id/like', protect, async (req, res) => {
     console.error(error);
     res.status(500).json({ message: 'Server Error' });
   }
+});
+
+// Like a comment
+router.post('/:commentId/like', protect, async (req, res) => {
+    try {
+        const comment = await Comment.findById(req.params.commentId);
+        if (!comment) {
+            return res.status(404).json({ message: 'Comment not found' });
+        }
+
+        // Check if user already liked the comment
+        const alreadyLiked = comment.likes.includes(req.user._id);
+        // Check if user already disliked the comment
+        const alreadyDisliked = comment.dislikes.includes(req.user._id);
+
+        if (alreadyLiked) {
+            // Unlike the comment
+            comment.likes = comment.likes.filter(id => id.toString() !== req.user._id.toString());
+        } else {
+            // Like the comment and remove from dislikes if present
+            comment.likes.push(req.user._id);
+            if (alreadyDisliked) {
+                comment.dislikes = comment.dislikes.filter(id => id.toString() !== req.user._id.toString());
+            }
+        }
+
+        await comment.save();
+        res.json({ likes: comment.likes.length, dislikes: comment.dislikes.length });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Dislike a comment
+router.post('/:commentId/dislike', protect, async (req, res) => {
+    try {
+        const comment = await Comment.findById(req.params.commentId);
+        if (!comment) {
+            return res.status(404).json({ message: 'Comment not found' });
+        }
+
+        // Check if user already disliked the comment
+        const alreadyDisliked = comment.dislikes.includes(req.user._id);
+        // Check if user already liked the comment
+        const alreadyLiked = comment.likes.includes(req.user._id);
+
+        if (alreadyDisliked) {
+            // Remove dislike
+            comment.dislikes = comment.dislikes.filter(id => id.toString() !== req.user._id.toString());
+        } else {
+            // Add dislike and remove from likes if present
+            comment.dislikes.push(req.user._id);
+            if (alreadyLiked) {
+                comment.likes = comment.likes.filter(id => id.toString() !== req.user._id.toString());
+            }
+        }
+
+        await comment.save();
+        res.json({ likes: comment.likes.length, dislikes: comment.dislikes.length });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 });
 
 module.exports = router;

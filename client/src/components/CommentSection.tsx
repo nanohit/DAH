@@ -1,7 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { formatDate } from '@/utils/date';
+import FormatToolbar from './FormatToolbar';
+import ReactMarkdown from 'react-markdown';
+import CommentInput from './CommentInput';
+import Link from 'next/link';
 
 export interface User {
   _id: string;
@@ -15,6 +20,8 @@ export interface Comment {
   createdAt: string;
   replies: Comment[];
   parentComment: string | null;
+  likes: string[];
+  dislikes: string[];
 }
 
 export interface CommentSectionProps {
@@ -33,7 +40,54 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
   const [branchCollapsed, setBranchCollapsed] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showMainFormatToolbar, setShowMainFormatToolbar] = useState(false);
+  const [showReplyFormatToolbar, setShowReplyFormatToolbar] = useState(false);
+  const [showEditFormatToolbar, setShowEditFormatToolbar] = useState(false);
   const { user } = useAuth();
+  const mainCommentInputRef = useRef<HTMLTextAreaElement>(null);
+  const replyInputRef = useRef<HTMLTextAreaElement>(null);
+  const editInputRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleFormat = (type: string, selection: { start: number; end: number }, inputRef: React.RefObject<HTMLTextAreaElement>, setText: (text: string) => void) => {
+    if (!inputRef.current) return;
+
+    const input = inputRef.current;
+    const currentText = input.value;
+    let newText = currentText;
+    let newCursorPos = selection.end;
+
+    switch (type) {
+      case 'bold':
+        newText = currentText.slice(0, selection.start) + `**${currentText.slice(selection.start, selection.end)}**` + currentText.slice(selection.end);
+        newCursorPos += 2;
+        break;
+      case 'italic':
+        newText = currentText.slice(0, selection.start) + `*${currentText.slice(selection.start, selection.end)}*` + currentText.slice(selection.end);
+        newCursorPos += 1;
+        break;
+      case 'link':
+        const url = prompt('Enter URL:');
+        if (url) {
+          const selectedText = currentText.slice(selection.start, selection.end);
+          const linkText = selectedText || 'link';
+          newText = currentText.slice(0, selection.start) + `[${linkText}](${url})` + currentText.slice(selection.end);
+          newCursorPos = selection.start + newText.length;
+        }
+        break;
+      case 'clear':
+        newText = currentText.slice(selection.start, selection.end)
+          .replace(/\*\*/g, '')  // Remove bold
+          .replace(/\*/g, '')    // Remove italic
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1'); // Remove links
+        newText = currentText.slice(0, selection.start) + newText + currentText.slice(selection.end);
+        break;
+    }
+
+    setText(newText);
+    input.value = newText;
+    input.focus();
+    input.setSelectionRange(newCursorPos, newCursorPos);
+  };
 
   useEffect(() => {
     const fetchComments = async () => {
@@ -104,37 +158,6 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     return comment.replies.reduce((total, reply) => {
       return total + 1 + countRepliesRecursively(reply);
     }, 0);
-  };
-
-  const formatDate = (dateString: string) => {
-    if (!dateString || isNaN(new Date(dateString).getTime())) {
-      return 'Invalid date';
-    }
-
-    const date = new Date(dateString);
-    const now = new Date();
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const time = `${hours}:${minutes}`;
-    
-    // Check if the date is today
-    if (date.toDateString() === now.toDateString()) {
-      return `${time} Today`;
-    }
-    
-    // Check if the date was yesterday
-    if (date.toDateString() === yesterday.toDateString()) {
-      return `${time} Yesterday`;
-    }
-    
-    // For older dates, show the full date
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const year = date.getFullYear();
-    return `${time} ${day}.${month}.${year}`;
   };
 
   const handleSubmitComment = async (e: React.FormEvent, parentId?: string) => {
@@ -258,15 +281,95 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
       if (parentId) {
         setComments(prevComments => deleteReplyRecursively(prevComments, commentId));
       } else {
-        setComments(prevComments => prevComments.filter(comment => comment._id !== commentId));
+        setComments(prevComments => prevComments.filter(c => c._id !== commentId));
       }
     } catch (error) {
       console.error('Error deleting comment:', error);
     }
   };
 
+  const handleLikeComment = async (commentId: string) => {
+    if (!user) return;
+    try {
+      const response = await fetch(`/api/comments/${commentId}/like`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await response.json();
+      
+      const updateLikesRecursively = (comments: Comment[], targetId: string): Comment[] => {
+        return comments.map(comment => {
+          if (comment._id === targetId) {
+            return {
+              ...comment,
+              likes: comment.likes.includes(user._id)
+                ? comment.likes.filter(id => id !== user._id)
+                : [...comment.likes, user._id],
+              dislikes: comment.dislikes.filter(id => id !== user._id)
+            };
+          }
+          if (comment.replies.length > 0) {
+            return {
+              ...comment,
+              replies: updateLikesRecursively(comment.replies, targetId)
+            };
+          }
+          return comment;
+        });
+      };
+
+      setComments(updateLikesRecursively(comments, commentId));
+    } catch (error) {
+      console.error('Error liking comment:', error);
+    }
+  };
+
+  const handleDislikeComment = async (commentId: string) => {
+    if (!user) return;
+    try {
+      const response = await fetch(`/api/comments/${commentId}/dislike`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await response.json();
+      
+      const updateDislikesRecursively = (comments: Comment[], targetId: string): Comment[] => {
+        return comments.map(comment => {
+          if (comment._id === targetId) {
+            return {
+              ...comment,
+              dislikes: comment.dislikes.includes(user._id)
+                ? comment.dislikes.filter(id => id !== user._id)
+                : [...comment.dislikes, user._id],
+              likes: comment.likes.filter(id => id !== user._id)
+            };
+          }
+          if (comment.replies.length > 0) {
+            return {
+              ...comment,
+              replies: updateDislikesRecursively(comment.replies, targetId)
+            };
+          }
+          return comment;
+        });
+      };
+
+      setComments(updateDislikesRecursively(comments, commentId));
+    } catch (error) {
+      console.error('Error disliking comment:', error);
+    }
+  };
+
   const renderComment = (comment: Comment, depth: number = 0) => {
     const isAuthor = user && comment.user && user._id === comment.user._id;
+    const isAdmin = user?.isAdmin;
+    const canModify = isAuthor || isAdmin;
     const isEditing = editingComment === comment._id;
     const replies = comment.replies || [];
     const marginClass = depth > 0 ? 'ml-8' : '';
@@ -309,12 +412,16 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
             <div className="p-3">
               <div className="flex justify-between items-center mb-1">
                 <div className="flex items-center space-x-2">
-                  <span className="text-gray-800">{comment.user?.username}</span>
+                  <span className="text-gray-800">
+                    <Link href={`/user/${comment.user?.username}`} className="hover:underline">
+                      {comment.user?.username}
+                    </Link>
+                  </span>
                   <span className="text-gray-500 text-sm">
                     {formatDate(comment.createdAt)}
                   </span>
                 </div>
-                {isAuthor && (
+                {canModify && (
                   <div className="space-x-2 text-sm">
                     <button
                       onClick={() => {
@@ -338,38 +445,82 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
 
               {isEditing ? (
                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                  <div className="flex items-stretch">
-                    <input
-                      type="text"
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleEditComment(comment._id);
-                        }
-                      }}
-                      className="flex-grow p-2 border-none focus:outline-none text-[#000000] placeholder:text-gray-400"
-                    />
-                    <button
-                      onClick={() => handleEditComment(comment._id)}
-                      className="px-6 py-2 bg-gray-600 text-white hover:bg-gray-700 transition-colors"
-                    >
-                      Save
-                    </button>
-                  </div>
+                  <CommentInput
+                    value={editContent}
+                    onChange={setEditContent}
+                    onSubmit={() => handleEditComment(comment._id)}
+                    buttonText="Save"
+                  />
                 </div>
               ) : (
                 <>
-                  <p className="text-black">{comment.content}</p>
-                  {user && (
-                    <button
-                      onClick={() => setReplyingTo(comment._id)}
-                      className="text-sm text-gray-600 hover:text-gray-800 mt-1"
+                  <div className="prose prose-sm max-w-none [&>*]:text-black [&_p]:!text-black [&_strong]:!text-black [&_em]:!text-black">
+                    <ReactMarkdown
+                      components={{
+                        p: ({children}) => <p className="!text-black">{children}</p>,
+                        strong: ({children}) => <strong className="!text-black">{children}</strong>,
+                        em: ({children}) => <em className="!text-black">{children}</em>,
+                        a: ({ href, children }) => {
+                          const isExternal = href?.startsWith('http') || href?.startsWith('www');
+                          const finalHref = isExternal ? href : `https://${href}`;
+                          return (
+                            <a 
+                              href={finalHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="!text-blue-600 hover:!text-blue-800"
+                            >
+                              {children}
+                            </a>
+                          );
+                        }
+                      }}
                     >
-                      reply
-                    </button>
-                  )}
+                      {comment.content}
+                    </ReactMarkdown>
+                  </div>
+                  <div className="flex items-center space-x-4 mt-2">
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => user ? handleDislikeComment(comment._id) : undefined}
+                        className={`flex items-center space-x-1 ${
+                          user && comment.dislikes.includes(user._id) ? 'text-gray-700' : 'text-gray-400'
+                        }`}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                        <span className="text-sm">{comment.dislikes.length}</span>
+                      </button>
+                      <button
+                        onClick={() => user ? handleLikeComment(comment._id) : undefined}
+                        className={`flex items-center space-x-1 ${
+                          user && comment.likes.includes(user._id) ? 'text-gray-700' : 'text-gray-400'
+                        }`}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                        <span className="text-sm">{comment.likes.length}</span>
+                      </button>
+                    </div>
+
+                    {user && (
+                      <button
+                        onClick={() => {
+                          if (replyingTo === comment._id) {
+                            setReplyingTo(null);
+                            setNewReply('');
+                          } else {
+                            setReplyingTo(comment._id);
+                          }
+                        }}
+                        className="text-gray-500 hover:text-gray-700 text-sm ml-auto"
+                      >
+                        {replyingTo === comment._id ? 'cancel' : 'reply'}
+                      </button>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -386,29 +537,12 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
 
         {replyingTo === comment._id && !branchCollapsed[comment.parentComment || ''] && (
           <div className="mt-3 ml-8 mb-3">
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <div className="flex items-stretch">
-                <input
-                  type="text"
-                  value={newReply}
-                  onChange={(e) => setNewReply(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSubmitComment(e as any, comment._id);
-                    }
-                  }}
-                  placeholder="Write a reply..."
-                  className="flex-grow p-2 border-none focus:outline-none text-[#000000] placeholder:text-gray-400"
-                />
-                <button
-                  onClick={(e) => handleSubmitComment(e as any, comment._id)}
-                  className="px-6 py-2 bg-gray-600 text-white hover:bg-gray-700 transition-colors"
-                >
-                  Post
-                </button>
-              </div>
-            </div>
+            <CommentInput
+              value={newReply}
+              onChange={setNewReply}
+              onSubmit={(e) => handleSubmitComment(e, comment._id)}
+              placeholder="Write a reply... (Tab for formatting)"
+            />
           </div>
         )}
 
@@ -439,71 +573,51 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
         <>
           {comments.length === 0 ? (
             <div className="p-4">
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                <div className="flex items-stretch">
-                  <input
-                    type="text"
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSubmitComment(e as any);
-                      }
-                    }}
-                    placeholder="Be the first to comment..."
-                    className="flex-grow p-2 border-none focus:outline-none text-[#000000] placeholder:text-gray-400"
-                    onClick={() => user ? null : alert('Please log in to comment')}
-                    readOnly={!user}
-                  />
-                  <button
-                    onClick={(e) => handleSubmitComment(e as any)}
-                    className="px-6 py-2 bg-gray-600 text-white hover:bg-gray-700 transition-colors"
-                    disabled={!user}
-                  >
-                    Post
-                  </button>
-                </div>
-              </div>
+              <CommentInput
+                value={newComment}
+                onChange={setNewComment}
+                onSubmit={handleSubmitComment}
+                placeholder="Be the first to comment... (Tab for formatting)"
+                disabled={!user}
+                readOnly={!user}
+                onClick={() => user ? null : alert('Please log in to comment')}
+              />
             </div>
           ) : !showAllComments ? (
             <button
               onClick={() => setShowAllComments(true)}
-              className="w-full p-4 text-center text-gray-600 hover:text-gray-800"
+              className="w-full p-4 text-center text-gray-600 hover:text-gray-800 flex items-center justify-center space-x-2"
             >
-              Show {totalComments} {totalComments === 1 ? 'comment' : 'comments'}
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+              <span>Show {totalComments} {totalComments === 1 ? 'comment' : 'comments'}</span>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
             </button>
           ) : (
             <div className="p-4">
               <button
                 onClick={() => setShowAllComments(false)}
-                className="w-full text-center text-gray-600 hover:text-gray-800 mb-4"
+                className="w-full text-center text-gray-600 hover:text-gray-800 mb-4 flex items-center justify-center space-x-2"
               >
-                Hide all {totalComments} {totalComments === 1 ? 'comment' : 'comments'}
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                </svg>
+                <span>Hide all {totalComments} {totalComments === 1 ? 'comment' : 'comments'}</span>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                </svg>
               </button>
               
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
-                <div className="flex items-stretch">
-                  <input
-                    type="text"
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSubmitComment(e as any);
-                      }
-                    }}
-                    placeholder="Write a comment..."
-                    className="flex-grow p-2 border-none focus:outline-none text-black"
-                  />
-                  <button
-                    onClick={(e) => handleSubmitComment(e as any)}
-                    className="px-6 py-2 bg-gray-600 text-white hover:bg-gray-700 transition-colors"
-                  >
-                    Post
-                  </button>
-                </div>
+              <div className="mb-4">
+                <CommentInput
+                  value={newComment}
+                  onChange={setNewComment}
+                  onSubmit={handleSubmitComment}
+                  placeholder="Write a comment... (Tab for formatting)"
+                />
               </div>
 
               <div className="space-y-3">

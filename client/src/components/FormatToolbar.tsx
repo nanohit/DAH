@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 interface FormatToolbarProps {
   onFormat: (type: string, selection: { start: number; end: number }) => void;
@@ -12,6 +12,7 @@ interface FormatToolbarProps {
 export default function FormatToolbar({ onFormat, inputRef, isVisible, onClose }: FormatToolbarProps) {
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const toolbarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isVisible || !inputRef.current) return;
@@ -29,7 +30,29 @@ export default function FormatToolbar({ onFormat, inputRef, isVisible, onClose }
       top: selectionCoords.top - 40, // 40px above selection
       left: selectionCoords.left
     });
-  }, [isVisible, inputRef]);
+
+    // Add event listeners for Tab key and click outside
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isVisible, inputRef, onClose]);
 
   const getSelectionCoordinates = (input: HTMLTextAreaElement) => {
     const start = input.selectionStart ?? 0;
@@ -59,6 +82,7 @@ export default function FormatToolbar({ onFormat, inputRef, isVisible, onClose }
 
   return (
     <div 
+      ref={toolbarRef}
       className="fixed z-50 bg-white shadow-lg rounded-lg border border-gray-200 p-2 flex space-x-2"
       style={{ 
         top: `${position.top}px`, 
@@ -67,7 +91,7 @@ export default function FormatToolbar({ onFormat, inputRef, isVisible, onClose }
     >
       <button
         onClick={() => onFormat('bold', selection)}
-        className="p-1 hover:bg-gray-100 rounded"
+        className="p-1 hover:bg-gray-100 rounded text-black"
         title="Bold"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -77,7 +101,7 @@ export default function FormatToolbar({ onFormat, inputRef, isVisible, onClose }
       </button>
       <button
         onClick={() => onFormat('italic', selection)}
-        className="p-1 hover:bg-gray-100 rounded"
+        className="p-1 hover:bg-gray-100 rounded text-black"
         title="Italic"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -88,7 +112,7 @@ export default function FormatToolbar({ onFormat, inputRef, isVisible, onClose }
       </button>
       <button
         onClick={() => onFormat('link', selection)}
-        className="p-1 hover:bg-gray-100 rounded"
+        className="p-1 hover:bg-gray-100 rounded text-black"
         title="Add Link"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -98,11 +122,12 @@ export default function FormatToolbar({ onFormat, inputRef, isVisible, onClose }
       </button>
       <button
         onClick={() => onFormat('clear', selection)}
-        className="p-1 hover:bg-gray-100 rounded"
+        className="p-1 hover:bg-gray-100 rounded text-black"
         title="Clear Formatting"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="5" y1="12" x2="19" y2="12"></line>
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
       </button>
     </div>

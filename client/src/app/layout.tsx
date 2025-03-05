@@ -6,7 +6,7 @@ import ClientLayout from '@/components/ClientLayout';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Book Library App',
+  title: 'Alphy',
   description: 'A modern book library application',
 };
 
