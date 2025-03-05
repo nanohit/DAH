@@ -35,7 +35,7 @@ export const FlibustaSearch = () => {
     setError(null);
 
     try {
-      const response = await api.get(`/api/books/flibusta/search?query=${encodeURIComponent(searchTerm)}`);
+      const response = await api.get(`/books/flibusta/search?query=${encodeURIComponent(searchTerm)}`);
       const data = response.data;
 
       setSearchResults(data.data || []);
@@ -56,7 +56,7 @@ export const FlibustaSearch = () => {
 
   const handleDownload = async (bookId: string, format: string) => {
     try {
-      const response = await api.get(`/api/books/flibusta/download/${bookId}/${format}`);
+      const response = await api.get(`/books/flibusta/download/${bookId}/${format}`);
       const data = response.data;
 
       // Open the download URL in a new tab

@@ -38,7 +38,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const fetchUserData = async (token: string) => {
     try {
       console.log('Fetching user data with token:', token);
-      const response = await api.get('/api/auth/me');
+      const response = await api.get('/auth/me');
       
       console.log('Received user data:', response.data);
       if (!response.data.error) {
@@ -79,7 +79,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (login: string, password: string) => {
     try {
       console.log('Attempting login...');
-      const response = await api.post('/api/auth/login', { login, password });
+      const response = await api.post('/auth/login', { login, password });
       const data = response.data;
       
       console.log('Login response:', data);

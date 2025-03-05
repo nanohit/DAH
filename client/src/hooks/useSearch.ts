@@ -101,8 +101,8 @@ export function useSearch(): UseSearchReturn {
   const handleAlphySearch = async (page = 1) => {
     try {
       const endpoint = displayAll 
-        ? `/api/books?page=${page}&limit=${resultsPerPage}` 
-        : `/api/books?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${resultsPerPage}`;
+        ? `/books?page=${page}&limit=${resultsPerPage}` 
+        : `/books?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${resultsPerPage}`;
 
       const response = await api.get(endpoint);
       const data = response.data;
@@ -129,7 +129,7 @@ export function useSearch(): UseSearchReturn {
 
   const searchDatabase = async (searchTerm: string) => {
     try {
-      const response = await api.get(`/api/books?search=${encodeURIComponent(searchTerm)}&limit=5`);
+      const response = await api.get(`/books?search=${encodeURIComponent(searchTerm)}&limit=5`);
       const data = response.data;
       
       return data.books.map((book: any) => ({

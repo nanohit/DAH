@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import axios from 'axios';
+import api from '@/services/api';
 import { format } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
 import PostList, { Post } from '@/components/PostList';
@@ -51,8 +51,8 @@ export default function UserProfile() {
     try {
       setInitialLoading(true);
       const [userResponse, postsResponse] = await Promise.all([
-        axios.get(`/api/users/${username}`),
-        axios.get(`/api/users/${username}/posts?limit=${LIMIT}&skip=0`)
+        api.get(`/api/users/${username}`),
+        api.get(`/api/users/${username}/posts?limit=${LIMIT}&skip=0`)
       ]);
 
       setUser(userResponse.data);
@@ -60,23 +60,25 @@ export default function UserProfile() {
       setBio(userResponse.data.bio || '');
       setHasMore(postsResponse.data.hasMore);
       setSkip(LIMIT);
-    } catch (err) {
-      setError('Failed to load user profile');
-      console.error('Error fetching user data:', err);
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      setError('Failed to load user data');
     } finally {
       setInitialLoading(false);
     }
   };
 
   const loadMorePosts = async () => {
+    if (loadingMore || !hasMore) return;
+
+    setLoadingMore(true);
     try {
-      setLoadingMore(true);
-      const response = await axios.get(`/api/users/${username}/posts?limit=${LIMIT}&skip=${skip}`);
+      const response = await api.get(`/api/users/${username}/posts?limit=${LIMIT}&skip=${skip}`);
       setPosts(prev => [...prev, ...response.data.posts]);
       setHasMore(response.data.hasMore);
       setSkip(prev => prev + LIMIT);
-    } catch (err) {
-      console.error('Error loading more posts:', err);
+    } catch (error) {
+      console.error('Error loading more posts:', error);
     } finally {
       setLoadingMore(false);
     }
@@ -93,17 +95,13 @@ export default function UserProfile() {
   };
 
   const handleBioUpdate = async () => {
+    if (!user) return;
     try {
-      const token = localStorage.getItem('token');
-      await axios.patch(`/api/users/${user?._id}/bio`, { bio }, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      await api.patch(`/api/users/${user._id}/bio`, { bio });
       setUser(prev => prev ? { ...prev, bio } : null);
       setIsEditing(false);
-    } catch (err) {
-      console.error('Error updating bio:', err);
+    } catch (error) {
+      console.error('Error updating bio:', error);
     }
   };
 
@@ -115,16 +113,12 @@ export default function UserProfile() {
   };
 
   const handleBadgeUpdate = async (newBadge: string) => {
+    if (!user) return;
     try {
-      const token = localStorage.getItem('token');
-      await axios.patch(`/api/users/${user?._id}/badge`, { badge: newBadge }, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      await api.patch(`/api/users/${user._id}/badge`, { badge: newBadge });
       setUser(prev => prev ? { ...prev, badge: newBadge } : null);
-    } catch (err) {
-      console.error('Error updating badge:', err);
+    } catch (error) {
+      console.error('Error updating badge:', error);
     }
   };
 

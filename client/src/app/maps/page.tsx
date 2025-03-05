@@ -5,6 +5,7 @@ import { DndContext, useDraggable, useDroppable, DragEndEvent, DragStartEvent, D
 import { restrictToParentElement } from '@dnd-kit/modifiers';
 import Xarrow, { Xwrapper } from 'react-xarrows';
 import Link from 'next/link';
+import api from '@/services/api';
 
 interface MapElement {
   id: string;
@@ -749,18 +750,12 @@ const SearchModal = ({ onClose, onBookSubmit }: {
 
   const handleAlphySearch = async (page = 1) => {
     try {
-      const token = localStorage.getItem('token');
       const endpoint = displayAll 
-        ? `/api/books?page=${page}&limit=${resultsPerPage}` 
-        : `/api/books?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${resultsPerPage}`;
+        ? `/books?page=${page}&limit=${resultsPerPage}` 
+        : `/books?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${resultsPerPage}`;
 
-      const response = await fetch(endpoint, {
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : ''
-        }
-      });
-      if (!response.ok) throw new Error('Failed to fetch from Alphy database');
-      const data = await response.json();
+      const response = await api.get(endpoint);
+      const data = response.data;
       
       const books = data.books.map((book: any) => ({
         key: book._id,
@@ -784,14 +779,8 @@ const SearchModal = ({ onClose, onBookSubmit }: {
 
   const searchDatabase = async (searchTerm: string) => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/books?search=${encodeURIComponent(searchTerm)}&limit=5`, {
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : ''
-        }
-      });
-      if (!response.ok) throw new Error('Failed to fetch from database');
-      const data = await response.json();
+      const response = await api.get(`/books?search=${encodeURIComponent(searchTerm)}&limit=5`);
+      const data = response.data;
       
       return data.books.map((book: any) => ({
         key: book._id,
@@ -848,35 +837,18 @@ const SearchModal = ({ onClose, onBookSubmit }: {
   const handleSubmit = async () => {
     if (confirmedBook) {
       try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          throw new Error('You must be logged in to add books');
-        }
-
         // Save book to database
-        const response = await fetch('/api/books', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            title: confirmedBook.title,
-            author: Array.isArray(confirmedBook.author_name) 
-              ? confirmedBook.author_name.join(', ') 
-              : confirmedBook.author_name || 'Unknown',
-            description: confirmedBook.description || '',
-            coverImage: confirmedBook.thumbnail || '',
-            publishedYear: confirmedBook.first_publish_year
-          }),
+        const response = await api.post('/books', {
+          title: confirmedBook.title,
+          author: Array.isArray(confirmedBook.author_name) 
+            ? confirmedBook.author_name.join(', ') 
+            : confirmedBook.author_name || 'Unknown',
+          description: confirmedBook.description || '',
+          coverImage: confirmedBook.thumbnail || '',
+          publishedYear: confirmedBook.first_publish_year
         });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || 'Failed to save book');
-        }
-
-        const savedBook = await response.json();
+        const savedBook = response.data;
         
         // Create map element
         const newElement: MapElement = {
@@ -887,7 +859,7 @@ const SearchModal = ({ onClose, onBookSubmit }: {
           text: confirmedBook.title,
           orientation: 'vertical',
           bookData: {
-            key: savedBook._id, // Use database ID instead of API key
+            key: savedBook._id,
             title: confirmedBook.title,
             author: Array.isArray(confirmedBook.author_name) ? confirmedBook.author_name : [confirmedBook.author_name || 'Unknown'],
             thumbnail: confirmedBook.thumbnail,
@@ -900,7 +872,6 @@ const SearchModal = ({ onClose, onBookSubmit }: {
         onClose();
       } catch (error) {
         console.error('Error saving book:', error);
-        // You might want to show an error message to the user here
       }
     }
   };
