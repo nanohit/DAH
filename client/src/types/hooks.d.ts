@@ -33,11 +33,7 @@ export interface UseBookDetailsReturn {
   handleSubmit: () => Promise<any>;
 }
 
-// Declare module augmentations
+// Only declare module for useSearch since useBookDetails is a direct export
 declare module '@/hooks/useSearch' {
   export function useSearch(): UseSearchReturn;
-}
-
-declare module '@/hooks/useBookDetails' {
-  export function useBookDetails(): UseBookDetailsReturn;
 } 
