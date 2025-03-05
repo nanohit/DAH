@@ -37,7 +37,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const fetchUserData = async (token: string) => {
     try {
       console.log('Fetching user data with token:', token);
-      const response = await fetch('/api/auth/me', {
+      const response = await fetch('http://localhost:5001/api/auth/me', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -88,7 +88,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (login: string, password: string) => {
     try {
       console.log('Attempting login...');
-      const loginResponse = await fetch('/api/auth/login', {
+      const loginResponse = await fetch('http://localhost:5001/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
