@@ -34,26 +34,37 @@ export default function HomePage() {
     try {
       setLoading(true);
       
-      // Fetch both posts and maps in parallel
-      const [postsResponse, maps] = await Promise.all([
-        api.get(`/api/posts?limit=${LIMIT}&skip=${skipCount}`),
-        getUserMaps()
-      ]);
+      let postsResponse;
+      let mapPosts: CombinedItem[] = [];
+      
+      // Only fetch maps during the initial load
+      if (skipCount === 0) {
+        // Fetch both posts and maps in parallel on initial load
+        const [posts, maps] = await Promise.all([
+          api.get(`/api/posts?limit=${LIMIT}&skip=${skipCount}`),
+          getUserMaps()
+        ]);
+        
+        postsResponse = posts;
+        
+        // Convert maps to post-like format
+        mapPosts = maps.map(map => ({
+          _id: map._id,
+          headline: map.name,
+          text: `${map.elementCount || 0} elements, ${map.connectionCount || 0} connections`,
+          author: map.user,
+          createdAt: map.createdAt,
+          updatedAt: map.updatedAt || map.lastSaved,
+          comments: map.comments || [],
+          isMap: true, // Add flag to identify maps
+          mapData: map // Store original map data
+        }));
+      } else {
+        // Only fetch posts for pagination
+        postsResponse = await api.get(`/api/posts?limit=${LIMIT}&skip=${skipCount}`);
+      }
 
-      // Convert maps to post-like format
-      const mapPosts = maps.map(map => ({
-        _id: map._id,
-        headline: map.name,
-        text: `${map.elementCount || 0} elements, ${map.connectionCount || 0} connections`,
-        author: map.user,
-        createdAt: map.createdAt,
-        updatedAt: map.updatedAt || map.lastSaved,
-        comments: map.comments || [],
-        isMap: true, // Add flag to identify maps
-        mapData: map // Store original map data
-      }));
-
-      // Combine and sort all items by date
+      // Combine and sort items by date
       const allItems = [...postsResponse.data.posts, ...mapPosts].sort((a, b) => 
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
@@ -61,7 +72,13 @@ export default function HomePage() {
       if (skipCount === 0) {
         setCombinedItems(allItems);
       } else {
-        setCombinedItems(prev => [...prev, ...allItems]);
+        // Add the new posts to the existing list and maintain sort order
+        setCombinedItems(prev => {
+          const newItems = [...prev, ...postsResponse.data.posts];
+          return newItems.sort((a, b) => 
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+        });
       }
 
       setHasMore(postsResponse.data.hasMore);
