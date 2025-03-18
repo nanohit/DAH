@@ -209,7 +209,8 @@ export default function SavedMapsPage() {
       }
       // Check if bookmark.user is an object with _id
       else if (typeof bookmark.user === 'object' && bookmark.user !== null) {
-        return bookmark.user._id === user._id;
+        const userObj = bookmark.user as { _id: string };
+        return userObj._id === user._id;
       }
       return false;
     });

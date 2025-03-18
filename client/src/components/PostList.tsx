@@ -559,8 +559,8 @@ export default function PostList({
               return {
                 ...post,
                 bookmarks: isCurrentlyBookmarked
-                  ? post.bookmarks.filter(b => b.user !== user?._id)
-                  : [...post.bookmarks, { user: user?._id || '', timestamp: new Date().toISOString() }]
+                  ? post.bookmarks?.filter(b => b.user !== user?._id) || []
+                  : [...(post.bookmarks || []), { user: user?._id || '', timestamp: new Date().toISOString() }]
               };
             }
             return post;
@@ -627,7 +627,7 @@ export default function PostList({
       if (!currentPost) return;
       
       // Check if already liked
-      const isAlreadyLiked = currentPost.likes.includes(user._id);
+      const isAlreadyLiked = currentPost.likes?.includes(user._id) || false;
       
       // Update UI optimistically
       setPosts(prevPosts => {
@@ -637,9 +637,9 @@ export default function PostList({
             return {
               ...post,
               likes: isAlreadyLiked
-                ? post.likes.filter(id => id !== user._id)
-                : [...post.likes, user._id],
-              dislikes: post.dislikes.filter(id => id !== user._id)
+                ? post.likes?.filter(id => id !== user._id) || []
+                : [...(post.likes || []), user._id],
+              dislikes: post.dislikes?.filter(id => id !== user._id) || []
             };
           }
           return post;
@@ -668,7 +668,7 @@ export default function PostList({
       if (!currentPost) return;
       
       // Check if already disliked
-      const isAlreadyDisliked = currentPost.dislikes.includes(user._id);
+      const isAlreadyDisliked = currentPost.dislikes?.includes(user._id) || false;
       
       // Update UI optimistically
       setPosts(prevPosts => {
@@ -678,9 +678,9 @@ export default function PostList({
             return {
               ...post,
               dislikes: isAlreadyDisliked
-                ? post.dislikes.filter(id => id !== user._id)
-                : [...post.dislikes, user._id],
-              likes: post.likes.filter(id => id !== user._id)
+                ? post.dislikes?.filter(id => id !== user._id) || []
+                : [...(post.dislikes || []), user._id],
+              likes: post.likes?.filter(id => id !== user._id) || []
             };
           }
           return post;
@@ -1304,7 +1304,7 @@ export default function PostList({
                   )}
                 </div>
                 {post.isMap ? (
-                  <MapCommentSection mapId={post._id} initialComments={post.comments} />
+                  <MapCommentSection mapId={post._id} initialComments={post.comments as any[]} />
                 ) : (
                   <CommentSection postId={post._id} initialComments={post.comments} />
                 )}

@@ -183,7 +183,24 @@ export default function GlobeWebBackground({ className = '' }: GlobeWebBackgroun
 
     // Define animation paths for the blue connections
     const createPaths = () => {
-      const paths = [];
+      // Define the path type
+      interface AnimationPath {
+        points: any[];
+        progress: number;
+        speed: number;
+        arcHeight: number;
+        color: {
+          h: number;
+          s: number;
+          l: number;
+          a: number;
+        };
+        startNode: any;
+        endNode: any;
+        active: boolean;
+      }
+      
+      const paths: AnimationPath[] = [];
       
       // Create paths between highlighted nodes to match the image
       const highlightedNodes = nodes.filter(node => node.isHighlighted);
