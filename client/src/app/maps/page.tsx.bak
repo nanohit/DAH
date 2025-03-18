@@ -5482,7 +5482,7 @@ export default function MapsPage() {
 
                                   // Direct access to Cloudflare worker URL
                                   if (bookDetailsModal?.bookData?.flibustaVariants?.[0]?.sourceId) {
-                                    window.location.href = `https://flibusta-proxy.alphy-flibusta.workers.dev/${bookDetailsModal.bookData.flibustaVariants[0].sourceId}/${format.format}`;
+                                    window.location.href = `${process.env.NEXT_PUBLIC_FLIBUSTA_PROXY_URL}/${bookDetailsModal.bookData.flibustaVariants[0].sourceId}/${format.format}`;
                                   } else {
                                     console.error('Missing source ID for download link');
                                     toast.error('Unable to generate download link: missing source data');
@@ -5535,7 +5535,7 @@ export default function MapsPage() {
                                   // Direct access to Cloudflare worker URL
                                   // Direct access to Cloudflare worker URL
                                   if (bookDetailsModal?.bookData?.flibustaVariants?.[0]?.sourceId) {
-                                    window.location.href = `https://flibusta-proxy.alphy-flibusta.workers.dev/${bookDetailsModal.bookData.flibustaVariants[0].sourceId}/${format.format}`;
+                                    window.location.href = `${process.env.NEXT_PUBLIC_FLIBUSTA_PROXY_URL}/${bookDetailsModal.bookData.flibustaVariants[0].sourceId}/${format.format}`;
                                   } else {
                                     console.error("Missing source ID for download link");
                                     toast.error("Unable to generate download link: missing source data");

@@ -1835,7 +1835,13 @@ const SearchModal = ({ onClose, onBookSubmit }: {
                                   return;
                                 }
 
-                                window.location.href = `https://flibusta-proxy.alphy-flibusta.workers.dev/${selectedVariant.id}/${format.format}`;
+                                if (!selectedVariant?.id) {
+                                  console.error('Selected variant ID not found');
+                                  toast.error('Download link not available');
+                                  return;
+                                }
+
+                                window.location.href = `${process.env.NEXT_PUBLIC_FLIBUSTA_PROXY_URL}/${selectedVariant.id}/${format.format}`;
                               } catch (err) {
                                 console.error('Error getting download link:', err);
                                 toast.error('Failed to get download link. Please try again.');
@@ -5444,16 +5450,13 @@ export default function MapsPage() {
                                     return;
                                   }
 
-                                  // Direct access to Cloudflare worker URL
-                                  if (!bookDetailsModal || !bookDetailsModal.bookData || !bookDetailsModal.bookData.flibustaVariants || 
-                                      !bookDetailsModal.bookData.flibustaVariants[0] || !bookDetailsModal.bookData.flibustaVariants[0].sourceId) {
-                                    console.error('Source ID not found in book data');
+                                  if (!selectedVariant?.id) {
+                                    console.error('Selected variant ID not found');
                                     toast.error('Download link not available');
                                     return;
                                   }
-                                  
-                                  const sourceId = bookDetailsModal.bookData.flibustaVariants[0].sourceId;
-                                  window.location.href = `https://flibusta-proxy.alphy-flibusta.workers.dev/${sourceId}/${format.format}`;
+
+                                  window.location.href = `${process.env.NEXT_PUBLIC_FLIBUSTA_PROXY_URL}/${selectedVariant.id}/${format.format}`;
                                 } catch (err) {
                                   console.error('Error getting download link:', err);
                                   toast.error('Failed to get download link. Please try again.');
@@ -5500,7 +5503,13 @@ export default function MapsPage() {
                                   }
                                   
                                   // Direct access to Cloudflare worker URL
-                                  window.location.href = `https://flibusta-proxy.alphy-flibusta.workers.dev/${bookDetailsModal.bookData.flibustaVariants![0].sourceId}/${format.format}`;
+                                  if (!bookDetailsModal?.bookData?.flibustaVariants?.[0]?.sourceId) {
+                                    console.error('Source ID not found in book data');
+                                    toast.error('Download link not available');
+                                    return;
+                                  }
+                                  
+                                  window.location.href = `${process.env.NEXT_PUBLIC_FLIBUSTA_PROXY_URL}/${bookDetailsModal.bookData.flibustaVariants[0].sourceId}/${format.format}`;
                                 } catch (err) {
                                   console.error('Error getting download link:', err);
                                   toast.error('Failed to get download link. Please try again.');

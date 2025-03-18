@@ -1847,7 +1847,13 @@ const SearchModal = ({ onClose, onBookSubmit }: {
                                   return;
                                 }
 
-                                window.location.href = `https://flibusta-proxy.alphy-flibusta.workers.dev/${selectedVariant.id}/${format.format}`;
+                                if (!selectedVariant?.id) {
+                                  console.error('Selected variant ID not found');
+                                  toast.error('Download link not available');
+                                  return;
+                                }
+
+                                window.location.href = `${process.env.NEXT_PUBLIC_FLIBUSTA_PROXY_URL}/${selectedVariant.id}/${format.format}`;
                               } catch (err) {
                                 console.error('Error getting download link:', err);
                                 toast.error('Failed to get download link. Please try again.');
@@ -4682,7 +4688,13 @@ export default function MapsPage() {
                                     return;
                                   }
 
-                                  window.location.href = `https://flibusta-proxy.alphy-flibusta.workers.dev/${selectedVariant.id}/${format.format}`;
+                                  if (!selectedVariant?.id) {
+                                    console.error('Selected variant ID not found');
+                                    toast.error('Download link not available');
+                                    return;
+                                  }
+
+                                  window.location.href = `${process.env.NEXT_PUBLIC_FLIBUSTA_PROXY_URL}/${selectedVariant.id}/${format.format}`;
                                 } catch (err) {
                                   console.error('Error getting download link:', err);
                                   toast.error('Failed to get download link. Please try again.');
@@ -4728,7 +4740,7 @@ export default function MapsPage() {
                                     }
                                     
                                     // Direct access to Cloudflare worker URL
-                                    window.location.href = `https://flibusta-proxy.alphy-flibusta.workers.dev/${variant.sourceId}/${format.format}`;
+                                    window.location.href = `${process.env.NEXT_PUBLIC_FLIBUSTA_PROXY_URL}/${variant.sourceId}/${format.format}`;
                                   } catch (err) {
                                     console.error('Error getting download link:', err);
                                     toast.error('Failed to get download link. Please try again.');
