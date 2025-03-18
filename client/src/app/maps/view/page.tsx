@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo, Suspense } from 'react';
 import Xarrow, { Xwrapper } from 'react-xarrows';
 import { toast } from 'react-hot-toast';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -85,8 +85,8 @@ const ScaledXarrow = ({
   );
 };
 
-// Simple view-only component based on the main editor
-export default function ViewMapPage() {
+// Create a content component to handle the search params
+function MapViewContent() {
   // State for map data
   const [elements, setElements] = useState<MapElement[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -851,5 +851,16 @@ export default function ViewMapPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// Wrap the view content in a Suspense boundary
+export default function ViewMapPage() {
+  return (
+    <Suspense fallback={<div className="w-full min-h-screen flex items-center justify-center">
+      <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+    </div>}>
+      <MapViewContent />
+    </Suspense>
   );
 } 
