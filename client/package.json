@@ -4,9 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "type-check": "tsc --noEmit",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "prebuild": "npm run type-check",
+    "pre-deploy-check": "ts-node src/scripts/pre-deploy-check.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

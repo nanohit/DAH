@@ -8,10 +8,17 @@ import useSocketConnection from '@/hooks/useSocketConnection';
 import SocketStatus from '@/components/SocketStatus';
 import { getUserMaps, SavedMap } from '@/utils/mapUtils';
 import api from '@/services/api';
+import { Post } from '@/components/PostList';
+
+// Define a combined item type for both posts and maps
+interface CombinedItem extends Omit<Post, 'isMap' | 'mapData'> {
+  isMap?: boolean;
+  mapData?: any;
+}
 
 export default function HomePage() {
   const { isAuthenticated } = useAuth();
-  const [combinedItems, setCombinedItems] = useState([]);
+  const [combinedItems, setCombinedItems] = useState<CombinedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [skip, setSkip] = useState(0);
   const [hasMore, setHasMore] = useState(true);
