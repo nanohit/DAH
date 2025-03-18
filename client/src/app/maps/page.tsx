@@ -1451,13 +1451,18 @@ const SearchModal = ({ onClose, onBookSubmit }: {
           // Get the base image URL without zoom parameter
           const baseImageUrl = item.volumeInfo.imageLinks?.thumbnail?.replace('http:', 'https:')?.split('&zoom=')[0];
           
+          // Try to get the highest quality image available
+          const highResImage = item.volumeInfo.imageLinks?.highResImage || 
+                             item.volumeInfo.imageLinks?.largeImage || 
+                             item.volumeInfo.imageLinks?.mediumImage;
+          
           return {
             key: item.id,
             title: item.volumeInfo.title,
             author_name: item.volumeInfo.authors,
             first_publish_year: item.volumeInfo.publishedDate ? parseInt(item.volumeInfo.publishedDate) : undefined,
             thumbnail: baseImageUrl ? `${baseImageUrl}&zoom=1` : undefined, // zoom=1 for small thumbnail
-            highResThumbnail: baseImageUrl ? `${baseImageUrl}&zoom=2` : undefined, // zoom=2 for higher resolution
+            highResThumbnail: highResImage || (baseImageUrl ? `${baseImageUrl}&zoom=3` : undefined), // Try highest quality available
             source: 'google' as const
           };
         }) || [],
