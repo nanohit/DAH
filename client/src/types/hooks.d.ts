@@ -1,4 +1,5 @@
-import { BookSearchResult } from './index';
+import { BookSearchResult } from '@/types';
+import { ApiSource } from '@/types/enums';
 
 declare module '@/hooks/useSearch' {
   export interface UseSearchReturn {
@@ -8,14 +9,17 @@ declare module '@/hooks/useSearch' {
     isLoading: boolean;
     currentPage: number;
     totalResults: number;
-    activeApi: 'openlib' | 'google' | 'alphy';
-    setActiveApi: (api: 'openlib' | 'google' | 'alphy') => void;
+    activeApi: ApiSource;
+    setActiveApi: (api: ApiSource) => void;
     error: string | null;
     displayAll: boolean;
     setDisplayAll: (display: boolean) => void;
     hasSearched: boolean;
     setHasSearched: (searched: boolean) => void;
-    handleSearch: (page: number) => Promise<void>;
+    handleSearch: (page?: number) => void;
+    clearSearchResults: () => void;
+    handlePagination: (page: number) => void;
+    handleApiChange: (api: ApiSource) => void;
     resultsPerPage: number;
   }
 

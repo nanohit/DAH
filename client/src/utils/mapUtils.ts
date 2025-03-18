@@ -594,4 +594,5 @@ export const getBookmarkedMaps = async (): Promise<SavedMap[]> => {
   }
 };
 
-export type { MapElement, Connection, MapData, SavedMap }; 
+export type { MapElement, Connection, MapData };
+// SavedMap is already exported as an interface above 

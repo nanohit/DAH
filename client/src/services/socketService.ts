@@ -1,4 +1,4 @@
-import { Manager, Socket as SocketType } from 'socket.io-client';
+import { Manager, type Socket } from 'socket.io-client';
 
 // Determine the API URL based on environment
 // Prioritize localhost in development, regardless of NEXT_PUBLIC_API_URL
@@ -18,8 +18,8 @@ if (process.env.NODE_ENV === 'development') {
  * Class to manage socket.io connections
  */
 class SocketService {
-  private socket: typeof SocketType | null = null;
-  private manager: typeof Manager | null = null;
+  private socket: any = null; // Using any to avoid type issues with Socket
+  private manager: any = null; // Using any to avoid type issues with Manager
   private serverUrl: string = API_URL;
   private connectionAttempts: number = 0;
   private isConnecting: boolean = false;
@@ -147,47 +147,49 @@ class SocketService {
     }
     
     try {
-      // Set up the manager (handles reconnection)
+      // Create a manager and socket
       this.manager = new Manager(this.serverUrl, {
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 10000,
         timeout: 20000,
         transports: isDevelopment 
-          ? ['polling', 'websocket'] // Prefer polling in development for better reliability
-          : ['websocket', 'polling'] // Prefer websocket in production for performance
+          ? ['polling', 'websocket'] 
+          : ['websocket', 'polling']
       });
       
-      // Create a socket instance
-      this.socket = this.manager.socket('/') as unknown as typeof SocketType;
+      // Create socket
+      this.socket = this.manager.socket('/');
       
       // Set up event listeners
-      this.socket.on('connect', () => {
-        if (this.shouldLog(20)) {
-          console.log('[SOCKET] Connected successfully');
-        }
-        this.isConnecting = false;
-        this.connectionAttempts = 0;
-        
-        // Rejoin any active post rooms after reconnection
-        this.activePostRooms.forEach(postId => {
-          this.joinPostRoom(postId);
+      if (this.socket) {
+        this.socket.on('connect', () => {
+          if (this.shouldLog(20)) {
+            console.log('[SOCKET] Connected successfully');
+          }
+          this.isConnecting = false;
+          this.connectionAttempts = 0;
+          
+          // Rejoin any active post rooms after reconnection
+          this.activePostRooms.forEach(postId => {
+            this.joinPostRoom(postId);
+          });
         });
-      });
-      
-      this.socket.on('disconnect', (reason: string) => {
-        if (this.shouldLog(20)) {
-          console.log(`[SOCKET] Disconnected: ${reason}`);
-        }
-        this.isConnecting = false;
-      });
-      
-      this.socket.on('connect_error', (err: Error) => {
-        if (this.shouldLog(20)) {
-          console.log(`[SOCKET] Connection error: ${err.message}`);
-        }
-        this.isConnecting = false;
-      });
+        
+        this.socket.on('disconnect', (reason: string) => {
+          if (this.shouldLog(20)) {
+            console.log(`[SOCKET] Disconnected: ${reason}`);
+          }
+          this.isConnecting = false;
+        });
+        
+        this.socket.on('connect_error', (err: Error) => {
+          if (this.shouldLog(20)) {
+            console.log(`[SOCKET] Connection error: ${err.message}`);
+          }
+          this.isConnecting = false;
+        });
+      }
     } catch (error) {
       console.error('[SOCKET] Error during connection setup:', error);
       this.isConnecting = false;

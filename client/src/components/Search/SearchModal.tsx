@@ -5,6 +5,7 @@ import { useMemo, useState, useEffect } from 'react';
 import api from '@/services/api';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
+import { ApiSource } from '@/types/enums';
 
 interface SearchModalProps {
   onClose: () => void;
@@ -628,13 +629,13 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
           <div className="flex gap-2 mt-2">
             <button
               onClick={() => {
-                setActiveApi('openlib');
+                setActiveApi(ApiSource.OpenLibrary);
                 setDisplayAll(false);
                 clearSearchResults();
                 setHasSearched(false);
               }}
               className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                activeApi === 'openlib'
+                activeApi === ApiSource.OpenLibrary
                   ? 'bg-white text-black'
                   : 'bg-[#080808] text-white hover:bg-gray-900 border border-gray-800'
               }`}
@@ -643,13 +644,13 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
             </button>
             <button
               onClick={() => {
-                setActiveApi('google');
+                setActiveApi(ApiSource.Google);
                 setDisplayAll(false);
                 clearSearchResults();
                 setHasSearched(false);
               }}
               className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                activeApi === 'google'
+                activeApi === ApiSource.Google
                   ? 'bg-white text-black'
                   : 'bg-[#080808] text-white hover:bg-gray-900 border border-gray-800'
               }`}
@@ -661,20 +662,20 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
             <div className="flex items-stretch">
               <button
                 onClick={() => {
-                  setActiveApi('alphy');
+                  setActiveApi(ApiSource.Alphy);
                   setDisplayAll(false);
                   clearSearchResults();
                   setHasSearched(false);
                 }}
                 className={`px-3 py-1 text-sm font-medium transition-colors ${
-                  activeApi === 'alphy'
+                  activeApi === ApiSource.Alphy
                     ? 'bg-white text-black'
                     : 'bg-[#080808] text-white hover:bg-gray-900 border border-gray-800'
-                } ${activeApi === 'alphy' ? 'rounded-l-md border-r-0' : 'rounded-md'}`}
+                } ${activeApi === ApiSource.Alphy ? 'rounded-l-md border-r-0' : 'rounded-md'}`}
               >
                 Alphy
               </button>
-              {activeApi === 'alphy' && (
+              {activeApi === ApiSource.Alphy && (
                 <button
                   onClick={() => {
                     const newDisplayAll = !displayAll;
@@ -732,7 +733,7 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
                     <div>
                       <h3 className="text-base font-semibold text-white">
                         {book.title}
-                        {book.source === 'alphy' && (
+                        {book.source === ApiSource.Alphy && (
                           <span className="ml-2 text-xs text-green-500 font-normal">
                             In database
                           </span>
@@ -755,7 +756,7 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
               {/* Suggestions for different APIs */}
               {searchTerm.trim() && hasSearched && searchResults.length === 0 && (
                 <div className="text-center py-4 text-sm text-gray-600">
-                  {(activeApi === 'openlib' || activeApi === 'alphy') && (
+                  {(activeApi === ApiSource.OpenLibrary || activeApi === ApiSource.Alphy) && (
                     "Haven't found what you were looking for? Switch to Google Books."
                   )}
                 </div>

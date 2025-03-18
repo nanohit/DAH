@@ -1,21 +1,24 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import api from '@/services/api';
 import { BookSearchResult } from '@/types';
+import { ApiSource } from '@/types/enums';
 
 interface SearchResults {
   books: BookSearchResult[];
   total: number;
 }
 
-export const useSearch = () => {
-  const [searchTerm, setSearchTerm] = useState('');
+// Define implementation without exporting
+function useSearchImplementation() {
+  const [searchTerm, setSearchTerm] = useState<string>('');
   const [searchResults, setSearchResults] = useState<BookSearchResult[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalResults, setTotalResults] = useState(0);
-  const [activeApi, setActiveApi] = useState<'openlib' | 'google' | 'alphy'>('openlib');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalResults, setTotalResults] = useState<number>(0);
+  const [activeApi, setActiveApi] = useState<ApiSource>(ApiSource.OpenLibrary);
   const [error, setError] = useState<string | null>(null);
-  const [displayAll, setDisplayAll] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
+  const [displayAll, setDisplayAll] = useState<boolean>(false);
+  const [hasSearched, setHasSearched] = useState<boolean>(false);
   const resultsPerPage = 10;
 
   const searchCache = new Map<string, { timestamp: number; results: any }>();
@@ -287,6 +290,14 @@ export const useSearch = () => {
     setTotalResults(0);
   };
 
+  const handlePagination = (page: number) => {
+    handleSearch(page);
+  };
+
+  const handleApiChange = (api: ApiSource) => {
+    setActiveApi(api);
+  };
+
   return {
     searchTerm,
     setSearchTerm,
@@ -295,14 +306,17 @@ export const useSearch = () => {
     currentPage,
     totalResults,
     activeApi,
-    setActiveApi,
     error,
     displayAll,
-    setDisplayAll,
     hasSearched,
-    setHasSearched,
     handleSearch,
     clearSearchResults,
+    handlePagination,
+    handleApiChange,
+    setDisplayAll,
     resultsPerPage
   };
-}; 
+}
+
+// Use default export instead of named export to avoid conflict with declaration
+export default useSearchImplementation; 

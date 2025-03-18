@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { BookSearchResult } from '@/types';
 
-export const useBookDetails = () => {
+// Define useBookDetails implementation without exporting
+function useBookDetailsImplementation() {
   const [selectedBook, setSelectedBook] = useState<BookSearchResult | null>(null);
   const [confirmedBook, setConfirmedBook] = useState<BookSearchResult | null>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
@@ -87,4 +88,7 @@ export const useBookDetails = () => {
     handleBackToSearch,
     handleSubmit
   };
-}; 
+}
+
+// Use default export instead of named export to avoid conflict with declaration
+export default useBookDetailsImplementation; 
