@@ -1,5 +1,5 @@
 import { useSearch } from '@/hooks/useSearch';
-import useBookDetails from '@/hooks/useBookDetails';
+import { useBookDetails } from '@/hooks/useBookDetails';
 import { BookSearchResult } from '@/types';
 import { useMemo, useState, useEffect } from 'react';
 import api from '@/services/api';

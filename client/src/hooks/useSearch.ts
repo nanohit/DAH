@@ -8,8 +8,8 @@ interface SearchResults {
   total: number;
 }
 
-// Define implementation without exporting
-function useSearchImplementation() {
+// Create the hook implementation
+function useSearch() {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [searchResults, setSearchResults] = useState<BookSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -306,17 +306,19 @@ function useSearchImplementation() {
     currentPage,
     totalResults,
     activeApi,
+    setActiveApi,
     error,
     displayAll,
+    setDisplayAll,
     hasSearched,
+    setHasSearched,
     handleSearch,
     clearSearchResults,
     handlePagination,
     handleApiChange,
-    setDisplayAll,
     resultsPerPage
   };
 }
 
-// Use default export instead of named export to avoid conflict with declaration
-export default useSearchImplementation; 
+// Use CommonJS style export to avoid conflicts with declaration file
+module.exports = { useSearch }; 
