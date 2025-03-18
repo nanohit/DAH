@@ -14,6 +14,10 @@ const CommentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Book'
   },
+  map: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Map'
+  },
   content: {
     type: String,
     required: [true, 'Please add a comment'],
@@ -44,10 +48,16 @@ const CommentSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Ensure a comment belongs to either a post or a book, but not both
+// Ensure a comment belongs to either a post, book, or map, but not multiple
 CommentSchema.pre('validate', function(next) {
-  if ((this.post && this.book) || (!this.post && !this.book)) {
-    next(new Error('Comment must belong to either a post or a book, but not both'));
+  const hasPost = this.post != null;
+  const hasBook = this.book != null;
+  const hasMap = this.map != null;
+  
+  const sourceCount = (hasPost ? 1 : 0) + (hasBook ? 1 : 0) + (hasMap ? 1 : 0);
+  
+  if (sourceCount !== 1) {
+    next(new Error('Comment must belong to exactly one of: post, book, or map'));
   } else {
     next();
   }

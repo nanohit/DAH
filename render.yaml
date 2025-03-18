@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: dah-backend
+    name: dah
     env: node
     plan: free
     buildCommand: npm install
@@ -12,4 +12,12 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: VK_TOKEN
+        sync: false
+      - key: VK_API_VERSION
+        value: 5.199
+      - key: IMGBB_API_KEY
+        sync: false
+      - key: FLIBUSTA_PROXY_URL
+        value: https://flibusta-proxy.alphy-flibusta.workers.dev
     healthCheckPath: /api/auth/test 

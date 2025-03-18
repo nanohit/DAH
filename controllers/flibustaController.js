@@ -311,7 +311,7 @@ exports.getVariantDetails = asyncHandler(async (req, res) => {
       await flibustaService.verifyDownloadLink(id, format);
       availableFormats.push({
         format,
-        downloadUrl: `https://flibusta-proxy.alphy-flibusta.workers.dev/${id}/${format}`
+        downloadUrl: `${process.env.FLIBUSTA_PROXY_URL}/${id}/${format}`
       });
     } catch (error) {
       // Format not available, skip it
@@ -353,7 +353,7 @@ exports.getDownloadLink = asyncHandler(async (req, res) => {
     await flibustaService.verifyDownloadLink(id, format);
 
     // Use the Cloudflare Worker URL
-    const downloadUrl = `https://flibusta-proxy.alphy-flibusta.workers.dev/${id}/${format}`;
+    const downloadUrl = `${process.env.FLIBUSTA_PROXY_URL}/${id}/${format}`;
 
     // Set CORS headers
     res.header('Access-Control-Allow-Origin', '*');

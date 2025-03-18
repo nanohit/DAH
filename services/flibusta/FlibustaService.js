@@ -289,7 +289,7 @@ class FlibustaService {
       }
 
       // Cloudflare Worker base URL
-      const workerUrl = 'https://flibusta-proxy.alphy-flibusta.workers.dev';
+      const workerUrl = process.env.FLIBUSTA_PROXY_URL || 'https://flibusta-proxy.alphy-flibusta.workers.dev';
 
       bookList.find('li').each((_, element) => {
         const $el = $(element);

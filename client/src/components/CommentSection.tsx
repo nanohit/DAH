@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { formatDate } from '@/utils/date';
 import FormatToolbar from './FormatToolbar';
@@ -8,7 +8,8 @@ import ReactMarkdown from 'react-markdown';
 import CommentInput from './CommentInput';
 import Link from 'next/link';
 import UserBadge from './UserBadge';
-import api from '@/services/auth';
+import api from '@/services/api';
+import socketService from '@/services/socketService';
 
 export interface User {
   _id: string;
@@ -20,10 +21,13 @@ export interface Comment {
   content: string;
   user: User;
   createdAt: string;
-  replies: Comment[];
   parentComment: string | null;
+  replies?: Comment[];
   likes: string[];
   dislikes: string[];
+  isOptimistic?: boolean;
+  clientHandled?: boolean;
+  post: string;
 }
 
 export interface CommentSectionProps {
@@ -31,8 +35,27 @@ export interface CommentSectionProps {
   initialComments?: Comment[];
 }
 
+// TypeScript interfaces for Socket Events
+interface CommentCreatedEvent {
+  comment: Comment;
+  parentCommentId?: string;
+}
+
+interface CommentUpdatedEvent {
+  _id: string;
+  content: string;
+  post: string;
+  [key: string]: any;
+}
+
+interface CommentDeletedEvent {
+  commentId: string;
+  parentCommentId?: string;
+}
+
 export default function CommentSection({ postId, initialComments = [] }: CommentSectionProps) {
   const [comments, setComments] = useState<Comment[]>(initialComments);
+  const commentsRef = useRef<Comment[]>(initialComments);
   const [newComment, setNewComment] = useState('');
   const [newReply, setNewReply] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -45,6 +68,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
   const [showMainFormatToolbar, setShowMainFormatToolbar] = useState(false);
   const [showReplyFormatToolbar, setShowReplyFormatToolbar] = useState(false);
   const [showEditFormatToolbar, setShowEditFormatToolbar] = useState(false);
+  const [commentsCount, setCommentsCount] = useState(0);
   const { user } = useAuth();
   const mainCommentInputRef = useRef<HTMLTextAreaElement>(null);
   const replyInputRef = useRef<HTMLTextAreaElement>(null);
@@ -92,29 +116,72 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
   };
 
   const fetchComments = async () => {
+    // Skip fetching comments for optimistic posts (they don't exist in DB yet)
+    if (postId.startsWith('temp-')) {
+      return [];
+    }
+    
     try {
       const response = await api.get(`/api/comments/post/${postId}`);
-      return response.data;
+      
+      // Sort comments by createdAt date, newest first
+      const sortedComments = response.data.sort((a: Comment, b: Comment) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      
+      // Sort all levels of nested replies
+      return sortedComments.map(sortCommentRepliesRecursively);
     } catch (error) {
       console.error('Error fetching comments:', error);
-      throw new Error('Failed to fetch comments');
+      // Return empty array instead of throwing error
+      return [];
     }
+  };
+  
+  // Helper function to sort all replies recursively
+  const sortCommentRepliesRecursively = (comment: Comment): Comment => {
+    if (!comment.replies || comment.replies.length === 0) {
+      return comment;
+    }
+    
+    // Sort immediate replies by newest first
+    const sortedReplies = comment.replies
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map(sortCommentRepliesRecursively); // Apply recursively to all nested replies
+      
+    return {
+      ...comment,
+      replies: sortedReplies
+    };
   };
 
   useEffect(() => {
-    fetchComments().then(setComments);
-  }, [postId]);
+    // If we already have initial comments, use those
+    if (initialComments?.length > 0) {
+      // Make sure initialComments are also sorted consistently
+      const sortedInitialComments = [...initialComments].sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      ).map(sortCommentRepliesRecursively);
+      
+      setComments(sortedInitialComments);
+    } else {
+      // Otherwise fetch comments (if not an optimistic post)
+      fetchComments().then(setComments);
+    }
+  }, [postId, initialComments]);
 
-  const updateRepliesRecursively = (comments: Comment[], parentId: string, newReply: Comment): Comment[] => {
+  const updateRepliesRecursively = (comments: Comment[], parentId: string, newReply: Comment, addAtBeginning: boolean = false): Comment[] => {
     return comments.map(comment => {
       if (comment._id === parentId) {
         return {
           ...comment,
-          replies: [...(comment.replies || []), newReply]
+          replies: addAtBeginning 
+            ? [newReply, ...(comment.replies || [])]
+            : [...(comment.replies || []), newReply]
         };
       }
       if (comment.replies && comment.replies.length > 0) {
-        const updatedReplies = updateRepliesRecursively(comment.replies, parentId, newReply);
+        const updatedReplies = updateRepliesRecursively(comment.replies, parentId, newReply, addAtBeginning);
         if (updatedReplies !== comment.replies) {
           return {
             ...comment,
@@ -162,53 +229,251 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     if (!content.trim()) return;
 
     try {
-      await api.post(`/api/comments/post/${postId}`, {
-        content,
-        parentCommentId: parentId
-      });
+      // Only log ~10% of comment submissions to reduce noise
+      const shouldLogCommentSubmission = Math.random() < 0.1;
+      if (shouldLogCommentSubmission) {
+        console.log(`[CommentSection] Submitting ${parentId ? 'reply' : 'new comment'} for post ${postId}`);
+      }
       
+      // Create optimistic comment for instant UI update
+      const optimisticId = `temp-${Date.now()}`;
+      const optimisticComment: Comment = {
+        _id: optimisticId,
+        content,
+        user: {
+          _id: user._id,
+          username: user.username,
+          badge: user.badge
+        } as User & { badge?: string },
+        createdAt: new Date().toISOString(),
+        replies: [],
+        parentComment: parentId || null,
+        likes: [],
+        dislikes: [],
+        isOptimistic: true,
+        post: postId
+      };
+      
+      if (shouldLogCommentSubmission) {
+        console.log(`[CommentSection] Created optimistic comment with ID: ${optimisticId}`);
+      }
+      
+      // Update UI immediately
       if (parentId) {
-        const formattedComment = {
-          ...comments.find(c => c._id === parentId)!,
-          replies: [],
-          parentComment: parentId
-        };
-        
+        // Add reply optimistically
         setBranchCollapsed(prev => ({
           ...prev,
           [parentId]: false
         }));
         
-        const refreshedComments = await fetchComments();
-        setComments(refreshedComments);
+        // Update comments with the new reply
+        setComments(prevComments => {
+          const updatedComments = prevComments.map(comment => {
+            if (comment._id === parentId) {
+              return {
+                ...comment,
+                replies: [optimisticComment, ...(comment.replies || [])]
+              };
+            }
+            
+            // Check nested replies
+            if (comment.replies && comment.replies.length > 0) {
+              return {
+                ...comment,
+                replies: updateRepliesRecursively(comment.replies, parentId, optimisticComment, true)
+              };
+            }
+            
+            return comment;
+          });
+          if (shouldLogCommentSubmission) {
+            console.log(`[CommentSection] Updated comments with optimistic reply`);
+          }
+          return updatedComments;
+        });
         
+        // Clear input field immediately
         setNewReply('');
+        // Close the reply field immediately
+        setReplyingTo(null);
       } else {
-        const formattedComment = {
-          ...comments.find(c => c._id === parentId)!,
-          replies: []
-        };
-        setComments(prevComments => [formattedComment, ...prevComments]);
+        // Add top-level comment optimistically
+        setComments(prevComments => {
+          const updatedComments = [optimisticComment, ...prevComments];
+          if (shouldLogCommentSubmission) {
+            console.log(`[CommentSection] Updated comments with optimistic top-level comment`);
+          }
+          return updatedComments;
+        });
         setNewComment('');
         setShowAllComments(true);
       }
-
-      setReplyingTo(null);
+      
+      // Make the actual API request
+      if (shouldLogCommentSubmission) {
+        console.log(`[CommentSection] Sending API request to create comment`);
+      }
+      const response = await api.post(`/api/comments/post/${postId}`, {
+        content,
+        parentCommentId: parentId
+      });
+      
+      // Get the real comment data from the response
+      const realComment = response.data;
+      if (shouldLogCommentSubmission) {
+        console.log(`[CommentSection] Received real comment with ID: ${realComment._id}`);
+      }
+      
+      // Add a client-side flag to identify this comment in our state
+      // This will help avoid duplicates from socket events
+      const localRealComment = {
+        ...realComment,
+        clientHandled: true // Flag to indicate we've processed this server-side comment
+      };
+      
+      // CRITICAL: We're going to replace our optimistic comment with the real one
+      // But we need to make sure we're not going to get duplicates from the socket event
+      
+      // Use a separate function to replace optimistic comment without adding duplicates
+      const safelyReplaceOptimisticComment = () => {
+        if (parentId) {
+          // For replies, replace the optimistic comment with the real one
+          setComments(prevComments => {
+            return prevComments.map(comment => {
+              if (comment._id === parentId) {
+                // Find and replace the optimistic comment in replies
+                const updatedReplies = comment.replies ? 
+                  comment.replies.map(reply => 
+                    reply._id === optimisticId ? localRealComment : reply
+                  ) : [];
+                
+                return {
+                  ...comment,
+                  replies: updatedReplies
+                };
+              }
+              
+              // Check nested replies
+              if (comment.replies && comment.replies.length > 0) {
+                return {
+                  ...comment,
+                  replies: replaceCommentRecursively(comment.replies, optimisticId, localRealComment)
+                };
+              }
+              
+              return comment;
+            });
+          });
+        } else {
+          // For top-level comments, replace the optimistic one
+          setComments(prevComments => 
+            prevComments.map(comment => 
+              comment._id === optimisticId ? localRealComment : comment
+            )
+          );
+        }
+      };
+      
+      // Perform the replacement
+      safelyReplaceOptimisticComment();
+      
+      if (shouldLogCommentSubmission) {
+        console.log(`[CommentSection] Successfully replaced optimistic comment with real one`);
+      }
     } catch (error) {
       console.error('Error posting comment:', error);
+      // Remove optimistic comment on error
+      if (parentId) {
+        setComments(prevComments => {
+          return prevComments.map(comment => {
+            // Remove from direct replies
+            if (comment._id === parentId) {
+              return {
+                ...comment,
+                replies: (comment.replies || []).filter(reply => !reply.isOptimistic)
+              };
+            }
+            
+            // Check nested replies
+            if (comment.replies && comment.replies.length > 0) {
+              return {
+                ...comment,
+                replies: removeOptimisticCommentsRecursively(comment.replies)
+              };
+            }
+            
+            return comment;
+          });
+        });
+      } else {
+        // Remove top-level optimistic comment
+        setComments(prevComments => prevComments.filter(comment => !comment.isOptimistic));
+      }
+      
+      // Show error to user
+      setError('Failed to post comment. Please try again.');
+      setTimeout(() => setError(null), 3000);
     }
+  };
+  
+  // Helper function to replace an optimistic comment with the real one in a nested structure
+  const replaceCommentRecursively = (comments: Comment[], optimisticId: string, realComment: Comment): Comment[] => {
+    return comments.map(comment => {
+      if (comment._id === optimisticId) {
+        return realComment;
+      }
+      
+      if (comment.replies && comment.replies.length > 0) {
+        return {
+          ...comment,
+          replies: replaceCommentRecursively(comment.replies, optimisticId, realComment)
+        };
+      }
+      
+      return comment;
+    });
+  };
+  
+  // Helper function to remove all optimistic comments in a nested structure
+  const removeOptimisticCommentsRecursively = (comments: Comment[]): Comment[] => {
+    // Filter out optimistic comments at this level
+    return comments.filter(comment => !comment.isOptimistic).map(comment => {
+      // For remaining comments, recursively filter their replies
+      if (comment.replies && comment.replies.length > 0) {
+        return {
+          ...comment,
+          replies: removeOptimisticCommentsRecursively(comment.replies)
+        };
+      }
+      return comment;
+    });
   };
 
   const handleEditComment = async (commentId: string) => {
     if (!user || !editContent.trim()) return;
 
     try {
-      await api.patch(`/api/comments/${commentId}`, { content: editContent });
+      // Store original comment content in case of error
+      const originalComment = comments.find(c => c._id === commentId) || 
+                              comments.flatMap(c => c.replies || []).find(r => r._id === commentId);
+      
+      // Update UI optimistically
+      setComments(prevComments => 
+        updateCommentContentRecursively(prevComments, commentId, editContent)
+      );
+      
+      // Clear edit state
       setEditingComment(null);
       setEditContent('');
-      fetchComments();
+      
+      // Make the actual API call
+      await api.patch(`/api/comments/${commentId}`, { content: editContent });
     } catch (error) {
       console.error('Error editing comment:', error);
+      alert('Failed to edit comment. Please try again.');
+      
+      // Restore original content on error
+      fetchComments().then(setComments);
     }
   };
 
@@ -231,59 +496,126 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
   const handleDeleteComment = async (commentId: string, parentId?: string) => {
     if (!user || !window.confirm('Are you sure you want to delete this comment?')) return;
 
+    // Store comment for potential restoration
+    const commentToDelete = findCommentRecursively(comments, commentId);
+    
     try {
-      await api.delete(`/api/comments/${commentId}`);
-      
+      // Remove from UI optimistically
       if (parentId) {
         setComments(prevComments => deleteReplyRecursively(prevComments, commentId));
       } else {
         setComments(prevComments => prevComments.filter(c => c._id !== commentId));
       }
+      
+      // Make the actual API call
+      await api.delete(`/api/comments/${commentId}`);
     } catch (error) {
       console.error('Error deleting comment:', error);
+      alert('Failed to delete comment. Please try again.');
+      
+      // Restore deleted comment on error
+      fetchComments().then(setComments);
     }
+  };
+
+  // Helper function to find a comment anywhere in the comment tree
+  const findCommentRecursively = (comments: Comment[], commentId: string): Comment | null => {
+    for (const comment of comments) {
+      if (comment._id === commentId) {
+        return comment;
+      }
+      
+      if (comment.replies && comment.replies.length > 0) {
+        const found = findCommentRecursively(comment.replies, commentId);
+        if (found) return found;
+      }
+    }
+    
+    return null;
   };
 
   const handleLikeComment = async (commentId: string) => {
     if (!user) return;
+    
     try {
+      // Find the comment to like
+      const targetComment = findCommentRecursively(comments, commentId);
+      if (!targetComment) return;
+      
+      // Check if already liked
+      const isAlreadyLiked = targetComment.likes.includes(user._id);
+      
+      // Update UI optimistically
+      setComments(prevComments => 
+        updateCommentsRecursively(prevComments, commentId, comment => ({
+          ...comment,
+          likes: isAlreadyLiked
+            ? comment.likes.filter(id => id !== user._id)
+            : [...comment.likes, user._id],
+          dislikes: comment.dislikes.filter(id => id !== user._id)
+        }))
+      );
+      
+      // Make the actual API call
       await api.post(`/api/comments/${commentId}/like`);
-      setComments(comments.map(comment => {
-        if (comment._id === commentId) {
-          return {
-            ...comment,
-            likes: comment.likes.includes(user._id)
-              ? comment.likes.filter(id => id !== user._id)
-              : [...comment.likes, user._id],
-            dislikes: comment.dislikes.filter(id => id !== user._id)
-          };
-        }
-        return comment;
-      }));
     } catch (error) {
       console.error('Error liking comment:', error);
+      // Revert on error
+      fetchComments().then(setComments);
     }
   };
 
   const handleDislikeComment = async (commentId: string) => {
     if (!user) return;
+    
     try {
+      // Find the comment to dislike
+      const targetComment = findCommentRecursively(comments, commentId);
+      if (!targetComment) return;
+      
+      // Check if already disliked
+      const isAlreadyDisliked = targetComment.dislikes.includes(user._id);
+      
+      // Update UI optimistically
+      setComments(prevComments => 
+        updateCommentsRecursively(prevComments, commentId, comment => ({
+          ...comment,
+          dislikes: isAlreadyDisliked
+            ? comment.dislikes.filter(id => id !== user._id)
+            : [...comment.dislikes, user._id],
+          likes: comment.likes.filter(id => id !== user._id)
+        }))
+      );
+      
+      // Make the actual API call
       await api.post(`/api/comments/${commentId}/dislike`);
-      setComments(comments.map(comment => {
-        if (comment._id === commentId) {
-          return {
-            ...comment,
-            dislikes: comment.dislikes.includes(user._id)
-              ? comment.dislikes.filter(id => id !== user._id)
-              : [...comment.dislikes, user._id],
-            likes: comment.likes.filter(id => id !== user._id)
-          };
-        }
-        return comment;
-      }));
     } catch (error) {
       console.error('Error disliking comment:', error);
+      // Revert on error
+      fetchComments().then(setComments);
     }
+  };
+
+  // Helper function to update a comment anywhere in the tree
+  const updateCommentsRecursively = (
+    comments: Comment[], 
+    commentId: string, 
+    updateFn: (comment: Comment) => Comment
+  ): Comment[] => {
+    return comments.map(comment => {
+      if (comment._id === commentId) {
+        return updateFn(comment);
+      }
+      
+      if (comment.replies && comment.replies.length > 0) {
+        return {
+          ...comment,
+          replies: updateCommentsRecursively(comment.replies, commentId, updateFn)
+        };
+      }
+      
+      return comment;
+    });
   };
 
   const renderComment = (comment: Comment, depth: number = 0) => {
@@ -475,7 +807,304 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     );
   };
 
-  const totalComments = countTotalComments(comments);
+  // Update comments ref whenever comments state changes
+  useEffect(() => {
+    commentsRef.current = comments;
+  }, [comments]);
+
+  // Socket.io event listeners
+  useEffect(() => {
+    if (!postId) return;
+    
+    // Skip socket registration if real-time updates are disabled
+    if (!socketService.isRealTimeEnabled()) {
+      if (Math.random() < 0.05) { // Only log 5% of the time
+        console.log('[CommentSection] Real-time updates are disabled, skipping socket setup');
+      }
+      return;
+    }
+
+    // Only log 5% of setup operations to reduce noise
+    const shouldLogSetup = Math.random() < 0.05;
+    if (shouldLogSetup) {
+      console.log(`[CommentSection] Setting up socket listeners for post ${postId}`);
+    }
+    
+    // Make sure socket is connected and join the post room
+    socketService.connect();
+    
+    // Function to ensure we're joined to the room
+    const ensureRoomJoined = () => {
+      if (socketService.isConnected()) {
+        socketService.joinPostRoom(postId);
+        // Extremely low log frequency (1%)
+        if (Math.random() < 0.01) {
+          console.log(`[CommentSection] Room join command sent for post ${postId}`);
+        }
+      } else {
+        if (shouldLogSetup) {
+          console.log(`[CommentSection] Socket not connected, will try again soon`);
+        }
+        socketService.connect();
+      }
+    };
+    
+    // Join immediately
+    ensureRoomJoined();
+    
+    // Join again after a delay to ensure connection is established
+    const joinTimer = setTimeout(ensureRoomJoined, 1000);
+    
+    // Set up a periodic check to make sure we stay in the room
+    const periodicJoinCheck = setInterval(ensureRoomJoined, 30000);
+    
+    // Test socket connection by sending a ping after joining the room
+    const pingTimer = setTimeout(() => {
+      socketService.ping().then(isConnected => {
+        if (shouldLogSetup) {
+          console.log(`[CommentSection] Ping test: ${isConnected ? 'Connected' : 'Not connected'}`);
+        }
+        
+        // If not connected, try to reconnect
+        if (!isConnected) {
+          if (shouldLogSetup) {
+            console.log(`[CommentSection] Reconnecting after failed ping test`);
+          }
+          socketService.reconnect();
+          setTimeout(ensureRoomJoined, 1000);
+        }
+      });
+    }, 2000);
+    
+    // Only log debug info 1% of the time
+    if (Math.random() < 0.01 && comments.length > 0) {
+      console.log(`[CommentSection] Tracking ${comments.length} comments (first ID: ${comments[0]._id})`);
+    }
+
+    // Register event handlers DIRECTLY without saving references
+    // This ensures proper closure handling and prevents stale closures
+    socketService.on('comment-created', (data: CommentCreatedEvent) => {
+      // Only log critical comment events 
+      if (Math.random() < 0.05) {
+        console.log('[CommentSection] Received comment-created event for post:', postId);
+      }
+      
+      const { comment, parentCommentId } = data;
+      
+      // Add debugging for comment structure
+      if (!comment || typeof comment !== 'object') {
+        console.error('[CommentSection] Invalid comment data received:', data);
+        return;
+      }
+      
+      // Only process if this comment belongs to our post
+      if (comment.post !== postId) {
+        if (Math.random() < 0.1) {
+          console.log(`[CommentSection] Comment is for different post, skipping`);
+        }
+        return;
+      }
+      
+      // IMPORTANT: Skip if we were the original creator
+      // Check if this is your own comment that you just created
+      const isOwnComment = user && comment.user && user._id === comment.user._id;
+      
+      // Get current comments from ref to avoid stale closure issues
+      const currentComments = commentsRef.current;
+      
+      // Extra check for optimistic comments (fix duplication)
+      // We need to also check if this is a reply or a top-level comment
+      let isDuplicate = false;
+      
+      if (parentCommentId) {
+        // For replies, check if we have an optimistic version of this in any parent comment's replies
+        const duplicateCheck = (comments: Comment[]): boolean => {
+          for (const c of comments) {
+            // Check if any reply in this comment has the same content from the same user
+            if (c._id === parentCommentId && c.replies) {
+              const hasOptimisticVersion = c.replies.some(reply => 
+                reply.user._id === comment.user._id && 
+                reply.content === comment.content &&
+                // Either it's already the same comment or it's an optimistic version
+                (reply._id === comment._id || reply.isOptimistic)
+              );
+              if (hasOptimisticVersion) {
+                return true;
+              }
+            }
+            
+            // Check nested replies
+            if (c.replies && c.replies.length > 0) {
+              if (duplicateCheck(c.replies)) {
+                return true;
+              }
+            }
+          }
+          return false;
+        };
+        
+        isDuplicate = duplicateCheck(currentComments);
+      } else {
+        // For top-level comments, check if we have an optimistic version
+        isDuplicate = currentComments.some(c => 
+          // Either exact ID match or similar content from same user (likely optimistic)
+          c._id === comment._id || 
+          (c.isOptimistic && c.user._id === comment.user._id && c.content === comment.content)
+        );
+      }
+      
+      if (isDuplicate) {
+        if (Math.random() < 0.05) {
+          console.log('[CommentSection] Duplicate comment or optimistic version detected, skipping');
+        }
+        return;
+      }
+      
+      // Skip if this comment is flagged as already handled by this client
+      if (comment.clientHandled) {
+        if (Math.random() < 0.05) {
+          console.log('[CommentSection] Comment was already handled by this client, skipping');
+        }
+        return;
+      }
+      
+      // Update comments array to include the new comment
+      if (parentCommentId) {
+        // It's a reply to another comment
+        if (Math.random() < 0.1) {
+          console.log(`[CommentSection] Adding reply to parent comment: ${parentCommentId}`);
+        }
+        setComments(prevComments => {
+          return prevComments.map(c => {
+            if (c._id === parentCommentId) {
+              return {
+                ...c,
+                replies: [comment, ...(c.replies || [])]
+              };
+            }
+            
+            // Check nested replies
+            if (c.replies && c.replies.length > 0) {
+              return {
+                ...c,
+                replies: updateRepliesRecursively(c.replies, parentCommentId, comment, true)
+              };
+            }
+            
+            return c;
+          });
+        });
+      } else {
+        // It's a top-level comment
+        if (Math.random() < 0.1) {
+          console.log('[CommentSection] Adding top-level comment');
+        }
+        setComments(prev => {
+          const newComments = [comment, ...prev];
+          return newComments;
+        });
+      }
+      
+      // Always update the count - this is what the user will see when comments are collapsed
+      setCommentsCount(prev => prev + 1);
+      
+      // Only auto-expand the comments for the user who created the comment, 
+      // based on matching the current user's ID
+      const shouldAutoExpand = isOwnComment && !showAllComments;
+      if (shouldAutoExpand) {
+        console.log('[CommentSection] Auto-expanding comments for comment author');
+        setShowAllComments(true);
+      }
+    });
+    
+    socketService.on('comment-updated', (updatedComment: CommentUpdatedEvent) => {
+      // Only log 5% of comment update events
+      if (Math.random() < 0.05) {
+        console.log('[CommentSection] Comment updated:', updatedComment._id);
+      }
+      
+      // Only process if this comment belongs to our post
+      if (updatedComment.post !== postId) return;
+      
+      setComments(prevComments => updateCommentsRecursively(
+        prevComments, 
+        updatedComment._id, 
+        () => updatedComment as Comment
+      ));
+    });
+    
+    socketService.on('comment-deleted', (data: CommentDeletedEvent) => {
+      // Only log 5% of comment deletion events
+      if (Math.random() < 0.05) {
+        console.log('[CommentSection] Comment deleted:', data.commentId);
+      }
+      
+      const { commentId, parentCommentId } = data;
+      
+      if (parentCommentId) {
+        // It's a reply
+        setComments(prevComments => deleteReplyRecursively(prevComments, commentId));
+      } else {
+        // Top-level comment
+        setComments(prevComments => prevComments.filter(c => c._id !== commentId));
+      }
+      
+      // Update the count
+      setCommentsCount(prev => Math.max(0, prev - 1));
+    });
+    
+    // Add special debug listener
+    socketService.on('connect', () => {
+      // Log reconnections only 10% of the time
+      if (Math.random() < 0.1) {
+        console.log('[CommentSection] Socket reconnected, rejoining room:', postId);
+      }
+      socketService.joinPostRoom(postId);
+    });
+    
+    return () => {
+      // Only log 10% of cleanup operations to reduce noise
+      const shouldLogCleanup = Math.random() < 0.1;
+      
+      if (shouldLogCleanup) {
+        console.log(`[CommentSection] Cleaning up listeners for post ${postId}`);
+      }
+      
+      socketService.leavePostRoom(postId);
+      
+      // Remove ALL handlers for these events (with reduced logging via socketService)
+      socketService.off('comment-created');
+      socketService.off('comment-updated');
+      socketService.off('comment-deleted');
+      socketService.off('connect');
+      
+      // Clear all timers
+      clearTimeout(joinTimer);
+      clearTimeout(pingTimer);
+      clearInterval(periodicJoinCheck);
+    };
+  }, [postId, user?._id]); // Only depend on postId and user._id - comments state is accessed from closure
+
+  // Calculate totalComments
+  const totalComments = useMemo(() => {
+    return countTotalComments(comments);
+  }, [comments]);
+
+  // Update commentsCount whenever totalComments changes
+  useEffect(() => {
+    setCommentsCount(totalComments);
+  }, [totalComments]);
+
+  // Update the toggle text based on comment count
+  const toggleText = useMemo(() => {
+    if (commentsCount === 0) {
+      return "Be the first to comment";
+    } else if (commentsCount === 1) {
+      return `Show 1 comment`;
+    } else {
+      return `Show ${commentsCount} comments`;
+    }
+  }, [commentsCount]);
 
   return (
     <div className="border-t border-gray-200">
@@ -497,7 +1126,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
                 value={newComment}
                 onChange={setNewComment}
                 onSubmit={handleSubmitComment}
-                placeholder="Be the first to comment... (Tab for formatting)"
+                placeholder={toggleText}
                 disabled={!user}
                 readOnly={!user}
                 onClick={() => user ? null : alert('Please log in to comment')}
@@ -511,7 +1140,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
-              <span>Show {totalComments} {totalComments === 1 ? 'comment' : 'comments'}</span>
+              <span>{toggleText}</span>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
@@ -525,7 +1154,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
                 </svg>
-                <span>Hide all {totalComments} {totalComments === 1 ? 'comment' : 'comments'}</span>
+                <span>Hide all {commentsCount} {commentsCount === 1 ? 'comment' : 'comments'}</span>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
                 </svg>

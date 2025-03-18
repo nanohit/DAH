@@ -103,6 +103,13 @@ export const useSearch = () => {
         ? `/api/books?page=${page}&limit=${resultsPerPage}` 
         : `/api/books?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${resultsPerPage}`;
 
+      console.log('Alphy search request:', { 
+        endpoint, 
+        displayAll, 
+        searchTerm, 
+        page 
+      });
+
       const response = await fetch(endpoint, {
         headers: {
           'Authorization': token ? `Bearer ${token}` : ''
@@ -111,6 +118,11 @@ export const useSearch = () => {
       if (!response.ok) throw new Error('Failed to fetch from Alphy database');
       const data = await response.json();
       
+      console.log('Alphy search results:', {
+        count: data.books.length,
+        total: data.pagination.total
+      });
+
       const books = data.books.map((book: any) => ({
         key: book._id,
         _id: book._id,
@@ -127,6 +139,7 @@ export const useSearch = () => {
         total: data.pagination.total
       };
     } catch (error) {
+      console.error('Error in handleAlphySearch:', error);
       throw new Error('Error fetching from Alphy database');
     }
   };
@@ -160,30 +173,63 @@ export const useSearch = () => {
   };
 
   const handleSearch = async (page = 1) => {
-    if (isLoading) return;
+    // Don't block if we're just changing pages, only block repeated searches of the same term/page
+    const isNewSearch = page === 1;
+    
+    if (isLoading && !isNewSearch) return;
     
     setIsLoading(true);
     setError(null);
-    setSearchResults([]);
-    setCurrentPage(1);
+    
+    // Only reset results if this is a new search (page 1)
+    if (isNewSearch) {
+      setSearchResults([]);
+      setCurrentPage(1);
+    } else {
+      // For pagination, update the current page
+      setCurrentPage(page);
+    }
+    
     setHasSearched(true);
 
     try {
+      console.log('Search started:', { activeApi, searchTerm, displayAll, page });
+      
       if (activeApi === 'alphy') {
+        // For Alphy, we either need searchTerm or displayAll to be true
         if (!searchTerm.trim() && !displayAll) {
+          console.log('No search term and displayAll is false, aborting Alphy search');
           setSearchResults([]);
           setTotalResults(0);
+          setIsLoading(false);
           return;
         }
+        
+        console.log('Performing Alphy search with:', { searchTerm, displayAll, page });
         const result = await handleAlphySearch(page);
-        setSearchResults(result.books);
+        console.log('Alphy search completed with', result.books.length, 'results');
+        
+        // If loading more pages, append results, otherwise replace
+        if (page > 1) {
+          setSearchResults(prevResults => [...prevResults, ...result.books]);
+        } else {
+          setSearchResults(result.books);
+        }
+        
         setTotalResults(result.total);
       } else if (searchTerm.trim()) {
+        // For other APIs, we need a search term
+        console.log('Performing external API search with:', { activeApi, searchTerm, page });
+        
         const cacheKey = `${activeApi}-${searchTerm}-${page}`;
         const cachedResults = getCachedResults(cacheKey);
 
         if (cachedResults) {
-          setSearchResults(cachedResults.combinedResults);
+          if (page > 1) {
+            setSearchResults(prevResults => [...prevResults, ...cachedResults.combinedResults]);
+          } else {
+            setSearchResults(cachedResults.combinedResults);
+          }
           setTotalResults(cachedResults.total);
         } else {
           const [databaseResults, externalResults] = await Promise.all([
@@ -209,20 +255,36 @@ export const useSearch = () => {
             total: externalResults.total
           });
 
-          setSearchResults(combinedResults);
+          if (page > 1) {
+            setSearchResults(prevResults => [...prevResults, ...combinedResults]);
+          } else {
+            setSearchResults(combinedResults);
+          }
+          
           setTotalResults(externalResults.total);
         }
       } else {
+        // No search term for non-Alphy APIs
+        console.log('No search term provided for non-Alphy API, clearing results');
         setSearchResults([]);
         setTotalResults(0);
       }
     } catch (error) {
+      console.error('Error in handleSearch:', error);
       setError(error instanceof Error ? error.message : 'An unexpected error occurred');
-      setSearchResults([]);
-      setTotalResults(0);
+      if (isNewSearch) {
+        setSearchResults([]);
+        setTotalResults(0);
+      }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Simple function to clear search results without making API calls
+  const clearSearchResults = () => {
+    setSearchResults([]);
+    setTotalResults(0);
   };
 
   return {
@@ -240,6 +302,7 @@ export const useSearch = () => {
     hasSearched,
     setHasSearched,
     handleSearch,
+    clearSearchResults,
     resultsPerPage
   };
 }; 

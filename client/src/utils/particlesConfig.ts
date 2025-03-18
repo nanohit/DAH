@@ -18,7 +18,7 @@ export const particlesConfig = {
       random: true,
       anim: {
         enable: true,
-        speed: 1.5,
+        speed: 1,
         opacity_min: 0.3,
         sync: false
       }
@@ -28,7 +28,7 @@ export const particlesConfig = {
       random: true,
       anim: {
         enable: true,
-        speed: 3,
+        speed: 2,
         size_min: 0.3,
         sync: false
       }
@@ -42,7 +42,7 @@ export const particlesConfig = {
     },
     move: {
       enable: true,
-      speed: 2,
+      speed: 1.2,
       direction: "none",
       random: true,
       straight: false,
@@ -69,7 +69,7 @@ export const particlesConfig = {
         size: 4,
         duration: 2,
         opacity: 1,
-        speed: 3
+        speed: 2
       },
       push: {
         particles_nb: 6

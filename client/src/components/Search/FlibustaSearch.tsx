@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import api from '@/services/api';
+import { toast } from 'react-hot-toast';
 
 interface BookFormat {
   id: string;
@@ -19,13 +21,19 @@ interface SearchError {
   isWarning?: boolean;
 }
 
-export const FlibustaSearch = () => {
+export const FlibustaSearch = ({ trigger }: { trigger?: () => void }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<BookResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<SearchError | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    if (trigger) {
+      setIsModalOpen(true);
+    }
+  }, [trigger]);
 
   const handleSearch = async () => {
     if (!searchTerm.trim()) return;
@@ -34,34 +42,19 @@ export const FlibustaSearch = () => {
     setError(null);
 
     try {
-      const response = await fetch(`/api/books/flibusta/search?query=${encodeURIComponent(searchTerm)}`);
-      const data = await response.json();
+      const response = await api.get(`/api/books/flibusta/search?query=${encodeURIComponent(searchTerm)}`);
+      const data = response.data;
 
-      if (!response.ok) {
-        let errorMessage = data.error || 'Failed to search books';
-        let isWarning = false;
-
-        // Handle specific error codes
-        if (data.code === 'REGION_BLOCKED') {
-          errorMessage = 'Access to Flibusta is blocked in your region. Please wait while we try to connect through a proxy...';
-          isWarning = true;
-        } else if (data.code === 'CONNECTION_ERROR') {
-          errorMessage = 'Having trouble connecting to Flibusta. Please try again in a few moments...';
-          isWarning = true;
-        }
-
-        throw new Error(errorMessage, { cause: { code: data.code, isWarning } });
+      if (!data) {
+        throw new Error('Failed to search on Flibusta');
       }
 
       setSearchResults(data.data || []);
     } catch (err) {
-      const error = err as Error;
-      const cause = error.cause as { code?: string; isWarning?: boolean };
-      
+      console.error('Error searching Flibusta:', err);
       setError({
-        message: error.message,
-        code: cause?.code,
-        isWarning: cause?.isWarning
+        message: err instanceof Error ? err.message : 'Failed to search',
+        code: 'SEARCH_ERROR'
       });
     } finally {
       setIsLoading(false);
@@ -70,20 +63,11 @@ export const FlibustaSearch = () => {
 
   const handleDownload = async (bookId: string, format: string) => {
     try {
-      const response = await fetch(`/api/books/flibusta/download/${bookId}/${format}`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to get download link');
-      }
-
-      // Open the download URL in a new tab
-      window.open(data.data.downloadUrl, '_blank');
-    } catch (err) {
-      setError({
-        message: err instanceof Error ? err.message : 'Failed to get download link',
-        code: 'DOWNLOAD_ERROR'
-      });
+      // Direct access to Cloudflare worker URL
+      window.location.href = `${process.env.NEXT_PUBLIC_FLIBUSTA_PROXY_URL}/${bookId}/${format}`;
+    } catch (error) {
+      console.error('Error downloading book:', error);
+      toast.error('Failed to download book. Please try again.');
     }
   };
 
@@ -97,8 +81,8 @@ export const FlibustaSearch = () => {
       </button>
 
       {isModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-          <div className="absolute inset-0 bg-gray-800 bg-opacity-75" onClick={() => setIsModalOpen(false)}></div>
+        <div className="fixed inset-0 flex items-center justify-center z-[9999]">
+          <div className="fixed inset-0 bg-gray-800 bg-opacity-75" onClick={() => setIsModalOpen(false)}></div>
           
           <div className="bg-white rounded-lg w-[800px] max-h-[800px] relative flex flex-col">
             <div className="p-6">
@@ -109,7 +93,7 @@ export const FlibustaSearch = () => {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
                   placeholder="Search books on Flibusta..."
-                  className="flex-1 px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
                 />
                 <button
                   onClick={handleSearch}
@@ -132,25 +116,36 @@ export const FlibustaSearch = () => {
 
               <div className="overflow-y-auto max-h-[600px]">
                 {searchResults.map((book) => (
-                  <div key={book.id} className="mb-6 p-4 border rounded-md">
-                    <h3 className="text-lg font-semibold">{book.title}</h3>
-                    <p className="text-gray-600 mb-3">{book.author}</p>
-                    <div className="flex gap-2">
-                      {book.formats.map((format) => (
+                  <div key={book.id} className="mb-2 p-2 hover:bg-gray-50 border rounded-md">
+                    <h3 className="text-sm font-medium text-gray-900">{book.title}</h3>
+                    <p className="text-xs text-gray-600 mb-1">{book.author}</p>
+                    <div className="flex gap-1">
+                      {book.formats
+                        .filter(format => format.format !== 'mobi')
+                        .map((format) => (
                         <button
                           key={format.id}
                           onClick={() => handleDownload(book.id, format.format)}
-                          className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                          className="px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
                         >
-                          Download {format.format.toUpperCase()}
+                          {format.format.toUpperCase()}
                         </button>
                       ))}
+                      <a
+                        href={`https://flibusta.is/b/${book.id}/read`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2 py-0.5 text-xs bg-gray-50 text-gray-600 rounded hover:bg-gray-100"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Read online (VPN)
+                      </a>
                     </div>
                   </div>
                 ))}
 
                 {!isLoading && searchResults.length === 0 && !error && (
-                  <div className="text-center text-gray-500 py-8">
+                  <div className="text-center text-gray-700 py-4">
                     No books found. Try a different search term.
                   </div>
                 )}

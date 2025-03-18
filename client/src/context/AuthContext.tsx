@@ -1,7 +1,8 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import api from '@/services/auth';
+import api from '@/services/api';
+import * as authService from '@/services/auth';
 
 interface User {
   _id: string;
@@ -38,7 +39,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const fetchUserData = async (token: string) => {
     try {
       console.log('Fetching user data with token:', token);
-      const response = await api.get('/auth/me');
+      const response = await api.get('/api/auth/me');
       
       console.log('Received user data:', response.data);
       if (!response.data.error) {
@@ -76,30 +77,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  const login = async (login: string, password: string) => {
+  const login = async (emailOrUsername: string, password: string) => {
     try {
       console.log('Attempting login...');
-      const response = await api.post('/auth/login', { login, password });
-      const data = response.data;
+      const userData = await authService.login(emailOrUsername, password);
+      console.log('Login successful:', userData);
       
-      console.log('Login response:', data);
-      
-      if (!data.token) {
-        console.error('No token in response');
-        throw new Error('No token received');
+      // Token is already saved by auth service
+      // Fetch fresh user data
+      const token = localStorage.getItem('token');
+      if (token) {
+        await fetchUserData(token);
       }
-
-      // Save token first
-      localStorage.setItem('token', data.token);
-      console.log('Token saved to localStorage');
-
-      // Then fetch fresh user data
-      await fetchUserData(data.token);
 
       // Dispatch storage event for other tabs
       window.dispatchEvent(new StorageEvent('storage', {
         key: 'token',
-        newValue: data.token
+        newValue: token
       }));
       console.log('Storage event dispatched');
     } catch (error) {
@@ -111,7 +105,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    authService.logout();
     setUser(null);
     
     // Dispatch storage event for other tabs

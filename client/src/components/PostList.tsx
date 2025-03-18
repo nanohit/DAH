@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import CommentSection, { Comment, User } from './CommentSection';
+import MapCommentSection from './MapCommentSection';
 import Image from 'next/image';
 import FormatToolbar from './FormatToolbar';
 import ReactMarkdown from 'react-markdown';
@@ -10,8 +11,11 @@ import type { ComponentProps } from 'react';
 import Link from 'next/link';
 import { useParticles } from '@/hooks/useParticles';
 import UserBadge from './UserBadge';
-import { usePathname } from 'next/navigation';
-import api from '@/services/auth';
+import { usePathname, useRouter } from 'next/navigation';
+import api from '@/services/api';
+import socketService from '@/services/socketService';
+import useSocketConnection from '@/hooks/useSocketConnection';
+import { bookmarkMap, deleteMap } from '@/utils/mapUtils';
 
 export interface Post {
   _id: string;
@@ -26,12 +30,21 @@ export interface Post {
   createdAt: string;
   updatedAt: string;
   comments: Comment[];
-  likes: string[];
-  dislikes: string[];
-  bookmarks: Array<{
+  likes?: string[];
+  dislikes?: string[];
+  bookmarks?: Array<{
     user: string;
     timestamp: string;
   }>;
+  isOptimistic?: boolean;
+  isMap?: boolean;
+  mapData?: any;
+}
+
+// Type for creating optimistic posts
+interface OptimisticPost extends Omit<Post, 'headline' | 'text'> {
+  headline: string;
+  text: string;
 }
 
 interface PostListProps {
@@ -56,16 +69,14 @@ export default function PostList({
   useParticles(); // Initialize particles animation
   const pathname = usePathname();
   const isMainPage = pathname === '/';
-
-  console.log('=== PostList Component Mounted ===');
-  console.log('Initial props:', { isBookmarksPage, initialPosts });
+  const router = useRouter();
 
   const [posts, setPosts] = useState<Post[]>(initialPosts || []);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [skip, setSkip] = useState(0);
   const LIMIT = 10;
-  const [editingPost, setEditingPost] = useState<string | null>(null);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editHeadline, setEditHeadline] = useState('');
   const [editText, setEditText] = useState('');
   const [headline, setHeadline] = useState('');
@@ -79,6 +90,12 @@ export default function PostList({
   const [showImageModal, setShowImageModal] = useState(false);
   const [modalImageUrl, setModalImageUrl] = useState('');
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  
+  // Use the socket connection hook
+  const { isConnected: socketConnected } = useSocketConnection({
+    debugName: 'PostList',
+    autoReconnect: true
+  });
 
   // Update posts when initialPosts changes
   useEffect(() => {
@@ -88,22 +105,30 @@ export default function PostList({
   }, [initialPosts]);
 
   const fetchPosts = async (skipCount = 0) => {
-    if (initialPosts) {
-      return;
+    if (initialPosts && skipCount === 0) {
+      return; // Don't fetch if we already have initialPosts and this is the initial fetch
     }
 
     try {
       setLoading(true);
       const endpoint = isBookmarksPage ? '/api/posts/bookmarked' : '/api/posts';
-      const response = await api.get(`${endpoint}?limit=${LIMIT}&skip=${skipCount}`);
+      
+      // Always use LIMIT (10 posts)
+      const limit = LIMIT;
+      
+      const response = await api.get(`${endpoint}?limit=${limit}&skip=${skipCount}`);
       
       if (skipCount === 0) {
         setPosts(response.data.posts);
       } else {
-        setPosts(prevPosts => [...prevPosts, ...response.data.posts]);
+        // For pagination, append new posts to existing ones without replacing
+        setPosts(prevPosts => [
+          ...prevPosts.filter(post => !post.isOptimistic), // Keep real posts
+          ...response.data.posts
+        ]);
       }
       setHasMore(response.data.hasMore);
-      setSkip(skipCount + LIMIT);
+      setSkip(skipCount + limit);
     } catch (error) {
       console.error('Error fetching posts:', error);
     } finally {
@@ -129,29 +154,102 @@ export default function PostList({
   };
 
   const handleEdit = (post: Post) => {
-    setEditingPost(post._id);
+    setEditingPostId(post._id);
     setEditHeadline(post.headline);
     setEditText(post.text);
   };
 
   const handleCancelEdit = () => {
-    setEditingPost(null);
+    setEditingPostId(null);
     setEditHeadline('');
     setEditText('');
   };
 
   const handleUpdate = async (postId: string) => {
+    // Debug information
+    console.log("Update called with values:", {
+      editHeadline,
+      editText,
+      postId
+    });
+    
+    // Safely check trimming with null/undefined checks
+    const headlineEmpty = !editHeadline || editHeadline.trim() === '';
+    const textEmpty = !editText || editText.trim() === '';
+    
+    if (headlineEmpty && textEmpty) {
+      alert('Please enter either a headline or content for your post.');
+      return;
+    }
+
+    // Store the original author badge in case we need it later
+    const originalPost = posts.find(post => post._id === postId);
+    const originalAuthorBadge = originalPost?.author?.badge;
+
     try {
-      await api.patch(`/api/posts/${postId}`, {
-        headline: editHeadline,
-        text: editText
+      // Update UI optimistically
+      setPosts(prevPosts => 
+        prevPosts.map(post => {
+          if (post._id === postId) {
+            return {
+              ...post,
+              headline: editHeadline ? editHeadline.trim() : post.headline,
+              text: editText ? editText.trim() : post.text,
+              updatedAt: new Date().toISOString()
+            };
+          }
+          return post;
+        })
+      );
+
+      // Make the actual API call
+      const response = await api.patch(`/api/posts/${postId}`, {
+        headline: editHeadline ? editHeadline.trim() : undefined,
+        text: editText ? editText.trim() : undefined
       });
 
-      handleCancelEdit();
+      // No need to explicitly update the state again since we've done it optimistically
+      // and socket.io will handle any discrepancies
+
+      // Reset form state
+      setEditingPostId(null);
+      setEditHeadline('');
+      setEditText('');
+
+      // Tell parent component a post was updated
       onPostUpdated();
-      fetchPosts();
     } catch (error) {
       console.error('Error updating post:', error);
+      alert('Failed to update post. Please try again.');
+      
+      // Get the post again to ensure we have the latest data
+      try {
+        const response = await api.get(`/api/posts/${postId}`);
+        
+        // Update the single post with the badge preserved
+        setPosts(prevPosts => 
+          prevPosts.map(post => {
+            if (post._id === postId) {
+              const serverData = response.data;
+              // Preserve badge from original post if missing in server response
+              if (!serverData.author.badge && originalAuthorBadge) {
+                return {
+                  ...serverData,
+                  author: {
+                    ...serverData.author,
+                    badge: originalAuthorBadge
+                  }
+                };
+              }
+              return serverData;
+            }
+            return post;
+          })
+        );
+      } catch (fetchError) {
+        // If fetching the single post fails, fall back to fetching all posts
+        fetchPosts(0);
+      }
     }
   };
 
@@ -160,12 +258,30 @@ export default function PostList({
       return;
     }
 
-    try {
+    // Store deleted post before removing it in case we need to restore it
+    const postToDelete = posts.find(post => post._id === postId);
+
+    try {      
+      // Remove post optimistically from UI first
+      setPosts(prevPosts => prevPosts.filter(post => post._id !== postId));
+
+      // Make the actual API call
       await api.delete(`/api/posts/${postId}`);
-      onPostUpdated();
-      fetchPosts();
+      
+      // No need to call onPostUpdated() or fetchPosts() here
     } catch (error) {
       console.error('Error deleting post:', error);
+      alert('Failed to delete post. Please try again.');
+      
+      // If we have the deleted post, put it back in the list
+      if (postToDelete) {
+        setPosts(prevPosts => [...prevPosts, postToDelete].sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        ));
+      } else {
+        // Otherwise, fall back to fetching all posts
+        fetchPosts(0);
+      }
     }
   };
 
@@ -214,7 +330,7 @@ export default function PostList({
       const formData = new FormData();
       formData.append('image', file);
 
-      const response = await fetch(`https://api.imgbb.com/1/upload?key=dea282c8a3ed6b4d82eed4ea65ab3826`, {
+      const response = await fetch(`https://api.imgbb.com/1/upload?key=${process.env.NEXT_PUBLIC_IMGBB_API_KEY}`, {
         method: 'POST',
         body: formData
       });
@@ -238,20 +354,87 @@ export default function PostList({
     if (!headline.trim() && !text.trim() && !imageUrl) return;
 
     try {
-      await api.post('/api/posts', {
-        headline: headline.trim() || undefined,
-        text: text.trim() || undefined,
-        imageUrl
-      });
+      // Prepare the new post data for optimistic update
+      const optimisticPost: OptimisticPost = {
+        _id: `temp-${Date.now()}`, // Temporary ID until server response
+        headline: headline.trim() || '',  // Use empty string instead of undefined
+        text: text.trim() || '',  // Use empty string instead of undefined
+        imageUrl,
+        author: {
+          _id: user?._id || '',
+          username: user?.username || '',
+          badge: user?.badge || ''  // Explicitly include the badge
+        },
+        comments: [],
+        likes: [],
+        dislikes: [],
+        bookmarks: [], // Add empty bookmarks array to prevent undefined errors
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isOptimistic: true, // Flag to identify optimistic posts
+        isMap: false,
+        mapData: undefined
+      };
 
+      // Add the optimistic post to the UI immediately
+      setPosts(prevPosts => {
+        // Add optimistic post and sort by date (newest first)
+        return [optimisticPost, ...prevPosts].sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      });
+      
+      // Clear the form
       setHeadline('');
       setText('');
       setImageUrl('');
       setSelectedImage(null);
-      onPostUpdated();
-      fetchPosts();
+      
+      // Make the actual API call
+      const response = await api.post('/api/posts', {
+        headline: headline.trim() || undefined,
+        text: text.trim() || undefined,
+        imageUrl
+      });
+      
+      // After receiving the response, immediately join the post's room
+      const newPostId = response.data._id;
+      console.log('[DEBUG] Joining room for newly created post:', newPostId);
+      socketService.joinPostRoom(newPostId);
+      
+      // Replace the optimistic post with the real one from the server but preserve badge if missing
+      setPosts(prevPosts => {
+        // Replace optimistic post with actual post
+        const updatedPosts = prevPosts.map(post => {
+          if (post._id === optimisticPost._id) {
+            // Make sure badge is preserved if missing in server response
+            const serverData = response.data;
+            if (!serverData.author.badge && user?.badge) {
+              return {
+                ...serverData,
+                author: {
+                  ...serverData.author,
+                  badge: user.badge
+                }
+              };
+            }
+            return serverData;
+          }
+          return post;
+        });
+        
+        // Ensure consistent sorting
+        return updatedPosts.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      });
+
+      // No need to call onPostUpdated() or fetchPosts() anymore
     } catch (error) {
       console.error('Error creating post:', error);
+      // Remove the optimistic post if there was an error
+      setPosts(prevPosts => prevPosts.filter(post => !post.isOptimistic));
+      alert('Failed to create post. Please try again.');
     }
   };
 
@@ -353,32 +536,59 @@ export default function PostList({
   };
 
   const handleBookmark = async (postId: string) => {
+    if (!user) return;
+    
     try {
-      await api.post(`/api/posts/${postId}/bookmark`);
-
+      // Get the current post
+      const currentPost = posts.find(post => post._id === postId);
+      if (!currentPost) return;
+      
+      // Check if already bookmarked
+      const isCurrentlyBookmarked = isPostBookmarked(currentPost);
+      
+      // Update UI optimistically
       if (isBookmarksPage) {
+        // On bookmarks page, remove the post
         setPosts(prevPosts => prevPosts.filter(post => post._id !== postId));
       } else {
-        setPosts(prevPosts => prevPosts.map(post => {
-          if (post._id === postId) {
-            const isCurrentlyBookmarked = isPostBookmarked(post);
-            return {
-              ...post,
-              bookmarks: isCurrentlyBookmarked
-                ? post.bookmarks.filter(b => b.user !== user?._id)
-                : [...post.bookmarks, { user: user?._id || '', timestamp: new Date().toISOString() }]
-            };
-          }
-          return post;
-        }));
+        // On other pages, toggle the bookmark status
+        setPosts(prevPosts => {
+          // Map through posts and update the target post
+          const updatedPosts = prevPosts.map(post => {
+            if (post._id === postId) {
+              return {
+                ...post,
+                bookmarks: isCurrentlyBookmarked
+                  ? post.bookmarks.filter(b => b.user !== user?._id)
+                  : [...post.bookmarks, { user: user?._id || '', timestamp: new Date().toISOString() }]
+              };
+            }
+            return post;
+          });
+          
+          // Sort posts by date to maintain consistent ordering
+          return updatedPosts.sort((a, b) => 
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+        });
       }
+      
+      // Make the actual API call (non-blocking)
+      await api.post(`/api/posts/${postId}/bookmark`);
     } catch (error) {
       console.error('Error bookmarking post:', error);
+      // No need to revert UI for bookmarking since it's not critical
     }
   };
 
   const isPostBookmarked = (post: Post) => {
-    return post.bookmarks.some(b => b.user === user?._id);
+    if (!user || !post.bookmarks) return false;
+    return post.bookmarks.some(bookmark => bookmark.user === user._id);
+  };
+
+  const isMapBookmarked = (mapData: any) => {
+    if (!user || !mapData || !mapData.bookmarks) return false;
+    return mapData.bookmarks.some((bookmark: any) => bookmark.user === user._id);
   };
 
   const handleImageClick = (imageUrl: string) => {
@@ -410,43 +620,372 @@ export default function PostList({
 
   const handleLike = async (postId: string) => {
     if (!user) return;
+    
     try {
+      // Get the current post
+      const currentPost = posts.find(post => post._id === postId);
+      if (!currentPost) return;
+      
+      // Check if already liked
+      const isAlreadyLiked = currentPost.likes.includes(user._id);
+      
+      // Update UI optimistically
+      setPosts(prevPosts => {
+        // Map through posts and update the target post
+        const updatedPosts = prevPosts.map(post => {
+          if (post._id === postId) {
+            return {
+              ...post,
+              likes: isAlreadyLiked
+                ? post.likes.filter(id => id !== user._id)
+                : [...post.likes, user._id],
+              dislikes: post.dislikes.filter(id => id !== user._id)
+            };
+          }
+          return post;
+        });
+        
+        // Sort posts by date to maintain consistent ordering
+        return updatedPosts.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      });
+      
+      // Make the actual API call (non-blocking)
       await api.post(`/api/posts/${postId}/like`);
-      setPosts(posts.map(post => {
-        if (post._id === postId) {
-          return {
-            ...post,
-            likes: post.likes.includes(user._id) 
-              ? post.likes.filter(id => id !== user._id)
-              : [...post.likes, user._id],
-            dislikes: post.dislikes.filter(id => id !== user._id)
-          };
-        }
-        return post;
-      }));
     } catch (error) {
       console.error('Error liking post:', error);
+      // No UI reversion needed for likes since they're not critical
     }
   };
 
   const handleDislike = async (postId: string) => {
     if (!user) return;
+    
     try {
+      // Get the current post
+      const currentPost = posts.find(post => post._id === postId);
+      if (!currentPost) return;
+      
+      // Check if already disliked
+      const isAlreadyDisliked = currentPost.dislikes.includes(user._id);
+      
+      // Update UI optimistically
+      setPosts(prevPosts => {
+        // Map through posts and update the target post
+        const updatedPosts = prevPosts.map(post => {
+          if (post._id === postId) {
+            return {
+              ...post,
+              dislikes: isAlreadyDisliked
+                ? post.dislikes.filter(id => id !== user._id)
+                : [...post.dislikes, user._id],
+              likes: post.likes.filter(id => id !== user._id)
+            };
+          }
+          return post;
+        });
+        
+        // Sort posts by date to maintain consistent ordering
+        return updatedPosts.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      });
+      
+      // Make the actual API call (non-blocking)
       await api.post(`/api/posts/${postId}/dislike`);
-      setPosts(posts.map(post => {
-        if (post._id === postId) {
-          return {
-            ...post,
-            dislikes: post.dislikes.includes(user._id)
-              ? post.dislikes.filter(id => id !== user._id)
-              : [...post.dislikes, user._id],
-            likes: post.likes.filter(id => id !== user._id)
-          };
-        }
-        return post;
-      }));
     } catch (error) {
       console.error('Error disliking post:', error);
+      // No UI reversion needed for dislikes since they're not critical
+    }
+  };
+
+  // Connect to socket when component mounts
+  useEffect(() => {
+    // Initialize socket connection is now handled by the useSocketConnection hook
+    
+    // Ensure we're joined to the global feed for all posts
+    if (socketService.isRealTimeEnabled()) {
+      socketService.joinGlobalFeed();
+    }
+    
+    // Set up event listeners for real-time updates
+    const onPostCreated = (newPost: Post) => {
+      // Only log 10% of post creation events
+      const shouldLog = Math.random() < 0.1;
+      
+      if (shouldLog) {
+        console.log(`[PostList] Post created: ${newPost._id}`);
+      }
+      
+      if (isBookmarksPage) {
+        if (shouldLog) {
+          console.log('[PostList] Ignoring post-created on bookmarks page');
+        }
+        return; // Don't add new posts on bookmarks page
+      }
+      
+      // Check if we already have this post
+      const existingPost = posts.find(p => p._id === newPost._id);
+      if (existingPost && !existingPost.isOptimistic) {
+        if (shouldLog) {
+          console.log(`[PostList] Post already exists, ignoring: ${newPost._id}`);
+        }
+        return;
+      }
+      
+      if (shouldLog) {
+        console.log(`[PostList] Adding post to UI: ${newPost._id}`);
+      }
+      
+      // Add the new post and ensure proper chronological sorting (newest first)
+      setPosts(prevPosts => {
+        // Filter out any optimistic version of this post first (if it exists)
+        const filteredPosts = prevPosts.filter(post => 
+          !post.isOptimistic && (post._id !== newPost._id)
+        );
+        
+        // Add the new post and sort by date (newest first)
+        return [newPost, ...filteredPosts].sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      });
+      
+      // Join room for the new post - only log 5% of the time
+      if (Math.random() < 0.05) {
+        console.log(`[PostList] Joining room for new post: ${newPost._id}`);
+      }
+      socketService.joinPostRoom(newPost._id);
+    };
+    
+    const onPostUpdated = (updatedPost: Post) => {
+      // Only log 10% of post update events
+      const shouldLog = Math.random() < 0.1;
+      
+      if (shouldLog) {
+        console.log(`[PostList] Post updated: ${updatedPost._id}`);
+      }
+      
+      setPosts(prevPosts => {
+        // Map over previous posts, replacing the updated post
+        const updatedPosts = prevPosts.map(post => 
+          post._id === updatedPost._id ? updatedPost : post
+        );
+        
+        // Re-sort posts by date to maintain consistent ordering
+        return updatedPosts.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      });
+    };
+    
+    const onPostDeleted = (deletedPostId: string) => {
+      // Only log 10% of post deletion events
+      const shouldLog = Math.random() < 0.1;
+      
+      if (shouldLog) {
+        console.log(`[PostList] Post deleted: ${deletedPostId}`);
+      }
+      
+      setPosts(prevPosts => prevPosts.filter(post => post._id !== deletedPostId));
+      
+      // Leave the room for this post
+      if (shouldLog) {
+        console.log(`[PostList] Leaving room for deleted post: ${deletedPostId}`);
+      }
+      socketService.leavePostRoom(deletedPostId);
+    };
+    
+    const onPostLiked = ({ postId, likes, dislikes, userId }: { 
+      postId: string; 
+      likes: string[]; 
+      dislikes: string[];
+      userId: string;
+    }) => {
+      // Only log 5% of post like events (very frequent)
+      if (Math.random() < 0.05) {
+        console.log(`[PostList] Post liked: ${postId} by ${userId}`);
+      }
+      
+      setPosts(prevPosts => {
+        const updatedPosts = prevPosts.map(post => {
+          if (post._id === postId) {
+            return {
+              ...post,
+              likes,
+              dislikes
+            };
+          }
+          return post;
+        });
+        
+        // Re-sort posts by date to maintain consistent ordering
+        return updatedPosts.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      });
+    };
+    
+    const onPostDisliked = ({ postId, likes, dislikes, userId }: { 
+      postId: string; 
+      likes: string[]; 
+      dislikes: string[];
+      userId: string;
+    }) => {
+      // Only log 5% of post dislike events (very frequent)
+      if (Math.random() < 0.05) {
+        console.log(`[PostList] Post disliked: ${postId} by ${userId}`);
+      }
+      
+      setPosts(prevPosts => {
+        const updatedPosts = prevPosts.map(post => {
+          if (post._id === postId) {
+            return {
+              ...post,
+              likes,
+              dislikes
+            };
+          }
+          return post;
+        });
+        
+        // Re-sort posts by date to maintain consistent ordering
+        return updatedPosts.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      });
+    };
+    
+    const onPostBookmarked = ({ postId, bookmarks, userId }: { 
+      postId: string; 
+      bookmarks: { user: string; timestamp: string; }[];
+      userId: string;
+    }) => {
+      // Only log 5% of bookmark events
+      if (Math.random() < 0.05) {
+        console.log(`[PostList] Post bookmarked: ${postId} by ${userId}`);
+      }
+      
+      if (isBookmarksPage && userId === user?._id) {
+        // If this is the bookmarks page and the current user unbookmarked a post, remove it
+        if (!bookmarks.some(b => b.user === userId)) {
+          setPosts(prevPosts => prevPosts.filter(post => post._id !== postId));
+          return;
+        }
+      }
+      
+      setPosts(prevPosts => {
+        const updatedPosts = prevPosts.map(post => {
+          if (post._id === postId) {
+            return {
+              ...post,
+              bookmarks
+            };
+          }
+          return post;
+        });
+        
+        // Re-sort posts by date to maintain consistent ordering
+        return updatedPosts.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      });
+    };
+    
+    // Register event listeners
+    socketService.on('post-created', onPostCreated);
+    socketService.on('post-updated', onPostUpdated);
+    socketService.on('post-deleted', onPostDeleted);
+    socketService.on('post-liked', onPostLiked);
+    socketService.on('post-disliked', onPostDisliked);
+    socketService.on('post-bookmarked', onPostBookmarked);
+    
+    // Clean up event listeners when component unmounts
+    return () => {
+      // Only log 10% of cleanup operations to reduce noise
+      if (Math.random() < 0.1) {
+        console.log('[PostList] Cleaning up socket event listeners');
+      }
+      
+      socketService.off('post-created', onPostCreated);
+      socketService.off('post-updated', onPostUpdated);
+      socketService.off('post-deleted', onPostDeleted);
+      socketService.off('post-liked', onPostLiked);
+      socketService.off('post-disliked', onPostDisliked);
+      socketService.off('post-bookmarked', onPostBookmarked);
+    };
+  }, [isBookmarksPage, user?._id]);
+  
+  // Join post rooms for all visible posts
+  useEffect(() => {
+    if (!posts?.length) return;
+    
+    // Get real-time status from the socket service
+    const isRealTimeEnabled = socketService.isRealTimeEnabled();
+    
+    // Don't join rooms if real-time updates are disabled
+    if (!isRealTimeEnabled) return;
+    
+    // Join rooms for all posts to receive updates
+    posts.forEach(post => {
+      socketService.joinPostRoom(post._id);
+    });
+    
+    // Clean up when component unmounts or posts change
+    return () => {
+      if (isRealTimeEnabled) {
+        posts.forEach(post => {
+          socketService.leavePostRoom(post._id);
+        });
+      }
+    };
+  }, [posts]);
+
+  const handleOpenMap = (mapId: string, mapData: any) => {
+    if (mapData.user._id === user?._id) {
+      router.push(`/maps?id=${mapId}`);
+    } else {
+      router.push(`/maps/view?id=${mapId}`);
+    }
+  };
+
+  const handleBookmarkMap = async (mapId: string) => {
+    try {
+      const success = await bookmarkMap(mapId);
+      if (success) {
+        // Update local state optimistically
+        setPosts(prevPosts => prevPosts.map(post => {
+          if (post._id === mapId && post.isMap) {
+            return {
+              ...post,
+              mapData: {
+                ...post.mapData,
+                bookmarks: post.mapData.bookmarks || []
+              }
+            };
+          }
+          return post;
+        }));
+        onPostUpdated();
+      }
+    } catch (error) {
+      console.error('Error bookmarking map:', error);
+    }
+  };
+
+  const handleDeleteMap = async (mapId: string) => {
+    if (!window.confirm('Are you sure you want to delete this map?')) {
+      return;
+    }
+
+    try {
+      const success = await deleteMap(mapId);
+      if (success) {
+        setPosts(prevPosts => prevPosts.filter(post => post._id !== mapId));
+        onPostUpdated();
+      }
+    } catch (error) {
+      console.error('Error deleting map:', error);
     }
   };
 
@@ -466,7 +1005,7 @@ export default function PostList({
               Welcome to Alphy!
             </h1>
             <p className="text-gray-300 text-base mb-4 max-w-xl mx-auto">
-              Alphy is your hub for engaging discussions and book exploration. The platform is in its initial stages, and we highly value your feedback!
+              Alphy is your hub for engaging discussions and knowledge management. The platform is in its initial stages, and we highly value your feedback!
             </p>
             <div className="flex justify-center gap-3">
               <Link 
@@ -599,36 +1138,38 @@ export default function PostList({
 
       {posts.map((post) => (
         <div key={post._id} className="flex items-start space-x-4">
-          {/* Vote buttons */}
-          <div className="flex flex-col items-center mt-8 pt-2 space-y-4 bg-white rounded-lg shadow-sm border border-gray-200 p-2">
-            <button
-              onClick={() => handleDislike(post._id)}
-              className={`flex flex-col items-center ${
-                user && post.dislikes?.includes(user._id) ? 'text-gray-700' : 'text-gray-400'
-              }`}
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-              </svg>
-              <span className="text-sm -mt-1">{post.dislikes?.length || 0}</span>
-            </button>
-            
-            <button
-              onClick={() => handleLike(post._id)}
-              className={`flex flex-col items-center ${
-                user && post.likes?.includes(user._id) ? 'text-gray-700' : 'text-gray-400'
-              }`}
-            >
-              <span className="text-sm mb-0">{post.likes?.length || 0}</span>
-              <svg className="w-6 h-6 -mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-          </div>
+          {/* Vote buttons - only show for regular posts */}
+          {!post.isMap && (
+            <div className="flex flex-col items-center mt-8 pt-2 space-y-4 bg-white rounded-lg shadow-sm border border-gray-200 p-2">
+              <button
+                onClick={() => handleDislike(post._id)}
+                className={`flex flex-col items-center ${
+                  user && post.dislikes?.includes(user._id) ? 'text-gray-700' : 'text-gray-400'
+                }`}
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                </svg>
+                <span className="text-sm -mt-1">{post.dislikes?.length || 0}</span>
+              </button>
+              
+              <button
+                onClick={() => handleLike(post._id)}
+                className={`flex flex-col items-center ${
+                  user && post.likes?.includes(user._id) ? 'text-gray-700' : 'text-gray-400'
+                }`}
+              >
+                <span className="text-sm mb-0">{post.likes?.length || 0}</span>
+                <svg className="w-6 h-6 -mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+          )}
 
-          {/* Post content */}
+          {/* Post/Map content */}
           <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            {editingPost === post._id ? (
+            {editingPostId === post._id ? (
               <div className="p-4">
                 <div className="flex justify-between items-center mb-4">
                   <div className="flex items-center space-x-2">
@@ -684,10 +1225,10 @@ export default function PostList({
                     <div className="flex items-center space-x-2 text-sm">
                       {user && (
                         <button
-                          onClick={() => handleBookmark(post._id)}
+                          onClick={() => post.isMap ? handleBookmarkMap(post._id) : handleBookmark(post._id)}
                           className="text-gray-600 hover:text-gray-800"
                         >
-                          {isPostBookmarked(post) ? (
+                          {(post.isMap ? isMapBookmarked(post.mapData) : isPostBookmarked(post)) ? (
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                               <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
                             </svg>
@@ -696,7 +1237,7 @@ export default function PostList({
                           )}
                         </button>
                       )}
-                      {user && (user._id === post.author._id || user.isAdmin) && (
+                      {user && (user._id === post.author._id || user.isAdmin) && !post.isMap && (
                         <>
                           <span className="text-gray-300">|</span>
                           <button
@@ -713,12 +1254,28 @@ export default function PostList({
                           </button>
                         </>
                       )}
+                      {user && (user._id === post.author._id || user.isAdmin) && post.isMap && (
+                        <>
+                          <span className="text-gray-300">|</span>
+                          <button
+                            onClick={() => handleDeleteMap(post._id)}
+                            className="text-gray-600 hover:text-gray-800"
+                          >
+                            delete
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                   {post.headline && (
-                    <h2 className="text-xl font-semibold mb-2 text-black">{post.headline}</h2>
+                    <h2 
+                      className={`text-xl font-semibold mb-2 text-black ${post.isMap ? 'hover:underline cursor-pointer' : ''}`}
+                      onClick={() => post.isMap && handleOpenMap(post._id, post.mapData)}
+                    >
+                      {post.headline}
+                    </h2>
                   )}
-                  {post.imageUrl && (
+                  {post.imageUrl && !post.isMap && (
                     <div 
                       className="mb-4 relative w-[300px] h-[200px] cursor-pointer"
                       onClick={() => handleImageClick(post.imageUrl!)}
@@ -733,7 +1290,12 @@ export default function PostList({
                     </div>
                   )}
                   {post.text && (
-                    <div className="prose prose-sm max-w-none !text-black [&>*]:text-black [&_p]:!text-black [&_strong]:!text-black [&_em]:!text-black">
+                    <div 
+                      className={`prose prose-sm max-w-none !text-black [&>*]:text-black [&_p]:!text-black [&_strong]:!text-black [&_em]:!text-black ${
+                        post.isMap ? 'cursor-pointer hover:text-gray-600' : ''
+                      }`}
+                      onClick={() => post.isMap && handleOpenMap(post._id, post.mapData)}
+                    >
                       {/* @ts-ignore - Working around react-markdown type issues */}
                       <ReactMarkdown components={markdownComponents}>
                         {post.text}
@@ -741,7 +1303,11 @@ export default function PostList({
                     </div>
                   )}
                 </div>
-                <CommentSection postId={post._id} initialComments={post.comments} />
+                {post.isMap ? (
+                  <MapCommentSection mapId={post._id} initialComments={post.comments} />
+                ) : (
+                  <CommentSection postId={post._id} initialComments={post.comments} />
+                )}
               </>
             )}
           </div>

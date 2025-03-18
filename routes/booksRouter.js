@@ -1,17 +1,136 @@
 const express = require('express');
 const router = express.Router();
+const flibustaRouter = express.Router({ mergeParams: true }); // Create a Flibusta router that can access parent params
 const Book = require('../models/Book');
 const { protect, admin } = require('../middleware/auth');
 const { requestDownloadLinks, getDownloadVariants, selectVariant, searchBooks, getVariantDetails, getDownloadLink } = require('../controllers/flibustaController');
 
-// Flibusta routes - must be before other routes
+// At the top after imports
+console.log('\n=== BOOKS ROUTER INITIALIZATION ===');
+
+// Debug logging middleware
+router.use((req, res, next) => {
+  console.log('\n=== Books Router Request ===');
+  console.log('Full URL:', req.originalUrl);
+  console.log('Method:', req.method);
+  console.log('Path:', req.path);
+  console.log('Params:', req.params);
+  console.log('Body:', req.body);
+  next();
+});
+
+// Flibusta router middleware
+flibustaRouter.use((req, res, next) => {
+  console.log('\n=== Flibusta Router Request ===');
+  console.log('Full URL:', req.originalUrl);
+  console.log('Method:', req.method);
+  console.log('Path:', req.path);
+  console.log('Params:', req.params);
+  console.log('Body:', req.body);
+  next();
+});
+
+// Before registering routes
+console.log('\n=== Registering Routes ===');
+
+// Before the confirm-download-links route
+console.log('\nRegistering confirm-download-links route with pattern: /:id/confirm-download-links');
+
+// Flibusta search routes
 router.get('/flibusta/search', searchBooks);
 router.get('/flibusta/variant/:id', getVariantDetails);
 router.get('/flibusta/download/:id/:format', getDownloadLink);
 
-// @desc    Get all books
-// @route   GET /api/books
-// @access  Public
+// Book-specific Flibusta routes
+flibustaRouter.post('/request-download-links', protect, requestDownloadLinks);
+flibustaRouter.get('/download-variants', protect, getDownloadVariants);
+flibustaRouter.post('/select-variant', protect, selectVariant);
+
+// Save and clear Flibusta data
+flibustaRouter.post('/save-flibusta', protect, async (req, res) => {
+  console.log('\n=== Save Flibusta Links Handler ===');
+  console.log('Full URL:', req.originalUrl);
+  console.log('Book ID:', req.params.id);
+  console.log('Request body:', req.body);
+  
+  try {
+    const book = await Book.findById(req.params.id);
+    if (!book) {
+      console.log('Book not found:', req.params.id);
+      return res.status(404).json({ message: 'Book not found' });
+    }
+
+    const { variant } = req.body;
+    console.log('Updating book with variant:', variant);
+
+    // Update Flibusta fields
+    book.flibustaStatus = 'uploaded';
+    book.flibustaLastChecked = new Date();
+    book.flibustaVariants = [variant];
+
+    await book.save();
+    console.log('Book updated successfully');
+
+    // Return the updated book with populated fields
+    const updatedBook = await Book.findById(book._id)
+      .populate('addedBy', 'username')
+      .populate({
+        path: 'comments',
+        populate: {
+          path: 'user',
+          select: 'username profilePicture'
+        }
+      });
+
+    res.json(updatedBook);
+  } catch (error) {
+    console.error('Error saving Flibusta data:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+flibustaRouter.post('/clear-flibusta', protect, async (req, res) => {
+  console.log('\n=== Clear Flibusta Links Handler ===');
+  console.log('Full URL:', req.originalUrl);
+  console.log('Book ID:', req.params.id);
+  
+  try {
+    const book = await Book.findById(req.params.id);
+    if (!book) {
+      console.log('Book not found:', req.params.id);
+      return res.status(404).json({ message: 'Book not found' });
+    }
+
+    // Clear Flibusta fields
+    book.flibustaStatus = 'not_checked';
+    book.flibustaLastChecked = new Date();
+    book.flibustaVariants = [];
+
+    await book.save();
+    console.log('Book Flibusta data cleared successfully');
+
+    // Return the updated book with populated fields
+    const updatedBook = await Book.findById(book._id)
+      .populate('addedBy', 'username')
+      .populate({
+        path: 'comments',
+        populate: {
+          path: 'user',
+          select: 'username profilePicture'
+        }
+      });
+
+    res.json(updatedBook);
+  } catch (error) {
+    console.error('Error clearing Flibusta data:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Mount the Flibusta router for book-specific routes
+router.use('/:id', flibustaRouter);
+
+// Generic routes
 router.get('/', async (req, res) => {
   try {
     const { search, page = 1, limit = 10 } = req.query;
@@ -21,7 +140,6 @@ router.get('/', async (req, res) => {
     let sortOptions = { createdAt: -1 };
     
     if (search) {
-      // Use regex to match title only, case insensitive
       query = { 
         title: { 
           $regex: search, 
@@ -31,7 +149,7 @@ router.get('/', async (req, res) => {
     }
 
     const books = await Book.find(query)
-      .select('title author description coverImage publishedYear addedBy comments')
+      .select('title author description coverImage publishedYear addedBy comments flibustaStatus flibustaVariants flibustaLastChecked')
       .sort(sortOptions)
       .skip(skip)
       .limit(parseInt(limit))
@@ -46,7 +164,6 @@ router.get('/', async (req, res) => {
         }
       });
 
-    // Get total count for pagination
     const total = await Book.countDocuments(query);
 
     res.json({
@@ -63,9 +180,29 @@ router.get('/', async (req, res) => {
   }
 });
 
-// @desc    Get single book by ID
-// @route   GET /api/books/:id
-// @access  Public
+router.post('/', protect, async (req, res) => {
+  try {
+    const { title, author, description, coverImage, publishedYear, genres } = req.body;
+    
+    const book = await Book.create({
+      title,
+      author,
+      description,
+      coverImage,
+      publishedYear,
+      genres,
+      addedBy: req.user.id,
+      flibustaStatus: 'not_checked'  // Add default Flibusta status
+    });
+
+    res.status(201).json(book);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
+// Generic /:id routes come last
 router.get('/:id', async (req, res) => {
   try {
     const book = await Book.findById(req.params.id)
@@ -89,39 +226,11 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// @desc    Create a new book
-// @route   POST /api/books
-// @access  Private
-router.post('/', protect, async (req, res) => {
-  try {
-    const { title, author, description, coverImage, publishedYear, genres } = req.body;
-    
-    const book = await Book.create({
-      title,
-      author,
-      description,
-      coverImage,
-      publishedYear,
-      genres,
-      addedBy: req.user.id
-    });
-
-    res.status(201).json(book);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server Error' });
-  }
-});
-
-// @desc    Update a book
-// @route   PUT /api/books/:id
-// @access  Private/Admin
 router.put('/:id', protect, admin, async (req, res) => {
   try {
     const { title, author, description, coverImage, publishedYear, genres } = req.body;
     
     const book = await Book.findById(req.params.id);
-
     if (!book) {
       return res.status(404).json({ message: 'Book not found' });
     }
@@ -134,7 +243,6 @@ router.put('/:id', protect, admin, async (req, res) => {
     book.genres = genres || book.genres;
 
     const updatedBook = await book.save();
-
     res.json(updatedBook);
   } catch (error) {
     console.error(error);
@@ -142,19 +250,14 @@ router.put('/:id', protect, admin, async (req, res) => {
   }
 });
 
-// @desc    Delete a book
-// @route   DELETE /api/books/:id
-// @access  Private/Admin
 router.delete('/:id', protect, admin, async (req, res) => {
   try {
     const book = await Book.findById(req.params.id);
-
     if (!book) {
       return res.status(404).json({ message: 'Book not found' });
     }
 
     await book.deleteOne();
-
     res.json({ message: 'Book removed' });
   } catch (error) {
     console.error(error);
@@ -162,48 +265,14 @@ router.delete('/:id', protect, admin, async (req, res) => {
   }
 });
 
-// @desc    Like a book
-// @route   PUT /api/books/:id/like
-// @access  Private
-router.put('/:id/like', protect, async (req, res) => {
-  try {
-    const book = await Book.findById(req.params.id);
-
-    if (!book) {
-      return res.status(404).json({ message: 'Book not found' });
-    }
-
-    // Check if the book has already been liked by this user
-    if (book.likes.some(like => like.toString() === req.user.id)) {
-      // Remove the like
-      book.likes = book.likes.filter(like => like.toString() !== req.user.id);
-    } else {
-      // Add the like
-      book.likes.push(req.user.id);
-    }
-
-    await book.save();
-
-    res.json(book.likes);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server Error' });
+// Log all registered routes
+console.log('\n=== Books Router Routes ===');
+router.stack.forEach((r) => {
+  if (r.route && r.route.path) {
+    console.log(`${Object.keys(r.route.methods).join(', ').toUpperCase()}\t${r.route.path}`);
+  } else if (r.name === 'router') {
+    console.log('Mounted router at:', r.regexp);
   }
 });
-
-// @desc    Request download links from Flibusta
-// @route   POST /api/books/:id/request-download-links
-// @access  Private
-router.post('/:id/request-download-links', protect, requestDownloadLinks);
-
-// @desc    Get available variants for a book
-// @route   GET /api/books/:id/download-variants
-// @access  Private
-router.get('/:id/download-variants', protect, getDownloadVariants);
-
-// @desc    Select and save a specific variant
-// @route   POST /api/books/:id/select-variant
-// @access  Private
-router.post('/:id/select-variant', protect, selectVariant);
 
 module.exports = router; 

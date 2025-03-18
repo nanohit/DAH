@@ -64,8 +64,16 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
         await post.save();
         console.log('Post saved successfully');
         
-        await post.populate('author', 'username');
+        await post.populate('author', 'username badge');
         console.log('Post populated with author');
+        
+        // Get Socket.io instance
+        const io = req.app.get('socketio');
+        if (io) {
+            // Emit a global event that a new post has been created
+            io.emit('post-created', post);
+            console.log('Socket.io: Emitted post-created event');
+        }
         
         res.status(201).json(post);
     } catch (error) {
@@ -102,6 +110,9 @@ router.get('/', async (req, res) => {
             .populate('author', 'username badge')
             .populate({
                 path: 'comments',
+                options: {
+                    sort: { createdAt: -1 }
+                },
                 populate: [
                     {
                         path: 'user',
@@ -109,6 +120,9 @@ router.get('/', async (req, res) => {
                     },
                     {
                         path: 'replies',
+                        options: {
+                            sort: { createdAt: -1 }
+                        },
                         populate: {
                             path: 'user',
                             select: 'username badge'
@@ -152,31 +166,18 @@ router.patch('/:id', protect, upload.single('image'), async (req, res) => {
 
         // Check if user is author or admin
         if (post.author.toString() !== req.user._id.toString() && !req.user.isAdmin) {
-            console.log('User not authorized');
+            console.log('User not authorized to update this post');
             return res.status(403).json({ error: 'Not authorized' });
         }
 
-        const updates = Object.keys(req.body);
-        const allowedUpdates = ['headline', 'text'];
-        const isValidOperation = updates.every((update) => allowedUpdates.includes(update));
+        // Only allow updating headline, text, or image
+        const updates = Object.keys(req.body).filter(
+            update => ['headline', 'text'].includes(update)
+        );
 
-        if (!isValidOperation) {
-            console.log('Invalid updates requested:', updates);
-            return res.status(400).json({ error: 'Invalid updates!' });
-        }
-
-        // If there's a new image, upload it to ImgBB
-        if (req.file) {
-            try {
-                const result = await uploadImage(req.file.buffer);
-                if (!result.success) {
-                    throw new Error(result.error || 'Failed to upload image');
-                }
-                post.imageUrl = result.imageUrl;
-            } catch (error) {
-                console.error('Error uploading image:', error);
-                return res.status(400).json({ error: 'Failed to upload image' });
-            }
+        if (updates.length === 0 && !req.file) {
+            console.log('No valid updates provided');
+            return res.status(400).json({ error: 'No valid updates provided' });
         }
 
         updates.forEach((update) => post[update] = req.body[update]);
@@ -185,8 +186,17 @@ router.patch('/:id', protect, upload.single('image'), async (req, res) => {
         await post.save();
         console.log('Post saved successfully');
 
-        await post.populate('author', 'username');
+        await post.populate('author', 'username badge');
         console.log('Post populated with author');
+
+        // Get Socket.io instance
+        const io = req.app.get('socketio');
+        if (io) {
+            // We need to use the correct room format for Socket.io
+            const roomName = `post:${post._id}`;
+            console.log(`Socket.io: Emitting post-updated event to room ${roomName}`);
+            io.to(roomName).emit('post-updated', post);
+        }
 
         res.json(post);
     } catch (error) {
@@ -214,9 +224,108 @@ router.delete('/:id', protect, async (req, res) => {
         }
 
         await post.deleteOne();
+        
+        // Get Socket.io instance
+        const io = req.app.get('socketio');
+        if (io) {
+            // Emit to the specific post room and also globally
+            const roomName = `post:${post._id}`;
+            console.log(`Socket.io: Emitting post-deleted event to room ${roomName}`);
+            io.to(roomName).emit('post-deleted', post._id);
+            io.emit('post-deleted', post._id);
+        }
+        
         res.json(post);
     } catch (error) {
         res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// Toggle like for a post
+router.post('/:id/like', protect, async (req, res) => {
+    try {
+        const post = await Post.findById(req.params.id);
+        
+        if (!post) {
+            return res.status(404).json({ error: 'Post not found' });
+        }
+
+        // Check if post is already liked by user
+        const alreadyLiked = post.likes.includes(req.user._id);
+        
+        if (alreadyLiked) {
+            // Unlike the post
+            post.likes = post.likes.filter(id => id.toString() !== req.user._id.toString());
+        } else {
+            // Add like
+            post.likes.push(req.user._id);
+            // Remove from dislikes if present
+            post.dislikes = post.dislikes.filter(id => id.toString() !== req.user._id.toString());
+        }
+
+        await post.save();
+        
+        // Get Socket.io instance
+        const io = req.app.get('socketio');
+        if (io) {
+            // Emit to the specific post room with correct room name format
+            const roomName = `post:${post._id}`;
+            console.log(`Socket.io: Emitting post-liked event to room ${roomName}`);
+            io.to(roomName).emit('post-liked', {
+                postId: post._id,
+                likes: post.likes,
+                dislikes: post.dislikes,
+                userId: req.user._id
+            });
+        }
+        
+        res.json({ likes: post.likes.length, dislikes: post.dislikes.length });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Toggle dislike for a post
+router.post('/:id/dislike', protect, async (req, res) => {
+    try {
+        const post = await Post.findById(req.params.id);
+        
+        if (!post) {
+            return res.status(404).json({ error: 'Post not found' });
+        }
+
+        // Check if post is already disliked by user
+        const alreadyDisliked = post.dislikes.includes(req.user._id);
+        
+        if (alreadyDisliked) {
+            // Un-dislike the post
+            post.dislikes = post.dislikes.filter(id => id.toString() !== req.user._id.toString());
+        } else {
+            // Add dislike
+            post.dislikes.push(req.user._id);
+            // Remove from likes if present
+            post.likes = post.likes.filter(id => id.toString() !== req.user._id.toString());
+        }
+
+        await post.save();
+        
+        // Get Socket.io instance
+        const io = req.app.get('socketio');
+        if (io) {
+            // Emit to the specific post room with correct room name format
+            const roomName = `post:${post._id}`;
+            console.log(`Socket.io: Emitting post-disliked event to room ${roomName}`);
+            io.to(roomName).emit('post-disliked', {
+                postId: post._id,
+                likes: post.likes,
+                dislikes: post.dislikes,
+                userId: req.user._id
+            });
+        }
+        
+        res.json({ likes: post.likes.length, dislikes: post.dislikes.length });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
     }
 });
 
@@ -229,22 +338,40 @@ router.post('/:id/bookmark', protect, async (req, res) => {
             return res.status(404).json({ error: 'Post not found' });
         }
 
-        const userId = req.user._id;
-        const existingBookmark = post.bookmarks.find(b => b.user.equals(userId));
-
-        if (existingBookmark) {
+        // Check if post is already bookmarked by user
+        const bookmarkIndex = post.bookmarks.findIndex(bookmark => 
+            bookmark.user.toString() === req.user._id.toString()
+        );
+        
+        if (bookmarkIndex > -1) {
             // Remove bookmark
-            post.bookmarks = post.bookmarks.filter(b => !b.user.equals(userId));
+            post.bookmarks.splice(bookmarkIndex, 1);
         } else {
             // Add bookmark
-            post.bookmarks.push({ user: userId });
+            post.bookmarks.push({
+                user: req.user._id,
+                timestamp: new Date()
+            });
         }
 
         await post.save();
-        res.json({ success: true, isBookmarked: !existingBookmark });
+        
+        // Get Socket.io instance
+        const io = req.app.get('socketio');
+        if (io) {
+            // Emit to the specific post room with correct room name format
+            const roomName = `post:${post._id}`;
+            console.log(`Socket.io: Emitting post-bookmarked event to room ${roomName}`);
+            io.to(roomName).emit('post-bookmarked', {
+                postId: post._id,
+                bookmarks: post.bookmarks,
+                userId: req.user._id
+            });
+        }
+        
+        res.json({ bookmarks: post.bookmarks });
     } catch (error) {
-        console.error('Error bookmarking post:', error);
-        res.status(500).json({ error: 'Failed to bookmark post' });
+        res.status(500).json({ message: error.message });
     }
 });
 
@@ -284,19 +411,25 @@ router.get('/bookmarked', protect, async (req, res) => {
 
         // Populate the necessary fields after aggregation
         await Post.populate(posts, [
-            { path: 'author', select: 'username' },
+            { path: 'author', select: 'username badge' },
             {
                 path: 'comments',
+                options: {
+                    sort: { createdAt: -1 }
+                },
                 populate: [
                     {
                         path: 'user',
-                        select: 'username'
+                        select: 'username badge'
                     },
                     {
                         path: 'replies',
+                        options: {
+                            sort: { createdAt: -1 }
+                        },
                         populate: {
                             path: 'user',
-                            select: 'username'
+                            select: 'username badge'
                         }
                     }
                 ]
@@ -311,68 +444,6 @@ router.get('/bookmarked', protect, async (req, res) => {
     } catch (error) {
         console.error('Error fetching bookmarked posts:', error);
         res.status(500).json({ error: 'Failed to fetch bookmarked posts' });
-    }
-});
-
-// Like a post
-router.post('/:postId/like', protect, async (req, res) => {
-    try {
-        const post = await Post.findById(req.params.postId);
-        if (!post) {
-            return res.status(404).json({ message: 'Post not found' });
-        }
-
-        // Check if user already liked the post
-        const alreadyLiked = post.likes.includes(req.user._id);
-        // Check if user already disliked the post
-        const alreadyDisliked = post.dislikes.includes(req.user._id);
-
-        if (alreadyLiked) {
-            // Unlike the post
-            post.likes = post.likes.filter(id => id.toString() !== req.user._id.toString());
-        } else {
-            // Like the post and remove from dislikes if present
-            post.likes.push(req.user._id);
-            if (alreadyDisliked) {
-                post.dislikes = post.dislikes.filter(id => id.toString() !== req.user._id.toString());
-            }
-        }
-
-        await post.save();
-        res.json({ likes: post.likes.length, dislikes: post.dislikes.length });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
-
-// Dislike a post
-router.post('/:postId/dislike', protect, async (req, res) => {
-    try {
-        const post = await Post.findById(req.params.postId);
-        if (!post) {
-            return res.status(404).json({ message: 'Post not found' });
-        }
-
-        // Check if user already disliked the post
-        const alreadyDisliked = post.dislikes.includes(req.user._id);
-        // Check if user already liked the post
-        const alreadyLiked = post.likes.includes(req.user._id);
-
-        if (alreadyDisliked) {
-            // Remove dislike
-            post.dislikes = post.dislikes.filter(id => id.toString() !== req.user._id.toString());
-        } else {
-            // Add dislike and remove from likes if present
-            post.dislikes.push(req.user._id);
-            if (alreadyLiked) {
-                post.likes = post.likes.filter(id => id.toString() !== req.user._id.toString());
-            }
-        }
-
-        await post.save();
-        res.json({ likes: post.likes.length, dislikes: post.dislikes.length });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
     }
 });
 

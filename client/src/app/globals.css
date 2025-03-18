@@ -3,18 +3,45 @@
 @tailwind utilities;
 
 /* Map styles */
+html {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Prevent scrolling on maps page */
+body.maps-page,
+body.maps-view-page {
+  overflow: hidden;
+}
+
+/* Remove all z-index related styles for the header */
+/* Start with clean styles for map container */
 .map-container {
-  position: relative;
-  width: 100%;
-  height: calc(100vh - 8rem);
+  position: absolute;
   border: 2px solid rgb(229, 231, 235);
   border-radius: 0.5rem;
   background-color: rgb(249, 250, 251);
+  overflow: visible;
+  transition: cursor 0.2s;
+  will-change: transform;
 }
 
 .map-container.with-grid {
-  background-image: radial-gradient(circle, #e5e7eb 1px, transparent 1px);
+  background-image: radial-gradient(circle, #c5c7cb 1px, transparent 1px);
   background-size: 20px 20px;
+  background-position: center center;
 }
 
 .map-element {
@@ -50,6 +77,7 @@
   cursor: pointer;
   z-index: 20;
   transition: transform 0.2s, background-color 0.2s;
+  pointer-events: all;
 }
 
 .connection-point:hover {
@@ -57,13 +85,64 @@
   background-color: rgb(37, 99, 235);
 }
 
+/* Line element styles */
+.line-handle {
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+}
+
+.line-handle:hover {
+  fill: #2563eb;
+}
+
+/* Ensure SVG container doesn't interfere with other interactions */
+.map-container svg {
+  pointer-events: none;
+}
+
+.map-container svg line,
+.map-container svg circle {
+  pointer-events: auto;
+}
+
 @layer components {
   .map-container {
-    @apply relative w-full h-[600px] border-2 border-gray-200 rounded-lg bg-gray-50;
+    @apply relative w-full border-2 border-gray-200 rounded-lg bg-gray-50;
   }
 
   .map-element {
     @apply absolute w-40 h-32 bg-white border-2 border-gray-300 rounded-lg p-4 shadow-md flex items-center justify-center text-center cursor-move z-10;
+  }
+
+  .connection-point-wrapper {
+    @apply pointer-events-none;
+  }
+
+  .connection-point-scaler {
+    @apply pointer-events-none;
+  }
+
+  .line-handle {
+    @apply cursor-move;
+    touch-action: none;
+  }
+
+  .line-handle:hover {
+    @apply fill-blue-600;
+  }
+
+  /* SVG element styles */
+  .map-container svg {
+    @apply pointer-events-auto;
+  }
+
+  .map-container svg line {
+    @apply pointer-events-auto cursor-pointer;
+  }
+
+  .map-container svg circle.line-handle {
+    @apply pointer-events-auto cursor-move;
   }
 }
 
@@ -79,20 +158,192 @@
   }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
 .relative {
   position: relative;
 }
 
-.h-[600px] {
+/* Custom height classes */
+.h-600px {
   height: 600px;
 }
 
 .w-full {
   width: 100%;
+}
+
+/* 3D effect utilities */
+.perspective-700 {
+  perspective: 700px;
+}
+
+.transform-gpu {
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+}
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background-color: rgba(50, 50, 50, 0.2);
+  border-radius: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(80, 80, 80, 0.5);
+  border-radius: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(100, 100, 100, 0.7);
+}
+
+/* Book styles */
+.vertical-text {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  padding: 0.5rem 0.25rem;
+  font-size: 0.875rem;
+  letter-spacing: 0.05rem;
+  opacity: 0.7;
+  white-space: nowrap;
+  max-height: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rotated-text {
+  display: inline-block;
+  height: 100%;
+}
+
+/* Book completed button styles - with extreme z-index */
+.book-completed-badge {
+  position: absolute !important;
+  top: -18px !important;
+  right: -25px !important;
+  width: 80px !important;
+  height: 60px !important;
+  overflow: visible !important;
+  z-index: 99999 !important;
+  pointer-events: none !important;
+  transform: translateZ(999px) !important;
+}
+
+/* Target the containing books div to make sure badges are visible */
+[class*="map-element"] {
+  overflow: visible !important;
+  transform-style: preserve-3d !important;
+}
+
+.book-completed-badge > div {
+  position: absolute !important;
+  top: 12px !important;
+  right: -14px !important;
+  width: 90px !important;
+  height: 24px !important;
+  transform: rotate(45deg) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: #333 !important;
+  color: transparent !important;
+  font-size: 0 !important;
+  font-weight: 500 !important;
+  font-family: Arial, sans-serif !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3) !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3) !important;
+  letter-spacing: 0.5px !important;
+  text-transform: none !important;
+  transform-style: preserve-3d !important;
+  backface-visibility: hidden !important;
+  pointer-events: auto !important;
+  clip-path: polygon(26% 0, 74% 0, 100% 100%, 0 100%) !important;
+}
+
+/* Hide any child elements that might contain text */
+.book-completed-badge > div > * {
+  display: none !important;
+}
+
+/* Reset hover and active styles with !important */
+.book-completed-badge:hover > div {
+  background: #444 !important;
+}
+
+.book-completed-badge:active > div {
+  background: #222 !important;
+}
+
+.book-completed-badge:not(.active) > div:not(.active) {
+  background: #e5e5e5 !important;
+  color: transparent !important;
+  border: 1px solid #ccc !important;
+}
+
+/* Set text content for active state */
+.book-completed-badge > div::before {
+  content: "Completed" !important;
+  display: block !important;
+  color: #fff !important;
+  font-size: 9.5px !important;
+  margin-left: 3.5px !important;
+}
+
+/* Set text content for inactive state */
+.book-completed-badge:not(.active) > div:not(.active)::before {
+  content: "Mark as\00000Acompleted" !important;
+  display: block !important;
+  color: #333 !important;
+  font-size: 8px !important;
+  line-height: 1.1 !important;
+  white-space: pre !important;
+  text-align: center !important;
+  text-shadow: none !important;
+}
+
+/* Ensure no content from ::after */
+.book-completed-badge > div::after {
+  content: "" !important;
+  display: none !important;
+}
+
+/* Custom grid background */
+.grid-background {
+  background-image: radial-gradient(circle, #333333 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Force site header to stay on top */
+header, 
+.main-header,
+nav.main-header {
+  position: relative;
+}
+
+/* EXTREME HEADER FIX - ABSOLUTELY FORCE IT TO THE TOP */
+body.maps-view-page header,
+body.maps-view-page .header,
+body.maps-view-page nav,
+body.maps-view-page nav.main-header,
+body.maps-view-page .main-header {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 100000 !important;
+  background-color: black !important;
+}
+
+/* Completely isolate the map container from header */
+body.maps-view-page .map-container,
+body.maps-view-page .map-container * {
+  z-index: 1 !important;
+}
+
+/* Make absolute certain the header is in front */
+body.maps-view-page {
+  padding-top: 60px !important;
 }

@@ -50,6 +50,12 @@ const Navigation = () => {
                 Maps
               </Link>
               <Link 
+                href="/saved-maps" 
+                className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
+              >
+                Saved Maps
+              </Link>
+              <Link 
                 href="/books" 
                 className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
               >
