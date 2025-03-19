@@ -241,9 +241,9 @@ export default function SavedMapsPage() {
             <p className="text-gray-500 mb-6">Create a new map to get started</p>
             <Link 
               href="/maps" 
-              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+              className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
             >
-              Create New Map
+              + New Map
             </Link>
           </div>
         </div>
@@ -258,9 +258,9 @@ export default function SavedMapsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Saved Maps</h1>
           <Link 
             href="/maps" 
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+            className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
           >
-            Create New Map
+            + New Map
           </Link>
         </div>
 

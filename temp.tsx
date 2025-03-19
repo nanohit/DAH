@@ -1828,7 +1828,7 @@ const SearchModal = ({ onClose, onBookSubmit }: {
 
                 {/* Download section */}
                 <div className="mt-8">
-                  <h3 className="text-gray-200 text-lg font-medium mb-4">Download options</h3>
+                  <h3 className="text-gray-200 text-lg font-medium mb-4">Download</h3>
                   {selectedVariant ? (
                     <div>
                       {/* Preview download buttons */}
@@ -4668,7 +4668,7 @@ export default function MapsPage() {
 
                   {/* Download section */}
                   <div className="mt-8">
-                    <h3 className="text-gray-200 text-lg font-medium mb-4">Download options</h3>
+                    <h3 className="text-gray-200 text-lg font-medium mb-4">Download</h3>
                     
                     {selectedVariant ? (
                       <div>

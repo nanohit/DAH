@@ -546,7 +546,7 @@ export default function BooksPage() {
             <div className="text-gray-400 text-center">nothing found in Alphy database. Add new book.</div>
           ) : (
             <div className="overflow-hidden">
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 {books.slice(0, 20).map((book, index) => (
                   <div
                     key={book._id}
@@ -555,13 +555,13 @@ export default function BooksPage() {
                     }`}
                     style={{ 
                       position: 'relative',
-                      height: '280px',
-                      width: expandedBookId === book._id ? '600px' : '50px',
+                      height: expandedBookId === book._id ? 'var(--expanded-book-height, 280px)' : 'var(--book-height, 280px)',
+                      width: expandedBookId === book._id ? 'var(--expanded-book-width, 600px)' : 'var(--book-width, 50px)',
                       background: expandedBookId === book._id ? '#0A0A0A' : 'black',
                       borderRadius: expandedBookId === book._id ? '0.5rem' : '0.25rem',
                       border: expandedBookId === book._id ? '1px solid rgb(55 65 81)' : '1px solid rgb(31 41 55)',
                       ...(expandedBookId === book._id && index >= 10 ? { 
-                        marginLeft: '-550px'  // Move expanded book to the left
+                        marginLeft: 'var(--expanded-book-margin, -550px)'  // Make the shifted margin responsive
                       } : {})
                     }}
                     onClick={() => handleBookClick(book._id)}
@@ -577,7 +577,7 @@ export default function BooksPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                           </svg>
                         </div>
-                        <div className="w-[200px] h-full flex-shrink-0">
+                        <div className="expanded-book-cover flex-shrink-0">
                           {book.coverImage ? (
                             <img
                               src={book.coverImage}
@@ -590,17 +590,17 @@ export default function BooksPage() {
                             </div>
                           )}
                         </div>
-                        <div className="flex-1 p-6 overflow-hidden">
-                          <h3 className="text-xl font-semibold mb-1">{book.title}</h3>
-                          <p className="text-gray-400 text-sm mb-4">{book.author}</p>
-                          <p className="text-sm text-gray-300 line-clamp-6 leading-relaxed">
+                        <div className="flex-1 expanded-book-content overflow-hidden">
+                          <h3 className="expanded-book-title font-semibold mb-1">{book.title}</h3>
+                          <p className="expanded-book-author text-gray-400 mb-4">{book.author}</p>
+                          <p className="expanded-book-description text-gray-300 line-clamp-6 leading-relaxed">
                             {book.description || "No description available."}
                           </p>
                         </div>
                       </div>
                     ) : (
                       <div className="h-full w-full flex items-center justify-center">
-                        <div className="vertical-text overflow-hidden" style={{ maxHeight: '260px' }}>
+                        <div className="vertical-text overflow-hidden" style={{ maxHeight: 'calc(var(--book-height, 260px) - 20px)' }}>
                           {book.title.length > 50 
                             ? book.title.substring(0, 50) + '...' 
                             : book.title}
@@ -626,13 +626,9 @@ export default function BooksPage() {
         <div className="fixed inset-0 flex items-center justify-center z-50">
           <div className="absolute inset-0 bg-black bg-opacity-80 backdrop-blur-sm" onClick={handleCloseBookWindow}></div>
           <div 
-            className="bg-black border border-gray-800 rounded-xl w-[800px] h-[85vh] relative flex flex-col overflow-hidden"
-            style={{
-              boxShadow: '0 0 40px rgba(0, 0, 0, 0.5)',
-              background: 'linear-gradient(to bottom right, #0a0a0a, #000000)'
-            }}
+            className="border border-gray-800 rounded-xl modal-container relative flex flex-col overflow-hidden modal-bg"
           >
-            <div className="p-8 flex-1 overflow-y-auto custom-scrollbar">
+            <div className="p-8 flex-1 overflow-y-auto custom-scrollbar modal-content">
               <div className="flex justify-between items-start mb-8">
                 <button
                   onClick={handleCloseBookWindow}
@@ -667,9 +663,9 @@ export default function BooksPage() {
                 )}
               </div>
 
-              <div className="flex flex-col md:flex-row gap-12">
+              <div className="book-details flex flex-col md:flex-row gap-12">
                 {/* Book cover with 3D tilt effect */}
-                <div className="w-full md:w-64 flex-shrink-0">
+                <div className="book-cover-container w-full md:w-64 flex-shrink-0">
                   <div 
                     ref={bookCoverRef}
                     className="relative group perspective-700"
@@ -701,7 +697,7 @@ export default function BooksPage() {
                         />
                       ) : (
                         <div 
-                          className="w-full h-96 bg-gray-900 flex items-center justify-center shadow-lg" 
+                          className="w-full book-cover-placeholder flex items-center justify-center shadow-lg" 
                           style={{ 
                             borderRadius: '4px',
                             boxShadow: isHovering 
@@ -734,9 +730,9 @@ export default function BooksPage() {
                 </div>
 
                 {/* Book details */}
-                <div className="flex-1 mt-4 md:mt-0">
-                  <h2 className="text-3xl font-bold text-white mb-3">{selectedBook.title}</h2>
-                  <p className="text-lg text-gray-300 mb-6 font-light">{selectedBook.author}</p>
+                <div className="book-info flex-1 mt-4 md:mt-0">
+                  <h2 className="book-title mb-3">{selectedBook.title}</h2>
+                  <p className="book-author mb-6 font-light">{selectedBook.author}</p>
 
                   {/* Rating */}
                   <div className="flex items-center gap-2 mb-6">
@@ -750,18 +746,18 @@ export default function BooksPage() {
 
                   {/* Description */}
                   <div className="mb-8">
-                    <h3 className="text-gray-200 text-lg font-medium mb-3">About this book</h3>
+                    <h3 className="book-section-title mb-3">About this book</h3>
                     {selectedBook.description ? (
                       <div>
-                        <p className="text-gray-400 leading-relaxed" style={{ fontSize: '0.95rem' }}>
+                        <p className={`book-description leading-relaxed ${!showFullDescription ? 'line-clamp' : ''}`}>
                           {showFullDescription 
                             ? selectedBook.description
-                            : selectedBook.description.slice(0, 420)}
+                            : selectedBook.description.slice(0, 280)}
                         </p>
-                        {selectedBook.description.length > 420 && (
+                        {selectedBook.description.length > 280 && (
                           <button
                             onClick={() => setShowFullDescription(!showFullDescription)}
-                            className="text-sm text-gray-500 hover:text-gray-300 mt-3 transition-colors focus:outline-none"
+                            className="text-sm text-gray-500 hover:text-gray-300 mt-2 transition-colors focus:outline-none"
                           >
                             {showFullDescription ? 'Show less' : 'Show more'}
                           </button>
@@ -943,6 +939,313 @@ export default function BooksPage() {
           </div>
         </div>
       )}
+
+      {/* Add responsive CSS variables */}
+      <style jsx global>{`
+        :root {
+          --book-height: 280px;
+          --book-width: 50px;
+          --expanded-book-height: 280px;
+          --expanded-book-width: 600px;
+          --expanded-book-margin: -550px;
+        }
+        
+        @media (max-width: 768px) {
+          :root {
+            --book-height: 200px;
+            --book-width: 30px;
+            --expanded-book-height: 200px;
+            --expanded-book-width: 400px;
+            --expanded-book-margin: -370px;
+          }
+        }
+        
+        @media (max-width: 480px) {
+          :root {
+            --book-height: 160px;
+            --book-width: 25px;
+            --expanded-book-height: 160px;
+            --expanded-book-width: 280px;
+            --expanded-book-margin: -250px;
+          }
+        }
+        
+        .vertical-text {
+          writing-mode: vertical-rl;
+          text-orientation: mixed;
+          white-space: nowrap;
+          font-size: 0.8rem;
+          padding: 10px 4px;
+          color: #aaa;
+        }
+        
+        @media (max-width: 768px) {
+          .vertical-text {
+            font-size: 0.7rem;
+            padding: 8px 2px;
+          }
+        }
+        
+        @media (max-width: 480px) {
+          .vertical-text {
+            font-size: 0.6rem;
+            padding: 6px 1px;
+          }
+        }
+        
+        /* Expanded book cover */
+        .expanded-book-cover {
+          width: 200px;
+          height: 100%;
+        }
+        
+        /* Expanded book content */
+        .expanded-book-content {
+          padding: 1.5rem;
+        }
+        
+        .expanded-book-title {
+          font-size: 1.25rem;
+        }
+        
+        .expanded-book-author {
+          font-size: 0.875rem;
+        }
+        
+        .expanded-book-description {
+          font-size: 0.875rem;
+        }
+        
+        /* Modal specific styles */
+        .modal-container {
+          width: 800px;
+          height: 80vh;
+          box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+        }
+        
+        .modal-bg {
+          background: linear-gradient(135deg, 
+            rgba(18, 18, 20, 1) 0%, 
+            rgba(12, 12, 14, 1) 40%, 
+            rgba(8, 8, 10, 1) 60%, 
+            rgba(5, 5, 7, 1) 80%, 
+            rgba(3, 3, 5, 1) 100%);
+          position: relative;
+        }
+        
+        .modal-bg::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(
+            circle at top left,
+            rgba(40, 40, 50, 0.2),
+            transparent 60%
+          );
+          z-index: 0;
+        }
+        
+        .modal-content {
+          padding: 1.5rem;
+          position: relative;
+          z-index: 1;
+        }
+        
+        .book-cover-container {
+          width: 240px;
+        }
+        
+        .book-cover-placeholder {
+          height: 350px;
+        }
+        
+        .book-title {
+          font-size: 1.75rem;
+          font-weight: bold;
+          color: white;
+          margin-bottom: 0.5rem;
+        }
+        
+        .book-author {
+          font-size: 1.125rem;
+          color: #d1d5db;
+          margin-bottom: 1rem;
+        }
+        
+        .book-section-title {
+          color: #e5e7eb;
+          font-size: 1.125rem;
+          font-weight: 500;
+          margin-bottom: 0.5rem;
+        }
+        
+        .book-description {
+          color: #9ca3af;
+          font-size: 0.9rem;
+          line-height: 1.4;
+        }
+        
+        .line-clamp {
+          display: -webkit-box;
+          -webkit-box-orient: vertical;
+          -webkit-line-clamp: 4;
+          overflow: hidden;
+        }
+        
+        .flex.items-center.gap-2.mb-6 {
+          margin-bottom: 1rem;
+        }
+        
+        .mb-8 {
+          margin-bottom: 1.5rem;
+        }
+        
+        .mt-8 {
+          margin-top: 1.5rem;
+        }
+        
+        .text-gray-200.text-lg.font-medium.mb-4 {
+          margin-bottom: 0.75rem;
+        }
+        
+        @media (max-width: 768px) {
+          .expanded-book-cover {
+            width: 120px;
+          }
+          
+          .expanded-book-content {
+            padding: 1rem;
+          }
+          
+          .expanded-book-title {
+            font-size: 1rem;
+          }
+          
+          .expanded-book-author {
+            font-size: 0.75rem;
+          }
+          
+          .expanded-book-description {
+            font-size: 0.75rem;
+            -webkit-line-clamp: 5;
+          }
+          
+          /* Modal tablet styles */
+          .modal-container {
+            width: 90vw;
+            height: 75vh;
+          }
+          
+          .modal-content {
+            padding: 1.25rem;
+          }
+          
+          .book-details {
+            gap: 1.5rem;
+          }
+          
+          .book-cover-container {
+            width: 180px;
+          }
+          
+          .book-cover-placeholder {
+            height: 270px;
+          }
+          
+          .book-title {
+            font-size: 1.4rem;
+          }
+          
+          .book-author {
+            font-size: 1rem;
+          }
+          
+          .book-section-title {
+            font-size: 1rem;
+          }
+          
+          .book-description {
+            font-size: 0.85rem;
+            line-height: 1.35;
+          }
+          
+          .line-clamp {
+            -webkit-line-clamp: 4;
+          }
+        }
+        
+        @media (max-width: 480px) {
+          .expanded-book-cover {
+            width: 80px;
+          }
+          
+          .expanded-book-content {
+            padding: 0.75rem;
+          }
+          
+          .expanded-book-title {
+            font-size: 0.875rem;
+          }
+          
+          .expanded-book-author {
+            font-size: 0.7rem;
+            margin-bottom: 0.5rem;
+          }
+          
+          .expanded-book-description {
+            font-size: 0.7rem;
+            -webkit-line-clamp: 4;
+          }
+          
+          /* Modal mobile styles */
+          .modal-container {
+            width: 95vw;
+            height: 80vh;
+            max-height: 540px;
+          }
+          
+          .modal-content {
+            padding: 1rem 0.75rem;
+          }
+          
+          .book-details {
+            flex-direction: column;
+            gap: 1rem;
+          }
+          
+          .book-cover-container {
+            width: 120px;
+            margin: 0 auto;
+          }
+          
+          .book-cover-placeholder {
+            height: 180px;
+          }
+          
+          .book-title {
+            font-size: 1.2rem;
+          }
+          
+          .book-author {
+            font-size: 0.875rem;
+            margin-bottom: 0.75rem;
+          }
+          
+          .book-section-title {
+            font-size: 0.875rem;
+            margin-bottom: 0.375rem;
+          }
+          
+          .book-description {
+            font-size: 0.775rem;
+            line-height: 1.3;
+          }
+          
+          .line-clamp {
+            -webkit-line-clamp: 3;
+          }
+        }
+      `}</style>
     </div>
   );
 } 

@@ -33,6 +33,73 @@ flibustaRouter.use((req, res, next) => {
 // Before registering routes
 console.log('\n=== Registering Routes ===');
 
+// Bookmark routes
+router.post('/:id/bookmark', protect, async (req, res) => {
+  try {
+    // Log the incoming request
+    console.log(`Processing bookmark request for book ID: ${req.params.id}`);
+    
+    const book = await Book.findById(req.params.id);
+    
+    if (!book) {
+      return res.status(404).json({ message: 'Book not found' });
+    }
+
+    const userId = req.user._id;
+    const bookmarks = book.bookmarks || [];
+    const existingBookmark = bookmarks.find(b => b.user.toString() === userId.toString());
+
+    let isBookmarked = false;
+
+    if (existingBookmark) {
+      // Remove bookmark
+      console.log(`Removing bookmark for user ${userId} on book ${req.params.id}`);
+      book.bookmarks = bookmarks.filter(b => b.user.toString() !== userId.toString());
+      isBookmarked = false;
+    } else {
+      // Add bookmark
+      console.log(`Adding bookmark for user ${userId} on book ${req.params.id}`);
+      if (!book.bookmarks) {
+        book.bookmarks = [];
+      }
+      book.bookmarks.push({ user: userId, timestamp: new Date() });
+      isBookmarked = true;
+    }
+
+    await book.save();
+    console.log(`Book saved with updated bookmark status. Current bookmarks: ${book.bookmarks.length}`);
+    
+    res.json({ 
+      success: true, 
+      isBookmarked,
+      bookmarks: book.bookmarks.map(bookmark => ({
+        user: bookmark.user,
+        timestamp: bookmark.timestamp
+      }))
+    });
+  } catch (error) {
+    console.error('Error bookmarking book:', error);
+    res.status(500).json({ message: 'Failed to bookmark book', error: error.message });
+  }
+});
+
+// Get bookmarked books for a user
+router.get('/bookmarked', protect, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    // Find all books that have been bookmarked by the current user
+    const books = await Book.find({
+      'bookmarks.user': userId
+    }).select('-__v').populate('addedBy', 'username');
+    
+    res.json({ books });
+  } catch (error) {
+    console.error('Error fetching bookmarked books:', error);
+    res.status(500).json({ message: 'Failed to fetch bookmarked books', error: error.message });
+  }
+});
+
 // Before the confirm-download-links route
 console.log('\nRegistering confirm-download-links route with pattern: /:id/confirm-download-links');
 

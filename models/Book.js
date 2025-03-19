@@ -93,6 +93,17 @@ const BookSchema = new mongoose.Schema({
       enum: ['active', 'deleted', 'error'],
       default: 'active'
     }
+  }],
+  // Add bookmarks array to the Book schema
+  bookmarks: [{
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now
+    }
   }]
 }, {
   timestamps: true
