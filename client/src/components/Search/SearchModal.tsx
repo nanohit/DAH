@@ -1,17 +1,22 @@
 import { useSearch } from '@/hooks/useSearch';
 import { useBookDetails } from '@/hooks/useBookDetails';
-import { BookSearchResult } from '@/types';
-import { useMemo, useState, useEffect } from 'react';
+import { BookSearchResult, User } from '@/types';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import api from '@/services/api';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import { ApiSource } from '@/types/enums';
+import { BsBookmark, BsBookmarkFill } from 'react-icons/bs';
+import { bookmarkBook } from '@/utils/bookUtils';
+import { useAuth } from '@/context/AuthContext';
 
 interface SearchModalProps {
   onClose: () => void;
   onBookSubmit: (bookData: BookSearchResult) => void;
   error?: string | null;
   shouldSaveToDb?: boolean;
+  initialBook?: BookSearchResult;
+  isBookmarksPage?: boolean;
 }
 
 interface FilteredResult {
@@ -32,7 +37,7 @@ interface FlibustaResult {
   formats: FlibustaFormat[];
 }
 
-export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shouldSaveToDb = true }: SearchModalProps) => {
+export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shouldSaveToDb = true, initialBook, isBookmarksPage }: SearchModalProps) => {
   const {
     searchTerm,
     setSearchTerm,
@@ -50,7 +55,24 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
     handleSearch,
     clearSearchResults,
     resultsPerPage
-  } = useSearch();
+  } = useSearch() as {
+    searchTerm: string;
+    setSearchTerm: (term: string) => void;
+    searchResults: BookSearchResult[];
+    isLoading: boolean;
+    currentPage: number;
+    totalResults: number;
+    activeApi: ApiSource;
+    setActiveApi: (api: ApiSource) => void;
+    error: string | null;
+    displayAll: boolean;
+    setDisplayAll: (value: boolean) => void;
+    hasSearched: boolean;
+    setHasSearched: (value: boolean) => void;
+    handleSearch: (page?: number) => void;
+    clearSearchResults: () => void;
+    resultsPerPage: number;
+  };
 
   const {
     selectedBook,
@@ -64,7 +86,21 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
     handleBookClick,
     handleBackToSearch,
     handleSubmit
-  } = useBookDetails();
+  } = useBookDetails() as {
+    selectedBook: BookSearchResult | null;
+    confirmedBook: BookSearchResult | null;
+    setConfirmedBook: (book: BookSearchResult | null) => void;
+    isLoadingDetails: boolean;
+    isEditingDescription: boolean;
+    setIsEditingDescription: (value: boolean) => void;
+    showFullDescription: boolean;
+    setShowFullDescription: (value: boolean) => void;
+    handleBookClick: (book: BookSearchResult) => void;
+    handleBackToSearch: () => void;
+    handleSubmit: () => Promise<BookSearchResult | null>;
+  };
+
+  const { user } = useAuth();
 
   // Flibusta integration states
   const [isFlibustaStage, setIsFlibustaStage] = useState(false);
@@ -75,6 +111,14 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
   const [showFlibustaResults, setShowFlibustaResults] = useState(false);
 
   const router = useRouter();
+
+  const [isBookmarkHovered, setIsBookmarkHovered] = useState(false);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+
+  // Add states for 3D effect
+  const [isHovering, setIsHovering] = useState(false);
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const bookCoverRef = useRef<HTMLDivElement>(null);
 
   // Memoize book filtering logic
   const filteredResults = useMemo<FilteredResult[]>(() => {
@@ -99,6 +143,39 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
     // Unconditionally trigger search - this matches how it works in Maps page
     handleParallelSearch(1);
   }, [activeApi, displayAll]);
+
+  // Effect to handle initialBook prop
+  useEffect(() => {
+    if (initialBook && initialBook._id) {
+      console.log('Setting initialBook as confirmedBook:', initialBook);
+      console.log('Flibusta status:', initialBook.flibustaStatus);
+      console.log('Flibusta variants:', initialBook.flibustaVariants);
+      setConfirmedBook(initialBook);
+    }
+  }, [initialBook, setConfirmedBook]);
+
+  const getUserId = (user: string | { _id: string } | User): string => {
+    if (typeof user === 'string') return user;
+    return user._id;
+  };
+
+  useEffect(() => {
+    if (confirmedBook && user) {
+      const isMarked = confirmedBook.bookmarks?.some((bookmark) => 
+        getUserId(bookmark.user) === getUserId(user)
+      );
+      setIsBookmarked(!!isMarked);
+    }
+  }, [confirmedBook, user]);
+
+  useEffect(() => {
+    if (selectedBook && user) {
+      const isMarked = selectedBook.bookmarks?.some((bookmark) => 
+        getUserId(bookmark.user) === getUserId(user)
+      );
+      setIsBookmarked(!!isMarked);
+    }
+  }, [selectedBook, user]);
 
   const handleParallelSearch = (page = 1) => {
     console.log('handleParallelSearch called with:', {
@@ -268,6 +345,73 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
     handleFinalSubmit();
   };
 
+  // Handle book bookmarking
+  const handleBookmarkToggle = async () => {
+    if (!confirmedBook || !confirmedBook._id) {
+      toast.error('Cannot bookmark this book right now');
+      return;
+    }
+
+    try {
+      const result = await bookmarkBook(confirmedBook._id);
+      if (result.success) {
+        setIsBookmarked(result.isBookmarked);
+        toast.success(result.isBookmarked ? 'Book bookmarked successfully' : 'Book removed from bookmarks');
+      }
+    } catch (error) {
+      console.error('Error bookmarking book:', error);
+      toast.error('Failed to update bookmark status');
+    }
+  };
+
+  // Add new functions for 3D tilt effect
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!bookCoverRef.current) return;
+    
+    const { left, top, width, height } = bookCoverRef.current.getBoundingClientRect();
+    
+    // Calculate mouse position relative to the element
+    const x = e.clientX - left;
+    const y = e.clientY - top;
+    
+    // Convert to percentage (-50 to 50)
+    const xPercent = ((x / width) - 0.5) * 100;
+    const yPercent = ((y / height) - 0.5) * 100;
+    
+    // Reverse Y direction for natural tilt feel
+    setTilt({ x: -yPercent / 5, y: xPercent / 5 });
+  };
+
+  const handleMouseEnter = () => {
+    setIsHovering(true);
+  };
+
+  const handleMouseLeave = () => {
+    setIsHovering(false);
+    setTilt({ x: 0, y: 0 });
+  };
+
+  // Override handleBookClick to sync bookmark status
+  const originalHandleBookClick = handleBookClick;
+  const enhancedHandleBookClick = (book: BookSearchResult) => {
+    console.log('Enhanced book click handler called with:', book);
+    
+    // Call the original handler
+    originalHandleBookClick(book);
+    
+    // Check bookmark status for Alphy books
+    if (book.source === 'alphy' && book._id && user) {
+      const isMarked = book.bookmarks?.some((bookmark) => 
+        getUserId(bookmark.user) === getUserId(user)
+      );
+      console.log('Setting bookmark status:', !!isMarked);
+      setIsBookmarked(!!isMarked);
+    }
+  };
+  
+  // Replace the original handleBookClick with our enhanced version
+  const handleBookClickWithBookmarkCheck = enhancedHandleBookClick;
+
   if (isFlibustaStage && confirmedBook) {
     return (
       <div className="fixed inset-0 flex items-center justify-center z-50" onWheel={(e) => e.stopPropagation()}>
@@ -295,36 +439,76 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
                 </svg>
                 <span>Back to book details</span>
               </button>
+              
+              {confirmedBook._id && user && (
+                <button 
+                  onClick={handleBookmarkToggle}
+                  onMouseEnter={() => setIsBookmarkHovered(true)}
+                  onMouseLeave={() => setIsBookmarkHovered(false)}
+                  className="text-white hover:text-gray-200 transition-colors"
+                >
+                  {isBookmarked || isBookmarkHovered ? (
+                    <BsBookmarkFill size={28} />
+                  ) : (
+                    <BsBookmark size={28} />
+                  )}
+                </button>
+              )}
             </div>
             
             <div className="flex flex-col md:flex-row gap-12">
               {/* Book cover */}
               <div className="w-full md:w-64 flex-shrink-0">
-                <div className="relative group">
-                  {confirmedBook.thumbnail ? (
-                    <img 
-                      src={confirmedBook.source === 'openlib'
-                        ? confirmedBook.thumbnail?.replace('-S.jpg', '-L.jpg')
-                        : confirmedBook.highResThumbnail || confirmedBook.thumbnail}
-                      alt={confirmedBook.title}
-                      className="w-full h-auto object-cover bg-gray-900 shadow-lg"
-                      style={{ 
-                        borderRadius: '4px',
-                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
-                      }}
-                    />
-                  ) : (
-                    <div 
-                      className="w-full h-96 bg-gray-900 flex items-center justify-center shadow-lg" 
-                      style={{ 
-                        borderRadius: '4px',
-                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
-                      }}
-                    >
-                      <span className="text-gray-600">No cover</span>
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent opacity-0 group-hover:opacity-40 transition-opacity duration-300" />
+                <div 
+                  ref={bookCoverRef}
+                  className="relative group perspective-700"
+                  onMouseMove={handleMouseMove}
+                  onMouseEnter={handleMouseEnter}
+                  onMouseLeave={handleMouseLeave}
+                >
+                  <div 
+                    className="transform-gpu transition-transform duration-200 ease-out relative"
+                    style={{ 
+                      transform: isHovering 
+                        ? `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) scale3d(1.05, 1.05, 1.05)` 
+                        : 'rotateX(0deg) rotateY(0deg)',
+                      transformStyle: 'preserve-3d' 
+                    }}
+                  >
+                    {confirmedBook.thumbnail ? (
+                      <>
+                        <img 
+                          src={confirmedBook.source === 'openlib'
+                            ? confirmedBook.thumbnail?.replace('-S.jpg', '-L.jpg')
+                            : confirmedBook.highResThumbnail || confirmedBook.thumbnail}
+                          alt={confirmedBook.title}
+                          className="w-full h-auto object-cover bg-gray-900 shadow-lg"
+                          style={{ 
+                            borderRadius: '4px',
+                            boxShadow: isHovering 
+                              ? '0 20px 40px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 0, 0, 0.6)' 
+                              : '0 4px 20px rgba(0, 0, 0, 0.3)',
+                            transition: 'box-shadow 0.2s ease-out'
+                          }}
+                          onError={(e) => {
+                            if (e.currentTarget.src !== confirmedBook.thumbnail) {
+                              e.currentTarget.src = confirmedBook.thumbnail || '';
+                            }
+                          }}
+                        />
+                      </>
+                    ) : (
+                      <div 
+                        className="w-full h-96 bg-gray-900 flex items-center justify-center shadow-lg" 
+                        style={{ 
+                          borderRadius: '4px',
+                          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
+                        }}
+                      >
+                        <span className="text-gray-600">No cover</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               
@@ -339,94 +523,57 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
                 
                 {/* Download section */}
                 <div className="mt-8">
-                  <h3 className="text-gray-200 text-lg font-medium mb-4">Download options</h3>
-                  {selectedVariant ? (
-                    <div>
-                      {/* Preview download buttons */}
-                      <div className="flex flex-wrap gap-3 pt-3">
-                        {[
-                          ...selectedVariant.formats.filter(format => format.format !== 'mobi'),
-                          { format: 'read', url: `https://flibusta.is/b/${selectedVariant.id}/read` }
-                        ].map((format) => (
-                          <button
-                            key={format.format}
-                            className={`px-6 py-2 rounded-md transition-colors ${
-                              format.format === 'read'
-                                ? 'bg-gray-900 text-gray-300 hover:bg-gray-800 border border-gray-700'
-                                : 'bg-gray-800 text-white hover:bg-gray-700 border border-gray-700'
-                            }`}
-                          >
-                            {format.format === 'read' ? 'Read online (VPN)' : `.${format.format}`}
-                          </button>
-                        ))}
-                      </div>
-                      <button
-                        onClick={handleFinalSubmit}
-                        className="mt-6 px-6 py-3 bg-gray-800 text-white rounded-md hover:bg-gray-700 transition-colors border border-gray-700"
-                      >
-                        Save book with download links
-                      </button>
-                      <button
-                        onClick={() => setSelectedVariant(null)}
-                        className="mt-4 ml-4 text-sm text-gray-500 hover:text-gray-300 transition-colors"
-                      >
-                        Clear selection
-                      </button>
-                    </div>
-                  ) : (
-                    <div>
-                      <button
-                        onClick={handleRequestDownloadLinks}
-                        className="px-6 py-3 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-all duration-300 border border-gray-700 hover:scale-105"
-                      >
-                        {isFlibustaSearching ? 
-                          <span className="flex items-center">
-                            <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Searching...
-                          </span> : 
-                          "Find download links"
-                        }
-                      </button>
-                      <button
-                        onClick={skipFlibustaAndSave}
-                        className="mt-4 px-6 py-3 bg-gray-800 text-white rounded-md hover:bg-gray-700 transition-colors border border-gray-700"
-                      >
-                        Skip and save book
-                      </button>
-                      
-                      {/* Flibusta search results dropdown */}
-                      {showFlibustaResults && flibustaResults.length > 0 && (
-                        <div className="mt-4 border border-gray-800 rounded-md shadow-lg bg-gray-900 max-h-60 overflow-y-auto custom-scrollbar">
-                          <div className="p-3 bg-gray-800 border-b border-gray-700">
-                            <h4 className="text-sm font-medium text-white">Select a book variant:</h4>
-                          </div>
-                          {flibustaResults.map((result) => (
-                            <button
-                              key={result.id}
-                              onClick={() => handleVariantSelect(result)}
-                              className="w-full p-3 text-left hover:bg-gray-800 border-b border-gray-800 last:border-b-0 transition-colors"
+                  <h3 className="text-gray-200 text-lg font-medium mb-4">Download</h3>
+                  {confirmedBook && 
+                    ((confirmedBook.flibustaStatus === 'uploaded' && confirmedBook.flibustaVariants && confirmedBook.flibustaVariants.length > 0) || 
+                     (confirmedBook.flibustaVariants && confirmedBook.flibustaVariants.length > 0 && confirmedBook.flibustaVariants[0]?.formats)) ? (
+                      <div>
+                        {/* Saved download buttons */}
+                        <div className="flex flex-wrap gap-3 pt-3">
+                          {confirmedBook.flibustaVariants[0].formats
+                            .filter(format => format.format !== 'mobi' && format.format !== 'read')
+                            .map((format) => (
+                              <a
+                                key={format.format}
+                                href={`${process.env.NEXT_PUBLIC_FLIBUSTA_PROXY_URL || 'https://flibusta-proxy.alphy-flibusta.workers.dev'}/${confirmedBook.flibustaVariants![0].sourceId}/${format.format}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-6 py-3 rounded-md transition-all duration-300 hover:scale-105 bg-gray-900 text-white hover:bg-gray-800 border border-gray-700"
+                              >
+                                {`.${format.format}`}
+                              </a>
+                            ))}
+                          
+                          {confirmedBook.flibustaVariants[0]?.formats.length > 0 && (
+                            <a
+                              href={`https://flibusta.is/b/${confirmedBook.flibustaVariants![0].sourceId}/read`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-6 py-3 rounded-md transition-all duration-300 hover:scale-105 bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700"
                             >
-                              <div className="font-medium text-sm text-white">{result.title}</div>
-                              <div className="text-xs text-gray-400">{result.author}</div>
-                              <div className="text-xs text-gray-500 mt-1">
-                                Available formats: {result.formats.map(f => f.format.toUpperCase()).join(', ')}
-                              </div>
-                            </button>
-                          ))}
+                              Read online (VPN)
+                            </a>
+                          )}
                         </div>
-                      )}
-
-                      {/* Error message */}
-                      {flibustaError && (
-                        <div className="mt-3 text-sm text-red-400">
-                          {flibustaError}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={moveToFlibustaStage}
+                          className="px-6 py-3 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-all duration-300 border border-gray-700 hover:scale-105"
+                        >
+                          Find download links
+                        </button>
+                        {!isBookmarksPage && (
+                          <button
+                            onClick={skipFlibustaAndSave}
+                            className="mt-4 px-6 py-3 bg-gray-800 text-white rounded-md hover:bg-gray-700 transition-colors border border-gray-700"
+                          >
+                            Skip and save book
+                          </button>
+                        )}
+                      </>
+                    )}
                 </div>
               </div>
             </div>
@@ -463,42 +610,120 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
-                <span>Back to search</span>
+                <span>{isBookmarksPage ? 'Back' : 'Back to search'}</span>
               </button>
+              
+              {confirmedBook._id && user && (
+                <button 
+                  onClick={handleBookmarkToggle}
+                  onMouseEnter={() => setIsBookmarkHovered(true)}
+                  onMouseLeave={() => setIsBookmarkHovered(false)}
+                  className="text-white hover:text-gray-200 transition-colors"
+                >
+                  {isBookmarked || isBookmarkHovered ? (
+                    <BsBookmarkFill size={28} />
+                  ) : (
+                    <BsBookmark size={28} />
+                  )}
+                </button>
+              )}
             </div>
 
             <div className="flex flex-col md:flex-row gap-12">
               {/* Book cover */}
               <div className="w-full md:w-64 flex-shrink-0">
-                <div className="relative group">
-                  {confirmedBook.thumbnail ? (
-                    <img 
-                      src={confirmedBook.highResThumbnail || confirmedBook.thumbnail} 
-                      alt={confirmedBook.title}
-                      className="w-full h-auto object-cover bg-gray-900 shadow-lg"
-                      style={{ 
-                        borderRadius: '4px',
-                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
-                      }}
-                      onError={(e) => {
-                        if (e.currentTarget.src !== confirmedBook.thumbnail) {
-                          e.currentTarget.src = confirmedBook.thumbnail || '';
-                        }
-                      }}
-                    />
-                  ) : (
+                {isBookmarksPage ? (
+                  // 3D tilt effect for bookmarks page
+                  <div 
+                    ref={bookCoverRef}
+                    className="relative group perspective-700"
+                    onMouseMove={handleMouseMove}
+                    onMouseEnter={handleMouseEnter}
+                    onMouseLeave={handleMouseLeave}
+                  >
                     <div 
-                      className="w-full h-96 bg-gray-900 flex items-center justify-center shadow-lg" 
+                      className="transform-gpu transition-transform duration-200 ease-out relative"
                       style={{ 
-                        borderRadius: '4px',
-                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
+                        transform: isHovering 
+                          ? `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) scale3d(1.05, 1.05, 1.05)` 
+                          : 'rotateX(0deg) rotateY(0deg)',
+                        transformStyle: 'preserve-3d' 
                       }}
                     >
-                      <span className="text-gray-600">No cover</span>
+                      {confirmedBook.thumbnail ? (
+                        <>
+                          <img 
+                            src={confirmedBook.source === 'openlib'
+                              ? confirmedBook.thumbnail?.replace('-S.jpg', '-L.jpg')
+                              : confirmedBook.highResThumbnail || confirmedBook.thumbnail}
+                            alt={confirmedBook.title}
+                            className="w-full h-auto object-cover bg-gray-900 shadow-lg"
+                            style={{ 
+                              borderRadius: '4px',
+                              boxShadow: isHovering 
+                                ? '0 20px 40px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 0, 0, 0.6)' 
+                                : '0 4px 20px rgba(0, 0, 0, 0.3)',
+                              transition: 'box-shadow 0.2s ease-out'
+                            }}
+                            onError={(e) => {
+                              if (e.currentTarget.src !== confirmedBook.thumbnail) {
+                                e.currentTarget.src = confirmedBook.thumbnail || '';
+                              }
+                            }}
+                          />
+                        </>
+                      ) : (
+                        <div 
+                          className="w-full h-96 bg-gray-900 flex items-center justify-center shadow-lg" 
+                          style={{ 
+                            borderRadius: '4px',
+                            boxShadow: isHovering 
+                              ? '0 20px 40px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 0, 0, 0.6)' 
+                              : '0 4px 20px rgba(0, 0, 0, 0.3)',
+                            transition: 'box-shadow 0.2s ease-out'
+                          }}
+                        >
+                          <span className="text-gray-600">No cover</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent opacity-0 group-hover:opacity-40 transition-opacity duration-300" />
-                </div>
+                  </div>
+                ) : (
+                  // Regular view for non-bookmarks page
+                  <div className="relative group">
+                    {confirmedBook.thumbnail ? (
+                      <>
+                        <img 
+                          src={confirmedBook.source === 'openlib'
+                            ? confirmedBook.thumbnail?.replace('-S.jpg', '-L.jpg')
+                            : confirmedBook.highResThumbnail || confirmedBook.thumbnail}
+                          alt={confirmedBook.title}
+                          className="w-full h-auto object-cover bg-gray-900 shadow-lg"
+                          style={{ 
+                            borderRadius: '4px',
+                            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
+                          }}
+                          onError={(e) => {
+                            if (e.currentTarget.src !== confirmedBook.thumbnail) {
+                              e.currentTarget.src = confirmedBook.thumbnail || '';
+                            }
+                          }}
+                        />
+                      </>
+                    ) : (
+                      <div 
+                        className="w-full h-96 bg-gray-900 flex items-center justify-center shadow-lg" 
+                        style={{ 
+                          borderRadius: '4px',
+                          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
+                        }}
+                      >
+                        <span className="text-gray-600">No cover</span>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent opacity-0 group-hover:opacity-40 transition-opacity duration-300" />
+                  </div>
+                )}
               </div>
 
               {/* Book details */}
@@ -570,19 +795,57 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
 
                 {/* Download section */}
                 <div className="mt-8">
-                  <h3 className="text-gray-200 text-lg font-medium mb-4">Download options</h3>
-                  <button
-                    onClick={moveToFlibustaStage}
-                    className="px-6 py-3 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-all duration-300 border border-gray-700 hover:scale-105"
-                  >
-                    Find download links
-                  </button>
-                  <button
-                    onClick={skipFlibustaAndSave}
-                    className="mt-4 px-6 py-3 bg-gray-800 text-white rounded-md hover:bg-gray-700 transition-colors border border-gray-700"
-                  >
-                    Skip and save book
-                  </button>
+                  <h3 className="text-gray-200 text-lg font-medium mb-4">Download</h3>
+                  {confirmedBook && 
+                    ((confirmedBook.flibustaStatus === 'uploaded' && confirmedBook.flibustaVariants && confirmedBook.flibustaVariants.length > 0) || 
+                     (confirmedBook.flibustaVariants && confirmedBook.flibustaVariants.length > 0 && confirmedBook.flibustaVariants[0]?.formats)) ? (
+                      <div>
+                        {/* Saved download buttons */}
+                        <div className="flex flex-wrap gap-3 pt-3">
+                          {confirmedBook.flibustaVariants[0].formats
+                            .filter(format => format.format !== 'mobi' && format.format !== 'read')
+                            .map((format) => (
+                              <a
+                                key={format.format}
+                                href={`${process.env.NEXT_PUBLIC_FLIBUSTA_PROXY_URL || 'https://flibusta-proxy.alphy-flibusta.workers.dev'}/${confirmedBook.flibustaVariants![0].sourceId}/${format.format}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-6 py-3 rounded-md transition-all duration-300 hover:scale-105 bg-gray-900 text-white hover:bg-gray-800 border border-gray-700"
+                              >
+                                {`.${format.format}`}
+                              </a>
+                            ))}
+                          
+                          {confirmedBook.flibustaVariants[0]?.formats.length > 0 && (
+                            <a
+                              href={`https://flibusta.is/b/${confirmedBook.flibustaVariants![0].sourceId}/read`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-6 py-3 rounded-md transition-all duration-300 hover:scale-105 bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700"
+                            >
+                              Read online (VPN)
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={moveToFlibustaStage}
+                          className="px-6 py-3 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-all duration-300 border border-gray-700 hover:scale-105"
+                        >
+                          Find download links
+                        </button>
+                        {!isBookmarksPage && (
+                          <button
+                            onClick={skipFlibustaAndSave}
+                            className="mt-4 px-6 py-3 bg-gray-800 text-white rounded-md hover:bg-gray-700 transition-colors border border-gray-700"
+                          >
+                            Skip and save book
+                          </button>
+                        )}
+                      </>
+                    )}
                 </div>
               </div>
             </div>
@@ -717,7 +980,7 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
                     className={`p-3 hover:bg-gray-900 cursor-pointer border-b border-gray-800 flex gap-3 ${
                       selectedBook?.key === book.key ? 'bg-gray-900' : ''
                     }`}
-                    onClick={() => handleBookClick(book)}
+                    onClick={() => handleBookClickWithBookmarkCheck(book)}
                   >
                     {book.thumbnail ? (
                       <img 
@@ -820,7 +1083,7 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
         <div className="flex mt-auto">
           <button
             onClick={onClose}
-            className="flex-1 py-4 text-base font-medium bg-gray-200 hover:bg-gray-300 transition-colors text-gray-900"
+            className="flex-1 py-4 text-base font-medium bg-gray-800 hover:bg-gray-700 transition-colors text-gray-200"
           >
             Cancel
           </button>

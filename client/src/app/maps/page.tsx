@@ -14,6 +14,9 @@ import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import FormatToolbar from '@/components/FormatToolbar';
 import ReactMarkdown from 'react-markdown';
+import { BsBookmark, BsBookmarkFill } from 'react-icons/bs';
+import { bookmarkBook } from '@/utils/bookUtils';
+import { useAuth } from '@/context/AuthContext';
 
 interface MapElement {
   id: string;
@@ -43,6 +46,10 @@ interface MapElement {
         format: string;
         url: string;
       }>;
+    }>;
+    bookmarks?: Array<{
+      user: string | { _id: string };
+      timestamp: string;
     }>;
   };
   // Add line-specific properties
@@ -195,6 +202,15 @@ const ConnectionPoint = ({ position, elementId, isSelected, onStartConnection, s
       onMouseDown={(e) => {
         e.stopPropagation();
         onStartConnection(elementId, position, e);
+      }}
+      onTouchStart={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const mouseEvent = new MouseEvent('mousedown', {
+          clientX: e.touches[0].clientX,
+          clientY: e.touches[0].clientY,
+        });
+        onStartConnection(elementId, position, mouseEvent as unknown as React.MouseEvent<Element, MouseEvent>);
       }}
     >
       {getArrowSymbol(position)}
@@ -684,25 +700,49 @@ const DraggableElement = ({
         >
           {/* Corner resize handles - KEEPING THESE but hiding when resizing */}
           <div 
-            className="absolute w-4 h-4 bg-blue-500 rounded-full cursor-nwse-resize" 
-            style={{ top: '-8px', left: '-8px', pointerEvents: 'auto', opacity: isResizing ? 0 : 1 }}
-            onMouseDown={(e) => handleResizeMouseDown(e, 'top-left')}
-          />
-          <div 
-            className="absolute w-4 h-4 bg-blue-500 rounded-full cursor-nesw-resize" 
-            style={{ top: '-8px', right: '-8px', pointerEvents: 'auto', opacity: isResizing ? 0 : 1 }}
-            onMouseDown={(e) => handleResizeMouseDown(e, 'top-right')}
-          />
-          <div 
-            className="absolute w-4 h-4 bg-blue-500 rounded-full cursor-nesw-resize" 
-            style={{ bottom: '-8px', left: '-8px', pointerEvents: 'auto', opacity: isResizing ? 0 : 1 }}
-            onMouseDown={(e) => handleResizeMouseDown(e, 'bottom-left')}
-          />
-          <div 
-            className="absolute w-4 h-4 bg-blue-500 rounded-full cursor-nwse-resize" 
-            style={{ bottom: '-8px', right: '-8px', pointerEvents: 'auto', opacity: isResizing ? 0 : 1 }}
-            onMouseDown={(e) => handleResizeMouseDown(e, 'bottom-right')}
-          />
+  className="absolute w-4 h-4 bg-blue-500 rounded-full cursor-nwse-resize" 
+  style={{ top: '-8px', left: '-8px', pointerEvents: 'auto', opacity: isResizing ? 0 : 1 }}
+  onMouseDown={(e) => handleResizeMouseDown(e, 'top-left')}
+  onTouchStart={(e) => {
+    e.preventDefault();
+    const mouseEvent = new MouseEvent('mousedown', {
+      clientX: e.touches[0].clientX,
+      clientY: e.touches[0].clientY,
+    });
+    handleResizeMouseDown(mouseEvent as unknown as React.MouseEvent<Element, MouseEvent>, 'top-left');
+  }}
+/>
+<div 
+  className="absolute w-4 h-4 bg-blue-500 rounded-full cursor-nesw-resize" 
+  style={{ top: '-8px', right: '-8px', pointerEvents: 'auto', opacity: isResizing ? 0 : 1 }}
+  onMouseDown={(e) => handleResizeMouseDown(e, 'top-right')}
+  onTouchStart={(e) => {
+    e.preventDefault();
+    const mouseEvent = new MouseEvent('mousedown', {
+      clientX: e.touches[0].clientX,
+      clientY: e.touches[0].clientY,
+    });
+    handleResizeMouseDown(mouseEvent as unknown as React.MouseEvent<Element, MouseEvent>, 'top-right');
+  }}
+/>
+<div 
+  className="absolute w-4 h-4 bg-blue-500 rounded-full cursor-nesw-resize" 
+  style={{ bottom: '-8px', left: '-8px', pointerEvents: 'auto', opacity: isResizing ? 0 : 1 }}
+  onMouseDown={(e) => handleResizeMouseDown(e, 'bottom-left')}
+/>
+<div 
+  className="absolute w-4 h-4 bg-blue-500 rounded-full cursor-nwse-resize" 
+  style={{ bottom: '-8px', right: '-8px', pointerEvents: 'auto', opacity: isResizing ? 0 : 1 }}
+  onMouseDown={(e) => handleResizeMouseDown(e, 'bottom-right')}
+  onTouchStart={(e) => {
+    e.preventDefault();
+    const mouseEvent = new MouseEvent('mousedown', {
+      clientX: e.touches[0].clientX,
+      clientY: e.touches[0].clientY,
+    });
+    handleResizeMouseDown(mouseEvent as unknown as React.MouseEvent<Element, MouseEvent>, 'bottom-right');
+  }}
+/>
           
           {/* Edge resize areas - replacing small dots with full edge areas */}
           <div 
@@ -1821,7 +1861,7 @@ const SearchModal = ({ onClose, onBookSubmit }: {
 
                 {/* Download section */}
                 <div className="mt-8">
-                  <h3 className="text-gray-200 text-lg font-medium mb-4">Download options</h3>
+                  <h3 className="text-gray-200 text-lg font-medium mb-4">Download</h3>
                   {selectedVariant ? (
                     <div>
                       {/* Preview download buttons */}
@@ -2830,6 +2870,7 @@ function MapsContent() {
   const autosaveRef = useRef<() => void>();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { user } = useAuth();
 
   const { setNodeRef } = useDroppable({
     id: 'droppable',
@@ -3267,6 +3308,59 @@ function MapsContent() {
         x: canvasX,
         y: canvasY,
       });
+      
+      // Add touch event handlers for dragging connections on mobile
+      const handleTouchMove = (e: TouchEvent) => {
+        e.preventDefault();
+        if (rect && e.touches.length === 1) {
+          const canvasX = (e.touches[0].clientX - rect.left) / scale;
+          const canvasY = (e.touches[0].clientY - rect.top) / scale;
+          setTempConnection({ x: canvasX, y: canvasY });
+        }
+      };
+      
+      const handleTouchEnd = (e: TouchEvent) => {
+        e.preventDefault();
+        document.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('touchend', handleTouchEnd);
+        
+        // Find the element being dropped onto
+        const target = document.elementFromPoint(
+          e.changedTouches[0].clientX, 
+          e.changedTouches[0].clientY
+        );
+        
+        if (target) {
+          const targetId = target.id || target.closest('[id]')?.id;
+          if (targetId && targetId !== elementId) {
+            // Create the connection
+            const newConnection: Connection = {
+              id: uuidv4(),
+              start: elementId,
+              end: targetId,
+              startPoint: point,
+              endPoint: getOppositePoint(point)
+            };
+            setConnections(prev => [...prev, newConnection]);
+          }
+        }
+        
+        setConnectingFrom(null);
+        setTempConnection(null);
+      };
+      
+      document.addEventListener('touchmove', handleTouchMove);
+      document.addEventListener('touchend', handleTouchEnd);
+    }
+  };
+  
+  // Helper function to determine the opposite point
+  const getOppositePoint = (point: 'top' | 'right' | 'bottom' | 'left'): 'top' | 'right' | 'bottom' | 'left' => {
+    switch (point) {
+      case 'top': return 'bottom';
+      case 'right': return 'left';
+      case 'bottom': return 'top';
+      case 'left': return 'right';
     }
   };
 
@@ -3719,7 +3813,103 @@ function MapsContent() {
   const handlePanEnd = useCallback(() => {
     setIsPanning(false);
   }, []);
+// Add touch handling for mobile devices
+const [touchPoints, setTouchPoints] = useState<{ [key: string]: { x: number, y: number } }>({});
+const [initialPinchDistance, setInitialPinchDistance] = useState<number | null>(null);
+const [initialScale, setInitialScale] = useState<number>(1);
 
+// Calculate distance between two touch points
+const getDistance = (p1: { x: number, y: number }, p2: { x: number, y: number }) => {
+  const dx = p1.x - p2.x;
+  const dy = p1.y - p2.y;
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
+// Handle touch start events
+const handleTouchStart = useCallback((e: React.TouchEvent) => {
+  // Blur any active inputs to save map name
+  const activeElement = document.activeElement as HTMLElement;
+  if (activeElement && activeElement.tagName === 'INPUT') {
+    activeElement.blur();
+  }
+  
+  // Store all touch points
+  const newTouchPoints: { [key: string]: { x: number, y: number } } = {};
+  for (let i = 0; i < e.touches.length; i++) {
+    const touch = e.touches[i];
+    newTouchPoints[touch.identifier] = { x: touch.clientX, y: touch.clientY };
+  }
+  setTouchPoints(newTouchPoints);
+  
+  // If two touch points, store initial distance for pinch-to-zoom
+  if (e.touches.length === 2) {
+    const touch1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    const touch2 = { x: e.touches[1].clientX, y: e.touches[1].clientY };
+    const distance = getDistance(touch1, touch2);
+    setInitialPinchDistance(distance);
+    setInitialScale(scale);
+  }
+  
+  // If one touch point, treat it as panning
+  if (e.touches.length === 1 && e.target === e.currentTarget) {
+    setIsPanning(true);
+    setPanStart({ 
+      x: e.touches[0].clientX - canvasPosition.x, 
+      y: e.touches[0].clientY - canvasPosition.y 
+    });
+  }
+}, [canvasPosition, scale]);
+
+// Handle touch move events
+const handleTouchMove = useCallback((e: React.TouchEvent) => {
+  // Update stored touch points
+  const newTouchPoints: { [key: string]: { x: number, y: number } } = {};
+  for (let i = 0; i < e.touches.length; i++) {
+    const touch = e.touches[i];
+    newTouchPoints[touch.identifier] = { x: touch.clientX, y: touch.clientY };
+  }
+  setTouchPoints(newTouchPoints);
+  
+  // Handle pinch-to-zoom with two fingers
+  if (e.touches.length === 2 && initialPinchDistance !== null) {
+    const touch1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    const touch2 = { x: e.touches[1].clientX, y: e.touches[1].clientY };
+    const currentDistance = getDistance(touch1, touch2);
+    const zoomFactor = currentDistance / initialPinchDistance;
+    const newScale = Math.max(0.1, Math.min(3, initialScale * zoomFactor));
+    setScaleState(newScale);
+  }
+  
+  // Handle panning with one finger
+  if (e.touches.length === 1 && isPanning) {
+    const newX = e.touches[0].clientX - panStart.x;
+    const newY = e.touches[0].clientY - panStart.y;
+    setCanvasPosition({ x: newX, y: newY });
+  }
+}, [initialPinchDistance, initialScale, isPanning, panStart]);
+
+// Handle touch end events
+const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+  // Create a copy of the current touch points
+  const newTouchPoints = { ...touchPoints };
+  
+  // Remove touch points that have ended
+  Array.from(e.changedTouches).forEach(touch => {
+    delete newTouchPoints[touch.identifier];
+  });
+  
+  setTouchPoints(newTouchPoints);
+  
+  // If fewer than two touch points remain, reset pinch zoom state
+  if (Object.keys(newTouchPoints).length < 2) {
+    setInitialPinchDistance(null);
+  }
+  
+  // If no touch points remain, end panning
+  if (Object.keys(newTouchPoints).length === 0) {
+    setIsPanning(false);
+  }
+}, [touchPoints]);
   // Add pan effect
   useEffect(() => {
     if (isPanning) {
@@ -4883,6 +5073,85 @@ function MapsContent() {
     }, 0);
   };
   
+  // Bookmark states
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isBookmarkHovered, setIsBookmarkHovered] = useState(false);
+  
+  // Add useEffect to check bookmark status when a book is opened
+  useEffect(() => {
+    if (bookDetailsModal && bookDetailsModal.bookData && bookDetailsModal.bookData._id && user) {
+      // Check if the book is already bookmarked by this user
+      const isMarked = bookDetailsModal.bookData.bookmarks?.some(bookmark => 
+        (typeof bookmark.user === 'string' ? bookmark.user : (bookmark.user as { _id: string })._id) === 
+        (typeof user._id === 'string' ? user._id : (user._id as { _id: string })._id)
+      );
+      setIsBookmarked(!!isMarked);
+    } else {
+      setIsBookmarked(false);
+    }
+  }, [bookDetailsModal, user]);
+  
+  // ... existing code
+  
+  // Handle bookmarking/unbookmarking a book
+  const handleBookmarkToggle = async () => {
+    if (!bookDetailsModal || !bookDetailsModal.bookData || !bookDetailsModal.bookData._id || !user) {
+      toast.error('You must be logged in to bookmark books');
+      return;
+    }
+
+    try {
+      const result = await bookmarkBook(bookDetailsModal.bookData._id);
+      
+      if (result.success) {
+        setIsBookmarked(result.isBookmarked);
+        toast.success(result.isBookmarked ? 'Book bookmarked successfully' : 'Book removed from bookmarks');
+        
+        // Update the book data with the new bookmark status
+        setBookDetailsModal(prev => {
+          if (!prev) return null;
+          
+          const updatedElement = {...prev};
+          const updatedBookData = {...updatedElement.bookData};
+          
+          if (!updatedBookData.bookmarks) {
+            updatedBookData.bookmarks = [];
+          }
+          
+          if (result.isBookmarked) {
+            // Add the bookmark if it doesn't exist
+            if (!updatedBookData.bookmarks.some(b => 
+              (typeof b.user === 'string' ? b.user : (b.user as { _id: string })._id) === 
+              (typeof user._id === 'string' ? user._id : (user._id as { _id: string })._id)
+            )) {
+              updatedBookData.bookmarks.push({ user: user._id, timestamp: new Date().toISOString() });
+            }
+          } else {
+            // Remove the bookmark
+            updatedBookData.bookmarks = updatedBookData.bookmarks.filter(b => 
+              (typeof b.user === 'string' ? b.user : (b.user as { _id: string })._id) !== 
+              (typeof user._id === 'string' ? user._id : (user._id as { _id: string })._id)
+            );
+          }
+          
+          updatedElement.bookData = {
+            ...updatedBookData,
+            key: updatedBookData.key || '',
+            title: updatedBookData.title || '',
+            author: updatedBookData.author || [],
+            source: updatedBookData.source || 'alphy'
+          } as typeof updatedElement.bookData;
+          return updatedElement;
+        });
+      }
+    } catch (error) {
+      console.error('Error bookmarking book:', error);
+      toast.error('Failed to update bookmark status');
+    }
+  };
+  
+  // ... existing code
+  
   return (
     <DndContext 
       onDragStart={handleDragStart}
@@ -5064,9 +5333,8 @@ function MapsContent() {
           </div>
         </div>
 
-        {/* Floating Toolbar */}
-        <div className="absolute top-5 left-1/2 transform -translate-x-1/2 bg-white rounded-lg shadow-lg p-2 flex items-center gap-2 z-50 h-14">
-          <button
+       {/* Floating Toolbar */}
+       <div className="absolute md:top-5 md:left-1/2 md:-translate-x-1/2 top-60 left-2 bg-white rounded-lg shadow-lg p-2 md:flex md:items-center md:flex-row flex-col items-start gap-2 z-50 md:h-14">          <button
             onClick={() => handleAddElement('horizontal')}
             className="p-2 hover:bg-gray-100 rounded-lg text-gray-700 flex items-center gap-2 transition-colors"
             title="Add Text"
@@ -5150,18 +5418,22 @@ function MapsContent() {
 
         {/* Make canvas fill the entire viewport height */}
         <div className="h-full w-full overflow-hidden relative">
-          <div
-            ref={containerRef}
-            className={`map-container with-grid absolute ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
-            style={{
-              width: '2700px', // Increased from 1800px to 2700px
-              height: '2700px', // Increased from 1800px to 2700px
-              transform: `translate(${canvasPosition.x}px, ${canvasPosition.y}px) scale(${scale})`,
-              transformOrigin: '0 0',
-            }}
-            onMouseDown={handlePanStart}
-            onClick={handleContainerClick}
-          >
+        <div
+  ref={containerRef}
+  className={`map-container with-grid absolute ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+  style={{
+    width: '2700px', // Increased from 1800px to 2700px
+    height: '2700px', // Increased from 1800px to 2700px
+    transform: `translate(${canvasPosition.x}px, ${canvasPosition.y}px) scale(${scale})`,
+    transformOrigin: '0 0',
+    touchAction: 'none', // Prevent default touch behaviors
+  }}
+  onMouseDown={handlePanStart}
+  onTouchStart={handleTouchStart}
+  onTouchMove={handleTouchMove}
+  onTouchEnd={handleTouchEnd}
+  onClick={handleContainerClick}
+>
             <svg
               className="absolute inset-0 w-full h-full"
               style={{ zIndex: 5 }}
@@ -5292,6 +5564,22 @@ function MapsContent() {
                   </svg>
                   <span>Back to map</span>
                 </button>
+                
+                {/* Bookmark button in top right */}
+                {user && bookDetailsModal.bookData?._id && (
+                  <button 
+                    onClick={handleBookmarkToggle}
+                    onMouseEnter={() => setIsBookmarkHovered(true)}
+                    onMouseLeave={() => setIsBookmarkHovered(false)}
+                    className="text-white"
+                  >
+                    {isBookmarked || isBookmarkHovered ? (
+                      <BsBookmarkFill size={24} />
+                    ) : (
+                      <BsBookmark size={24} />
+                    )}
+                  </button>
+                )}
               </div>
               
               <div className="flex flex-col md:flex-row gap-12">
@@ -5429,7 +5717,7 @@ function MapsContent() {
                   
                   {/* Download section */}
                   <div className="mt-8">
-                    <h3 className="text-gray-200 text-lg font-medium mb-4">Download options</h3>
+                    <h3 className="text-gray-200 text-lg font-medium mb-4">Download</h3>
                     
                     {selectedVariant ? (
                       <div>

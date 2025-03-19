@@ -22,6 +22,10 @@ interface MapElement {
     source: 'openlib' | 'google' | 'alphy';
     flibustaStatus?: 'not_checked' | 'checking' | 'found' | 'not_found' | 'uploaded';
     completed?: boolean;
+    bookmarks?: Array<{
+      user: string | { _id: string };
+      timestamp: string;
+    }>;
     flibustaVariants?: Array<{
       title: string;
       author: string;

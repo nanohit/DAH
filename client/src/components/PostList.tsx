@@ -318,7 +318,7 @@ export default function PostList({
     
     if (wasEdited) {
       const editedTime = formatDate(post.updatedAt);
-      return `${createdTime}   Edited ${editedTime}`;
+      return `${createdTime} <span class="hidden md:inline">  Edited ${editedTime}</span>`;
     }
     
     return createdTime;
@@ -1178,7 +1178,7 @@ export default function PostList({
                         {post.author.username}
                       </Link>
                     </span>
-                    <span className="text-gray-500 text-sm">{getPostTimestamp(post)}</span>
+                    <span className="text-gray-500 text-sm" dangerouslySetInnerHTML={{ __html: getPostTimestamp(post) }}></span>
                   </div>
                 </div>
                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
@@ -1218,7 +1218,7 @@ export default function PostList({
                             {post.author.username}
                           </Link>
                         </span>
-                        <span className="text-gray-500 text-sm">{getPostTimestamp(post)}</span>
+                        <span className="text-gray-500 text-sm" dangerouslySetInnerHTML={{ __html: getPostTimestamp(post) }}></span>
                       </div>
                       <UserBadge badge={post.author.badge || ''} />
                     </div>

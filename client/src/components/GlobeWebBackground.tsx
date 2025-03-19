@@ -1,347 +1,21 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 
 interface GlobeWebBackgroundProps {
   className?: string;
 }
 
 export default function GlobeWebBackground({ className = '' }: GlobeWebBackgroundProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // State to control animation
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Ensure canvas is sized properly
-    const resizeCanvas = () => {
-      const { width, height } = canvas.getBoundingClientRect();
-      if (canvas.width !== width || canvas.height !== height) {
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
-        ctx.scale(dpr, dpr);
-      }
-    };
-
-    // Set up the canvas
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-
-    // Define the grid nodes (points where lines intersect)
-    const createNodes = () => {
-      const { width, height } = canvas.getBoundingClientRect();
-      const nodes = [];
-      const halfWidth = width / 2;
-      const gridSize = 80; // Increased grid size for better spacing
-      
-      // Create a half-dome grid structure with fewer nodes - more like the image
-      for (let y = 0; y <= height; y += gridSize) {
-        // Calculate the width of the current row based on a half-circle formula
-        // This creates a dome-like structure that's wider at the center and narrower at top/bottom
-        const normalizedY = y / height;
-        const rowWidth = Math.sin(normalizedY * Math.PI) * width * 0.9; // 0.9 to make it slightly narrower
-        
-        if (rowWidth <= 0) continue;
-        
-        const startX = halfWidth - rowWidth / 2;
-        const endX = halfWidth + rowWidth / 2;
-        const columnsInThisRow = Math.ceil(rowWidth / gridSize);
-        const actualSpacing = rowWidth / (columnsInThisRow > 1 ? columnsInThisRow - 1 : 1);
-        
-        // Add specific nodes for triangle points as in the image
-        // This creates the pattern of fixed intersection points shown in the reference
-        for (let i = 0; i <= columnsInThisRow; i++) {
-          const x = startX + i * actualSpacing;
-          
-          // Make nodes appear at specific positions to match the image
-          nodes.push({
-            x,
-            y,
-            size: 3, // Slightly larger nodes
-            originalX: x,
-            originalY: y,
-            isHighlighted: false, // For the white triangle points
-            pulsePhase: Math.random() * Math.PI * 2, // Random starting phase for pulse effect
-            pulseSpeed: 0.05 + Math.random() * 0.02 // Slight variation in pulse speed
-          });
-        }
-      }
-
-      // Add specific highlighted nodes for the triangle points as shown in the image
-      const highlighedPositions = [
-        { x: 0.5, y: 0.1 }, // Top
-        { x: 0.15, y: 0.35 }, // Left
-        { x: 0.35, y: 0.35 }, // Center Left
-        { x: 0.65, y: 0.35 }, // Center Right
-        { x: 0.85, y: 0.35 }, // Right
-        { x: 0.5, y: 0.65 }, // Bottom
-        { x: 0.2, y: 0.8 }, // Bottom Left (optional)
-        { x: 0.8, y: 0.8 }, // Bottom Right (optional)
-      ];
-      
-      const { width: canvasWidth, height: canvasHeight } = canvas.getBoundingClientRect();
-      
-      highlighedPositions.forEach(pos => {
-        nodes.push({
-          x: pos.x * canvasWidth,
-          y: pos.y * canvasHeight,
-          size: 5,
-          originalX: pos.x * canvasWidth,
-          originalY: pos.y * canvasHeight,
-          isHighlighted: true,
-          pulsePhase: Math.random() * Math.PI * 2,
-          pulseSpeed: 0.03
-        });
-      });
-      
-      return nodes;
-    };
-
-    const nodes = createNodes();
-
-    // Draw the static grid
-    const drawGrid = (time: number) => {
-      if (!ctx) return;
-      
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      const { width, height } = canvas.getBoundingClientRect();
-      const halfWidth = width / 2;
-      
-      // Draw the grid lines
-      // Horizontal lines (latitude)
-      for (let y = 0; y <= height; y += 80) {
-        const normalizedY = y / height;
-        const rowWidth = Math.sin(normalizedY * Math.PI) * width * 0.9;
-        
-        if (rowWidth <= 0) continue;
-        
-        ctx.beginPath();
-        ctx.strokeStyle = '#252525'; // Darker grid
-        ctx.lineWidth = 1;
-        ctx.moveTo(halfWidth - rowWidth / 2, y);
-        ctx.lineTo(halfWidth + rowWidth / 2, y);
-        ctx.stroke();
-      }
-      
-      // Vertical lines (longitude)
-      for (let angle = 0; angle <= Math.PI; angle += Math.PI / 8) {
-        ctx.beginPath();
-        ctx.strokeStyle = '#252525'; // Darker grid
-        ctx.lineWidth = 1;
-        
-        // Calculate top and bottom points for this longitude line
-        const topWidth = Math.sin(0 * Math.PI) * width * 0.9;
-        const bottomWidth = Math.sin(1 * Math.PI) * width * 0.9;
-        
-        const startX = halfWidth + Math.cos(angle) * topWidth / 2;
-        const startY = 0;
-        
-        const endX = halfWidth + Math.cos(angle - Math.PI) * bottomWidth / 2;
-        const endY = height;
-        
-        ctx.moveTo(startX, startY);
-        ctx.lineTo(endX, endY);
-        ctx.stroke();
-      }
-      
-      // Draw the nodes
-      nodes.forEach(node => {
-        if (node.isHighlighted) {
-          // Draw white highlighted nodes with pulse effect
-          const pulseSize = 1 + 0.3 * Math.sin(time * node.pulseSpeed + node.pulsePhase);
-          
-          // Outer glow
-          const gradient = ctx.createRadialGradient(
-            node.x, node.y, 0,
-            node.x, node.y, node.size * 3 * pulseSize
-          );
-          gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
-          gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-          
-          ctx.beginPath();
-          ctx.fillStyle = gradient;
-          ctx.arc(node.x, node.y, node.size * 3 * pulseSize, 0, Math.PI * 2);
-          ctx.fill();
-          
-          // Main circle
-          ctx.beginPath();
-          ctx.fillStyle = '#fff';
-          ctx.arc(node.x, node.y, node.size * pulseSize, 0, Math.PI * 2);
-          ctx.fill();
-        } else {
-          // Draw regular nodes (optional - can be left out for a cleaner look)
-          ctx.beginPath();
-          ctx.fillStyle = '#333';
-          ctx.arc(node.x, node.y, node.size / 2, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      });
-    };
-
-    // Define animation paths for the blue connections
-    const createPaths = () => {
-      // Define the path type
-      interface AnimationPath {
-        points: any[];
-        progress: number;
-        speed: number;
-        arcHeight: number;
-        color: {
-          h: number;
-          s: number;
-          l: number;
-          a: number;
-        };
-        startNode: any;
-        endNode: any;
-        active: boolean;
-      }
-      
-      const paths: AnimationPath[] = [];
-      
-      // Create paths between highlighted nodes to match the image
-      const highlightedNodes = nodes.filter(node => node.isHighlighted);
-      
-      // Create specific paths that match the image
-      // Each path connects two highlighted nodes with a specific style
-      const pathConfigurations = [
-        { startIndex: 0, endIndex: 1, arcHeight: -80, speed: 0.0015, initialProgress: 0.2 },   // Top to Left
-        { startIndex: 1, endIndex: 0, arcHeight: -80, speed: 0.002, initialProgress: 0.7 },    // Left to Top
-        { startIndex: 1, endIndex: 2, arcHeight: 0, speed: 0.003, initialProgress: 0.5 },      // Left to Center Left
-        { startIndex: 2, endIndex: 3, arcHeight: 0, speed: 0.002, initialProgress: 0.3 },      // Center Left to Center Right
-        { startIndex: 3, endIndex: 4, arcHeight: 0, speed: 0.0025, initialProgress: 0.6 },     // Center Right to Right
-        { startIndex: 4, endIndex: 0, arcHeight: -80, speed: 0.0018, initialProgress: 0.1 },   // Right to Top
-        { startIndex: 0, endIndex: 5, arcHeight: 0, speed: 0.002, initialProgress: 0.4 },      // Top to Bottom
-        { startIndex: 5, endIndex: 6, arcHeight: 0, speed: 0.0022, initialProgress: 0.2 },     // Bottom to Bottom Left
-        { startIndex: 5, endIndex: 7, arcHeight: 0, speed: 0.0019, initialProgress: 0.8 },     // Bottom to Bottom Right
-      ];
-      
-      pathConfigurations.forEach(config => {
-        if (highlightedNodes[config.startIndex] && highlightedNodes[config.endIndex]) {
-          const path = {
-            points: [],
-            progress: config.initialProgress, // Start at specific progress
-            speed: config.speed,
-            arcHeight: config.arcHeight,
-            color: {
-              h: 210, // Blue hue
-              s: 100,
-              l: 60, // Slightly brighter
-              a: 0.7 // More visible
-            },
-            startNode: highlightedNodes[config.startIndex],
-            endNode: highlightedNodes[config.endIndex],
-            active: true
-          };
-          
-          paths.push(path);
-        }
-      });
-      
-      return paths;
-    };
-
-    const paths = createPaths();
-
-    // Animation loop
-    const animate = (timestamp: number) => {
-      // Clear canvas and redraw grid
-      const time = timestamp * 0.001; // Convert to seconds
-      drawGrid(time);
-      
-      // Draw and update paths
-      paths.forEach(path => {
-        if (!path.active) return;
-        
-        // Update progress
-        path.progress += path.speed;
-        if (path.progress > 1) {
-          path.progress = 0;
-        }
-        
-        // Calculate current position along the path
-        const t = path.progress;
-        
-        // Use a quadratic or cubic bezier curve to create curved paths
-        // For a path with an arc/curve in the middle:
-        const startX = path.startNode.x;
-        const startY = path.startNode.y;
-        const endX = path.endNode.x;
-        const endY = path.endNode.y;
-        
-        // Control point(s) for the curve - adjust these for different curve shapes
-        const controlX = (startX + endX) / 2;
-        const controlY = Math.min(startY, endY) + path.arcHeight; // arcHeight affects curve height
-        
-        // Calculate point along quadratic bezier curve
-        const currentX = (1 - t) * (1 - t) * startX + 2 * (1 - t) * t * controlX + t * t * endX;
-        const currentY = (1 - t) * (1 - t) * startY + 2 * (1 - t) * t * controlY + t * t * endY;
-        
-        // Draw the path as a blue glowing line
-        ctx.beginPath();
-        
-        // Create gradient for the moving light
-        const gradient = ctx.createLinearGradient(
-          currentX - 80, currentY, 
-          currentX + 80, currentY
-        );
-        
-        // Soft blue gradient
-        gradient.addColorStop(0, 'rgba(0, 100, 255, 0)');
-        gradient.addColorStop(0.4, 'rgba(0, 150, 255, 0.1)');
-        gradient.addColorStop(0.5, `hsla(${path.color.h}, ${path.color.s}%, ${path.color.l}%, ${path.color.a})`);
-        gradient.addColorStop(0.6, 'rgba(0, 150, 255, 0.1)');
-        gradient.addColorStop(1, 'rgba(0, 100, 255, 0)');
-        
-        // Draw the path segment
-        ctx.beginPath();
-        ctx.moveTo(startX, startY);
-        ctx.quadraticCurveTo(controlX, controlY, currentX, currentY);
-        ctx.strokeStyle = `hsla(${path.color.h}, ${path.color.s}%, ${path.color.l}%, 0.15)`;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        
-        // Draw the bright moving light
-        ctx.beginPath();
-        ctx.arc(currentX, currentY, 3, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${path.color.h}, ${path.color.s}%, ${path.color.l + 10}%, ${path.color.a})`;
-        ctx.fill();
-        
-        // Add glow effect around the moving light
-        const glowSize = 12;
-        const glowGradient = ctx.createRadialGradient(
-          currentX, currentY, 0,
-          currentX, currentY, glowSize
-        );
-        glowGradient.addColorStop(0, `hsla(${path.color.h}, ${path.color.s}%, ${path.color.l + 20}%, 0.6)`);
-        glowGradient.addColorStop(1, `hsla(${path.color.h}, ${path.color.s}%, ${path.color.l}%, 0)`);
-        
-        ctx.beginPath();
-        ctx.fillStyle = glowGradient;
-        ctx.arc(currentX, currentY, glowSize, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      
-      requestAnimationFrame(animate);
-    };
-
-    // Start animation
-    const animationId = requestAnimationFrame(animate);
-
-    // Clean up
-    return () => {
-      window.removeEventListener('resize', resizeCanvas);
-      cancelAnimationFrame(animationId);
-    };
+    setMounted(true);
+    return () => setMounted(false);
   }, []);
 
   return (
-    <canvas 
-      ref={canvasRef} 
-      className={`absolute inset-0 ${className}`}
+    <div 
+      className={`absolute inset-0 overflow-hidden ${className}`}
       style={{ 
         height: '400px',
         width: '100%',
@@ -350,6 +24,486 @@ export default function GlobeWebBackground({ className = '' }: GlobeWebBackgroun
         background: 'black',
         zIndex: 0
       }}
-    />
+    >
+      <svg 
+        aria-hidden="true" 
+        height="100%" 
+        viewBox="-201 -1 1202 452" 
+        width="100%" 
+        style={{ overflow: 'visible' }}
+      >
+        {/* Wireframe Globe - Adjusted size and position */}
+        <g data-testid="globe-wireframe" mask="url(#globe-gradient-mask)">
+          <circle cx="400" cy="430" fill="none" r="420"></circle>
+          
+          {/* Longitude lines (vertical curved lines) */}
+          <path d="M 400 850 A -420 420 0 0 0 400 10" fill="none" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></path>
+          <path d="M 400 850 A -345.136 420 0 0 0 400 10" fill="none" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></path>
+          <path d="M 400 850 A -247.123 420 0 0 0 400 10" fill="none" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></path>
+          <path d="M 400 850 A -129.252 420 0 0 0 400 10" fill="none" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></path>
+          <path d="M 400 850 A 0 420 0 0 0 400 10" fill="none" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></path>
+          <path d="M 400 10 A 129.252 420 0 0 0 400 850" fill="none" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></path>
+          <path d="M 400 10 A 247.123 420 0 0 0 400 850" fill="none" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></path>
+          <path d="M 400 10 A 345.136 420 0 0 0 400 850" fill="none" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></path>
+          <path d="M 400 10 A 420 420 0 0 0 400 850" fill="none" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></path>
+          
+          {/* Latitude lines (horizontal lines) - Simple straight lines from edge to edge */}
+          <line x1="-20" y1="130" x2="820" y2="130" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></line>
+          <line x1="-20" y1="230" x2="820" y2="230" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></line>
+          <line x1="-20" y1="330" x2="820" y2="330" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></line>
+          <line x1="-20" y1="430" x2="820" y2="430" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></line>
+          <line x1="-20" y1="530" x2="820" y2="530" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></line>
+          <line x1="-20" y1="630" x2="820" y2="630" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></line>
+          <line x1="-20" y1="730" x2="820" y2="730" stroke="url(#globe-gradient)" strokeWidth="1" vectorEffect="non-scaling-stroke"></line>
+        </g>
+        
+        {/* Gradient mask for the globe */}
+        <mask id="globe-gradient-mask">
+          <rect fill="url(#globe-mask-gradient)" height="100%" width="100%" x="-200" y="10"></rect>
+        </mask>
+        
+        {/* Animated paths */}
+        {/* Path 1 */}
+        <g id="rd03" mask="url(#globe-gradient-mask)" opacity="1">
+          {/* Base path for the connection */}
+          <path 
+            d="M400,130 h81.421M 506.605 230 A 129.252 420 0 0 0 481.421 130" 
+            fill="none" 
+            stroke="rgba(44, 140, 225, 0.2)" 
+            strokeWidth="1.5" 
+            vectorEffect="non-scaling-stroke"
+          ></path>
+          
+          {/* Animated glowing line segment along the path */}
+          <path 
+            d="M400,130 h81.421M 506.605 230 A 129.252 420 0 0 0 481.421 130" 
+            fill="none" 
+            stroke="url(#rd03-gradient)" 
+            strokeLinecap="round" 
+            strokeWidth="2.5" 
+            vectorEffect="non-scaling-stroke"
+          >
+          </path>
+          
+          {/* Hidden path for motion */}
+          <path 
+            id="path-rd03"
+            d="M400,130 h81.421M 506.605 230 A 129.252 420 0 0 0 481.421 130" 
+            fill="none" 
+            stroke="none"
+          ></path>
+          
+          <defs>
+            <linearGradient 
+              id="rd03-gradient" 
+              x1="0%" 
+              y1="0%" 
+              x2="100%" 
+              y2="0%"
+            >
+              <stop offset="0%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="40%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="47%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="49%" stopColor="rgba(44, 140, 225, 0.3)" />
+              <stop offset="50%" stopColor="rgba(44, 140, 225, 1)" />
+              <stop offset="51%" stopColor="rgba(44, 140, 225, 0.3)" />
+              <stop offset="53%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="60%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="100%" stopColor="rgba(44, 140, 225, 0)" />
+              <animate 
+                attributeName="x1" 
+                dur="4.1s" 
+                values="-100%;100%" 
+                repeatCount="indefinite" 
+              />
+              <animate 
+                attributeName="x2" 
+                dur="4.1s" 
+                values="0%;200%" 
+                repeatCount="indefinite" 
+              />
+            </linearGradient>
+          </defs>
+        </g>
+        
+        {/* Path 2 */}
+        <g id="dldd-32" mask="url(#globe-gradient-mask)" opacity="1">
+          {/* Base path for the connection */}
+          <path 
+            d="M 115.336 230 A -345.136 420 0 0 0 81.736 330M81.736,330 h-75.399M 6.337 330 A -420 420 0 0 0 0 430M 0 430 A -420 420 0 0 0 6.337 530" 
+            fill="none" 
+            stroke="rgba(44, 140, 225, 0.2)" 
+            strokeWidth="1.5" 
+            vectorEffect="non-scaling-stroke"
+          ></path>
+          
+          {/* Animated glowing line segment along the path */}
+          <path 
+            d="M 115.336 230 A -345.136 420 0 0 0 81.736 330M81.736,330 h-75.399M 6.337 330 A -420 420 0 0 0 0 430M 0 430 A -420 420 0 0 0 6.337 530" 
+            fill="none" 
+            stroke="url(#dldd-32-gradient)" 
+            strokeLinecap="round" 
+            strokeWidth="2.5" 
+            vectorEffect="non-scaling-stroke"
+          >
+          </path>
+          
+          {/* Hidden path for motion */}
+          <path 
+            id="path-dldd-32"
+            d="M 115.336 230 A -345.136 420 0 0 0 81.736 330M81.736,330 h-75.399M 6.337 330 A -420 420 0 0 0 0 430M 0 430 A -420 420 0 0 0 6.337 530" 
+            fill="none" 
+            stroke="none"
+          ></path>
+          
+          <defs>
+            <linearGradient 
+              id="dldd-32-gradient" 
+              x1="0%" 
+              y1="0%" 
+              x2="100%" 
+              y2="0%"
+            >
+              <stop offset="0%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="40%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="47%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="49%" stopColor="rgba(44, 140, 225, 0.3)" />
+              <stop offset="50%" stopColor="rgba(44, 140, 225, 1)" />
+              <stop offset="51%" stopColor="rgba(44, 140, 225, 0.3)" />
+              <stop offset="53%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="60%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="100%" stopColor="rgba(44, 140, 225, 0)" />
+              <animate 
+                attributeName="x1" 
+                dur="5.7s" 
+                values="-100%;100%" 
+                repeatCount="indefinite" 
+              />
+              <animate 
+                attributeName="x2" 
+                dur="5.7s" 
+                values="0%;200%" 
+                repeatCount="indefinite" 
+              />
+            </linearGradient>
+          </defs>
+        </g>
+        
+        {/* Path 3 */}
+        <g id="rd11" mask="url(#globe-gradient-mask)" opacity="1">
+          {/* Base path for the connection */}
+          <path 
+            d="M519.188,330 h108.694M 635.355 430 A 247.123 420 0 0 0 627.882 330" 
+            fill="none" 
+            stroke="rgba(44, 140, 225, 0.2)" 
+            strokeWidth="1.5" 
+            vectorEffect="non-scaling-stroke"
+          ></path>
+          
+          {/* Animated glowing line segment along the path */}
+          <path 
+            d="M519.188,330 h108.694M 635.355 430 A 247.123 420 0 0 0 627.882 330" 
+            fill="none" 
+            stroke="url(#rd11-gradient)" 
+            strokeLinecap="round" 
+            strokeWidth="2.5" 
+            vectorEffect="non-scaling-stroke"
+          >
+          </path>
+          
+          {/* Hidden path for motion */}
+          <path 
+            id="path-rd11"
+            d="M519.188,330 h108.694M 635.355 430 A 247.123 420 0 0 0 627.882 330" 
+            fill="none" 
+            stroke="none"
+          ></path>
+          
+          <defs>
+            <linearGradient 
+              id="rd11-gradient" 
+              x1="0%" 
+              y1="0%" 
+              x2="100%" 
+              y2="0%"
+            >
+              <stop offset="0%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="40%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="47%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="49%" stopColor="rgba(44, 140, 225, 0.3)" />
+              <stop offset="50%" stopColor="rgba(44, 140, 225, 1)" />
+              <stop offset="51%" stopColor="rgba(44, 140, 225, 0.3)" />
+              <stop offset="53%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="60%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="100%" stopColor="rgba(44, 140, 225, 0)" />
+              <animate 
+                attributeName="x1" 
+                dur="4.1s" 
+                values="-100%;100%" 
+                repeatCount="indefinite" 
+              />
+              <animate 
+                attributeName="x2" 
+                dur="4.1s" 
+                values="0%;200%" 
+                repeatCount="indefinite" 
+              />
+            </linearGradient>
+          </defs>
+        </g>
+        
+        {/* Path 4 */}
+        <g id="lld30" mask="url(#globe-gradient-mask)" opacity="1">
+          {/* Base path for the connection */}
+          <path 
+            d="M728.701,430 h-93.346M635.355,430 h-112.258M 519.188 530 A 129.252 420 0 0 0 523.097 430" 
+            fill="none" 
+            stroke="rgba(44, 140, 225, 0.2)" 
+            strokeWidth="1.5" 
+            vectorEffect="non-scaling-stroke"
+          ></path>
+          
+          {/* Animated glowing line segment along the path */}
+          <path 
+            d="M728.701,430 h-93.346M635.355,430 h-112.258M 519.188 530 A 129.252 420 0 0 0 523.097 430" 
+            fill="none" 
+            stroke="url(#lld30-gradient)" 
+            strokeLinecap="round" 
+            strokeWidth="2.5" 
+            vectorEffect="non-scaling-stroke"
+          >
+          </path>
+          
+          {/* Hidden path for motion */}
+          <path 
+            id="path-lld30"
+            d="M728.701,430 h-93.346M635.355,430 h-112.258M 519.188 530 A 129.252 420 0 0 0 523.097 430" 
+            fill="none" 
+            stroke="none"
+          ></path>
+          
+          <defs>
+            <linearGradient 
+              id="lld30-gradient" 
+              x1="0%" 
+              y1="0%" 
+              x2="100%" 
+              y2="0%"
+            >
+              <stop offset="0%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="40%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="47%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="49%" stopColor="rgba(44, 140, 225, 0.3)" />
+              <stop offset="50%" stopColor="rgba(44, 140, 225, 1)" />
+              <stop offset="51%" stopColor="rgba(44, 140, 225, 0.3)" />
+              <stop offset="53%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="60%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="100%" stopColor="rgba(44, 140, 225, 0)" />
+              <animate 
+                attributeName="x1" 
+                dur="4.9s" 
+                values="-100%;100%" 
+                repeatCount="indefinite" 
+              />
+              <animate 
+                attributeName="x2" 
+                dur="4.9s" 
+                values="0%;200%" 
+                repeatCount="indefinite" 
+              />
+            </linearGradient>
+          </defs>
+        </g>
+
+        {/* Path 5 - Additional connection */}
+        <g id="ld-10" mask="url(#globe-gradient-mask)" opacity="1">
+          {/* Base path for the connection */}
+          <path 
+            d="M276.903,430 h-112.258M 164.645 430 A -247.123 420 0 0 0 172.118 530" 
+            fill="none" 
+            stroke="rgba(44, 140, 225, 0.2)" 
+            strokeWidth="1.5" 
+            vectorEffect="non-scaling-stroke"
+          ></path>
+          
+          {/* Animated glowing line segment along the path */}
+          <path 
+            d="M276.903,430 h-112.258M 164.645 430 A -247.123 420 0 0 0 172.118 530" 
+            fill="none" 
+            stroke="url(#ld-10-gradient)" 
+            strokeLinecap="round" 
+            strokeWidth="2.5" 
+            vectorEffect="non-scaling-stroke"
+          >
+          </path>
+          
+          {/* Hidden path for motion */}
+          <path 
+            id="path-ld-10"
+            d="M276.903,430 h-112.258M 164.645 430 A -247.123 420 0 0 0 172.118 530" 
+            fill="none" 
+            stroke="none"
+          ></path>
+          
+          <defs>
+            <linearGradient 
+              id="ld-10-gradient" 
+              x1="0%" 
+              y1="0%" 
+              x2="100%" 
+              y2="0%"
+            >
+              <stop offset="0%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="40%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="47%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="49%" stopColor="rgba(44, 140, 225, 0.3)" />
+              <stop offset="50%" stopColor="rgba(44, 140, 225, 1)" />
+              <stop offset="51%" stopColor="rgba(44, 140, 225, 0.3)" />
+              <stop offset="53%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="60%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="100%" stopColor="rgba(44, 140, 225, 0)" />
+              <animate 
+                attributeName="x1" 
+                dur="4.5s" 
+                values="-100%;100%" 
+                repeatCount="indefinite" 
+              />
+              <animate 
+                attributeName="x2" 
+                dur="4.5s" 
+                values="0%;200%" 
+                repeatCount="indefinite" 
+              />
+            </linearGradient>
+          </defs>
+        </g>
+
+        {/* Path 6 - New left-side connection for wider globe */}
+        <g id="left-side" mask="url(#globe-gradient-mask)" opacity="1">
+          {/* Base path for the connection */}
+          <path 
+            d="M0,430 h-100M -100 430 A -420 420 0 0 0 -75 330" 
+            fill="none" 
+            stroke="rgba(44, 140, 225, 0.2)" 
+            strokeWidth="1.5" 
+            vectorEffect="non-scaling-stroke"
+          ></path>
+          
+          {/* Animated glowing line segment along the path */}
+          <path 
+            d="M0,430 h-100M -100 430 A -420 420 0 0 0 -75 330" 
+            fill="none" 
+            stroke="url(#left-side-gradient)" 
+            strokeLinecap="round" 
+            strokeWidth="2.5" 
+            vectorEffect="non-scaling-stroke"
+          >
+          </path>
+          
+          {/* Hidden path for motion */}
+          <path 
+            id="path-left-side"
+            d="M0,430 h-100M -100 430 A -420 420 0 0 0 -75 330" 
+            fill="none" 
+            stroke="none"
+          ></path>
+          
+          <defs>
+            <linearGradient 
+              id="left-side-gradient" 
+              x1="0%" 
+              y1="0%" 
+              x2="100%" 
+              y2="0%"
+            >
+              <stop offset="0%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="40%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="47%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="49%" stopColor="rgba(44, 140, 225, 0.3)" />
+              <stop offset="50%" stopColor="rgba(44, 140, 225, 1)" />
+              <stop offset="51%" stopColor="rgba(44, 140, 225, 0.3)" />
+              <stop offset="53%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="60%" stopColor="rgba(44, 140, 225, 0)" />
+              <stop offset="100%" stopColor="rgba(44, 140, 225, 0)" />
+              <animate 
+                attributeName="x1" 
+                dur="4.3s" 
+                values="-100%;100%" 
+                repeatCount="indefinite" 
+              />
+              <animate 
+                attributeName="x2" 
+                dur="4.3s" 
+                values="0%;200%" 
+                repeatCount="indefinite" 
+              />
+            </linearGradient>
+          </defs>
+        </g>
+
+        {/* Nodes/Points */}
+        <g data-testid="node">
+          <circle className="node_node" cx="400" cy="130" fill="var(--ds-background-100)" r="16" stroke="url(#globe-gradient)" vectorEffect="non-scaling-stroke"></circle>
+          <path className="node_icon" clipRule="evenodd" d="M8 1L16 15H0L8 1Z" fill="currentColor" fillRule="evenodd" transform="translate(392.5, 122) scale(0.9)"></path>
+          <circle className="node_dot" cx="400" cy="130" fill="var(--ds-gray-900)" r="8"></circle>
+        </g>
+
+        <g data-testid="node">
+          <circle className="node_node" cx="115.336" cy="230" fill="var(--ds-background-100)" r="16" stroke="url(#globe-gradient)" vectorEffect="non-scaling-stroke"></circle>
+          <path className="node_icon" clipRule="evenodd" d="M8 1L16 15H0L8 1Z" fill="currentColor" fillRule="evenodd" transform="translate(107.836, 222) scale(0.9)"></path>
+          <circle className="node_dot" cx="115.336" cy="230" fill="var(--ds-gray-900)" r="8"></circle>
+        </g>
+
+        <g data-testid="node">
+          <circle className="node_node" cx="519.188" cy="330" fill="var(--ds-background-100)" r="16" stroke="url(#globe-gradient)" vectorEffect="non-scaling-stroke"></circle>
+          <path className="node_icon" clipRule="evenodd" d="M8 1L16 15H0L8 1Z" fill="currentColor" fillRule="evenodd" transform="translate(511.688, 322) scale(0.9)"></path>
+          <circle className="node_dot" cx="519.188" cy="330" fill="var(--ds-gray-900)" r="8"></circle>
+        </g>
+
+        <g data-testid="node">
+          <circle className="node_node" cx="276.903" cy="430" fill="var(--ds-background-100)" r="16" stroke="url(#globe-gradient)" vectorEffect="non-scaling-stroke"></circle>
+          <path className="node_icon" clipRule="evenodd" d="M8 1L16 15H0L8 1Z" fill="currentColor" fillRule="evenodd" transform="translate(269.403, 422) scale(0.9)"></path>
+          <circle className="node_dot" cx="276.903" cy="430" fill="var(--ds-gray-900)" r="8"></circle>
+        </g>
+
+        <g data-testid="node">
+          <circle className="node_node" cx="728.701" cy="430" fill="var(--ds-background-100)" r="16" stroke="url(#globe-gradient)" vectorEffect="non-scaling-stroke"></circle>
+          <path className="node_icon" clipRule="evenodd" d="M8 1L16 15H0L8 1Z" fill="currentColor" fillRule="evenodd" transform="translate(721.201, 422) scale(0.9)"></path>
+          <circle className="node_dot" cx="728.701" cy="430" fill="var(--ds-gray-900)" r="8"></circle>
+        </g>
+
+        {/* New node for the left side */}
+        <g data-testid="node">
+          <circle className="node_node" cx="-100" cy="430" fill="var(--ds-background-100)" r="16" stroke="url(#globe-gradient)" vectorEffect="non-scaling-stroke"></circle>
+          <path className="node_icon" clipRule="evenodd" d="M8 1L16 15H0L8 1Z" fill="currentColor" fillRule="evenodd" transform="translate(-107.5, 422) scale(0.9)"></path>
+          <circle className="node_dot" cx="-100" cy="430" fill="var(--ds-gray-900)" r="8"></circle>
+        </g>
+
+        {/* Gradients for the globe lines and mask */}
+        <defs>
+          <linearGradient gradientUnits="userSpaceOnUse" id="globe-gradient" x1="0" x2="0" y1="0" y2="420">
+            <stop offset="0%" stopColor="#333333"></stop>
+            <stop offset="100%" stopColor="#333333"></stop>
+          </linearGradient>
+          <linearGradient gradientTransform="rotate(90)" id="globe-mask-gradient">
+            <stop offset=".7" stopColor="white" stopOpacity="1"></stop>
+            <stop offset="1" stopColor="white" stopOpacity="0"></stop>
+          </linearGradient>
+        </defs>
+        
+        <style>{`
+          .node_node {
+            fill: #1a1a1a;
+            stroke: #333333;
+          }
+          .node_icon {
+            fill: white;
+          }
+          .node_dot {
+            fill: #1a1a1a;
+          }
+        `}</style>
+      </svg>
+    </div>
   );
 } 

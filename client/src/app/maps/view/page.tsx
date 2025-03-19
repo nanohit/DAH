@@ -6,6 +6,42 @@ import { toast } from 'react-hot-toast';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { loadMapViewOnly, MapElement, Connection } from '@/utils/mapUtils';
 import ReactMarkdown from 'react-markdown';
+import { useAuth } from '@/context/AuthContext';
+import { BsBookmark, BsBookmarkFill } from 'react-icons/bs';
+import { bookmarkBook } from '@/utils/bookUtils';
+
+// Add this interface at the top of the file
+interface BookmarkData {
+  user: string | { _id: string };
+  timestamp: string;
+}
+
+// Then fix the issue where bookmarks property doesn't exist on the bookData type
+// Add this to the interface where MapElement is defined (or update existing interface)
+interface BookDetailsModal {
+  bookData: {
+    key: string;
+    _id?: string;
+    title: string;
+    author: string[];
+    thumbnail?: string;
+    highResThumbnail?: string;
+    description?: string;
+    source: 'openlib' | 'google' | 'alphy';
+    flibustaStatus?: 'not_checked' | 'checking' | 'found' | 'not_found' | 'uploaded';
+    completed?: boolean;
+    flibustaVariants?: Array<{
+      title: string;
+      author: string;
+      sourceId: string;
+      formats: Array<{
+        format: string;
+        url: string;
+      }>;
+    }>;
+    bookmarks?: BookmarkData[];
+  };
+}
 
 // ScaledXarrow component - EXACTLY copied from main editor
 const ScaledXarrow = ({ 
@@ -107,8 +143,13 @@ function MapViewContent() {
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
   
+  // Bookmark state
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isBookmarkHovered, setIsBookmarkHovered] = useState(false);
+  
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
 
   // Function to get connection references - EXACTLY copied from main editor
   const getConnectionRef = (elementId: string, point: 'top' | 'right' | 'bottom' | 'left') => {
@@ -531,6 +572,77 @@ function MapViewContent() {
     );
   };
 
+  // Check if the book is bookmarked when a book modal is opened
+  useEffect(() => {
+    if (bookDetailsModal && bookDetailsModal.bookData && bookDetailsModal.bookData._id && user) {
+      // Check if the book is already bookmarked by this user
+      const isMarked = bookDetailsModal.bookData.bookmarks?.some((bookmark: BookmarkData) => 
+        (typeof bookmark.user === 'string' ? bookmark.user : (bookmark.user as { _id: string })._id) === 
+        (typeof user._id === 'string' ? user._id : (user._id as { _id: string })._id)
+      );
+      setIsBookmarked(!!isMarked);
+    } else {
+      setIsBookmarked(false);
+    }
+  }, [bookDetailsModal, user]);
+
+  // Handle bookmarking/unbookmarking a book
+  const handleBookmarkToggle = async () => {
+    if (!bookDetailsModal || !bookDetailsModal.bookData || !bookDetailsModal.bookData._id || !user) {
+      toast.error('You must be logged in to bookmark books');
+      return;
+    }
+
+    try {
+      const result = await bookmarkBook(bookDetailsModal.bookData._id);
+      
+      if (result.success) {
+        setIsBookmarked(result.isBookmarked);
+        toast.success(result.isBookmarked ? 'Book bookmarked successfully' : 'Book removed from bookmarks');
+        
+        // Update the book data with the new bookmark status
+        setBookDetailsModal(prev => {
+          if (!prev) return null;
+          
+          const updatedElement = {...prev};
+          const updatedBookData = {...updatedElement.bookData};
+          
+          if (!updatedBookData.bookmarks) {
+            updatedBookData.bookmarks = [];
+          }
+          
+          if (result.isBookmarked) {
+            // Add the bookmark if it doesn't exist
+            if (!updatedBookData.bookmarks.some((b: BookmarkData) => 
+              (typeof b.user === 'string' ? b.user : (b.user as { _id: string })._id) === 
+              (typeof user._id === 'string' ? user._id : (user._id as { _id: string })._id)
+            )) {
+              updatedBookData.bookmarks.push({ user: user._id, timestamp: new Date().toISOString() });
+            }
+          } else {
+            // Remove the bookmark
+            updatedBookData.bookmarks = updatedBookData.bookmarks.filter((b: BookmarkData) => 
+              (typeof b.user === 'string' ? b.user : (b.user as { _id: string })._id) !== 
+              (typeof user._id === 'string' ? user._id : (user._id as { _id: string })._id)
+            );
+          }
+          
+          updatedElement.bookData = {
+            ...updatedBookData,
+            key: updatedBookData.key || '',
+            title: updatedBookData.title || '',
+            author: updatedBookData.author || [],
+            source: updatedBookData.source || 'alphy'
+          } as typeof updatedElement.bookData;
+          return updatedElement;
+        });
+      }
+    } catch (error) {
+      console.error('Error bookmarking book:', error);
+      toast.error('Failed to update bookmark status');
+    }
+  };
+
   // If still loading, show loading spinner
   if (isLoading) {
     return (
@@ -680,6 +792,22 @@ function MapViewContent() {
                   </svg>
                   <span>Back to map</span>
                 </button>
+                
+                {/* Bookmark button in top right */}
+                {user && bookDetailsModal.bookData?._id && (
+                  <button 
+                    onClick={handleBookmarkToggle}
+                    onMouseEnter={() => setIsBookmarkHovered(true)}
+                    onMouseLeave={() => setIsBookmarkHovered(false)}
+                    className="text-white"
+                  >
+                    {isBookmarked || isBookmarkHovered ? (
+                      <BsBookmarkFill size={24} />
+                    ) : (
+                      <BsBookmark size={24} />
+                    )}
+                  </button>
+                )}
               </div>
               
               <div className="flex flex-col md:flex-row gap-12">
@@ -771,7 +899,7 @@ function MapViewContent() {
                   {/* Download section */}
                   {bookDetailsModal.bookData?.flibustaStatus === 'uploaded' && bookDetailsModal.bookData.flibustaVariants && (
                     <div className="mt-8">
-                      <h3 className="text-gray-200 text-lg font-medium mb-4">Download options</h3>
+                      <h3 className="text-gray-200 text-lg font-medium mb-4">Download</h3>
                       
                       <div>
                         {/* Saved download buttons */}

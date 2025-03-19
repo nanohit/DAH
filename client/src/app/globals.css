@@ -1,3 +1,6 @@
+/* Import IBM Plex Mono font */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -200,6 +203,11 @@ body.maps-view-page {
   background-color: rgba(100, 100, 100, 0.7);
 }
 
+/* Font styles */
+.font-ibm-plex-mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
 /* Book styles */
 .vertical-text {
   writing-mode: vertical-rl;
@@ -207,7 +215,8 @@ body.maps-view-page {
   padding: 0.5rem 0.25rem;
   font-size: 0.875rem;
   letter-spacing: 0.05rem;
-  opacity: 0.7;
+  opacity: 0.9;
+  color:#aab4c2;
   white-space: nowrap;
   max-height: 240px;
   overflow: hidden;

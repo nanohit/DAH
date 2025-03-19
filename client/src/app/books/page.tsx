@@ -10,6 +10,8 @@ import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '@/context/AuthContext';
 import GlobeWebBackground from '@/components/GlobeWebBackground';
+import { BsBookmark, BsBookmarkFill } from 'react-icons/bs';
+import { bookmarkBook, isBookBookmarked } from '@/utils/bookUtils';
 
 interface PaginationData {
   page: number;
@@ -47,6 +49,9 @@ interface BookData {
       url: string;
     }>;
   }>;
+  bookmarks?: Array<{
+    user: string;
+  }>;
 }
 
 interface BooksResponse {
@@ -79,7 +84,11 @@ export default function BooksPage() {
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const [isHovering, setIsHovering] = useState(false);
 
-  const { isAdmin } = useAuth();
+  const { isAuthenticated, isAdmin, user } = useAuth();
+
+  // Bookmark state
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isBookmarkHovered, setIsBookmarkHovered] = useState(false);
 
   useEffect(() => {
     const fetchBooks = async () => {
@@ -102,6 +111,19 @@ export default function BooksPage() {
   useEffect(() => {
     console.log('isAdmin:', isAdmin);
   }, [isAdmin]);
+
+  // Update bookmark state when a book is selected
+  useEffect(() => {
+    if (selectedBook && user) {
+      // Check if the book is bookmarked by the current user
+      const isMarked = selectedBook.bookmarks?.some(bookmark => 
+        bookmark.user === user._id || bookmark.user === (user._id as any).toString()
+      );
+      setIsBookmarked(!!isMarked);
+    } else {
+      setIsBookmarked(false);
+    }
+  }, [selectedBook, user]);
 
   const handleBookSubmit = async (bookData: BookSearchResult) => {
     try {
@@ -382,22 +404,96 @@ export default function BooksPage() {
     setTilt({ x: 0, y: 0 });
   };
 
+  // Handle bookmarking/unbookmarking a book
+  const handleBookmarkToggle = async () => {
+    if (!selectedBook || !user) {
+      toast.error('You must be logged in to bookmark books');
+      return;
+    }
+
+    try {
+      const result = await bookmarkBook(selectedBook._id);
+      
+      if (result.success) {
+        // Set the isBookmarked state based on the server response
+        setIsBookmarked(result.isBookmarked);
+        
+        // If the book is in the books array, update it with the new bookmark status
+        setBooks(prevBooks => prevBooks.map(book => {
+          if (book._id === selectedBook._id) {
+            // Create a new book with updated bookmarks
+            const updatedBook = {...book};
+            
+            // Initialize bookmarks array if it doesn't exist
+            if (!updatedBook.bookmarks) {
+              updatedBook.bookmarks = [];
+            }
+            
+            if (result.isBookmarked) {
+              // Add user to bookmarks if not already there
+              if (!updatedBook.bookmarks.some(bookmark => bookmark.user === user._id)) {
+                updatedBook.bookmarks.push({ user: user._id });
+              }
+            } else {
+              // Remove user from bookmarks
+              updatedBook.bookmarks = updatedBook.bookmarks.filter(
+                bookmark => bookmark.user !== user._id
+              );
+            }
+            
+            return updatedBook;
+          }
+          return book;
+        }));
+        
+        // Also update the selectedBook
+        setSelectedBook(prevBook => {
+          if (!prevBook) return null;
+          
+          const updatedBook = {...prevBook};
+          
+          // Initialize bookmarks array if it doesn't exist
+          if (!updatedBook.bookmarks) {
+            updatedBook.bookmarks = [];
+          }
+          
+          if (result.isBookmarked) {
+            // Add user to bookmarks if not already there
+            if (!updatedBook.bookmarks.some(bookmark => bookmark.user === user._id)) {
+              updatedBook.bookmarks.push({ user: user._id });
+            }
+          } else {
+            // Remove user from bookmarks
+            updatedBook.bookmarks = updatedBook.bookmarks.filter(
+              bookmark => bookmark.user !== user._id
+            );
+          }
+          
+          return updatedBook;
+        });
+        
+        toast.success(result.isBookmarked ? 'Book bookmarked successfully' : 'Book removed from bookmarks');
+      }
+    } catch (error) {
+      console.error('Error bookmarking book:', error);
+      toast.error('Failed to update bookmark status');
+    }
+  };
+
   return (
     <div className="h-screen overflow-hidden bg-black text-white relative">
       {/* Globe web background */}
       <GlobeWebBackground />
 
       <div className="container mx-auto px-4 py-12 relative z-10">
-        <div className="flex flex-col items-center justify-center mt-8">
-          <h1 className="text-5xl font-bold text-center tracking-widest mb-2">alphy</h1>
-          <p className="text-2xl text-center tracking-wide mb-6">digital library</p>
-          <p className="text-base text-center text-gray-400 mb-12 max-w-2xl">
-            By adding books to your maps or this page, you store them on Alphy. 
-            Browse or view all stored books below.
-          </p>
+        <div className="flex flex-col items-center justify-center mt-28">
+          <div className="flex flex-col items-center justify-center mb-12">
+            <p className="text-2xl font-bold font-ibm-plex-mono">alphy</p>
+            <p className="text-2xl font-ibm-plex-mono mt-1">digital library</p>
+          </div>
         </div>
         
-        <div className="flex justify-center mb-16">
+        <div className="flex justify-center mb-3">
           <div className="flex items-center gap-6 w-full max-w-3xl">
             <div className="bg-[#080808] border border-gray-800 hover:border-gray-700 text-gray-400 px-8 py-3 rounded-xl text-lg flex-shrink-0 cursor-pointer text-base transition-all duration-300 hover:bg-[#111]"
                  onClick={() => setIsSearchModalOpen(true)}>
@@ -421,6 +517,13 @@ export default function BooksPage() {
               </div>
             </div>
           </div>
+        </div>
+        
+        <div className="flex justify-center mb-16">
+          <p className="text-sm text-center text-gray-600 max-w-2xl font-ibm-plex-mono">
+            By adding books to your maps or this page, you store them on Alphy.<br />
+            Browse or view all stored books below.
+          </p>
         </div>
 
         <div className="mb-8">
@@ -546,6 +649,22 @@ export default function BooksPage() {
                   </svg>
                   <span>Back to library</span>
                 </button>
+                
+                {/* Bookmark button in top right */}
+                {user && (
+                  <button 
+                    onClick={handleBookmarkToggle}
+                    onMouseEnter={() => setIsBookmarkHovered(true)}
+                    onMouseLeave={() => setIsBookmarkHovered(false)}
+                    className="text-white"
+                  >
+                    {isBookmarked || isBookmarkHovered ? (
+                      <BsBookmarkFill size={24} />
+                    ) : (
+                      <BsBookmark size={24} />
+                    )}
+                  </button>
+                )}
               </div>
 
               <div className="flex flex-col md:flex-row gap-12">
@@ -655,7 +774,7 @@ export default function BooksPage() {
 
                   {/* Download section */}
                   <div className="mt-8">
-                    <h3 className="text-gray-200 text-lg font-medium mb-4">Download options</h3>
+                    <h3 className="text-gray-200 text-lg font-medium mb-4">Download</h3>
                     {selectedBook?.flibustaStatus === 'uploaded' && selectedBook.flibustaVariants?.[0] ? (
                       <div>
                         {/* Saved download buttons */}

@@ -5,17 +5,78 @@ import PostList from '@/components/PostList';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { getBookmarkedMaps, SavedMap, bookmarkMap } from '@/utils/mapUtils';
+import { getBookmarkedBooks, BookData, bookmarkBook } from '@/utils/bookUtils';
 import Link from 'next/link';
 import MapCommentSection from '@/components/MapCommentSection';
 import { toast } from 'react-hot-toast';
+import { SearchModal } from '@/components/Search/SearchModal';
+
+interface BookmarkData {
+  user: string | { _id: string };
+  timestamp: string;
+}
+
+// BookCard component with its own state
+const BookCard = ({ book, onBookmarkToggle, onOpen }: { 
+  book: BookData; 
+  onBookmarkToggle: (bookId: string) => void; 
+  onOpen: (book: BookData) => void; 
+}) => {
+  const [isBookmarkHovered, setIsBookmarkHovered] = useState(false);
+
+  return (
+    <div 
+      key={book._id} 
+      className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col"
+    >
+      <div 
+        className="cursor-pointer flex-grow" 
+        onClick={() => onOpen(book)}
+      >
+        <div className="relative h-64 overflow-hidden">
+          <img 
+            src={book.coverImage} 
+            alt={book.title}
+            className="w-full h-full object-cover"
+          />
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onBookmarkToggle(book._id);
+            }}
+            onMouseEnter={() => setIsBookmarkHovered(true)}
+            onMouseLeave={() => setIsBookmarkHovered(false)}
+            className="absolute top-2 right-2 text-white hover:text-red-500 transition-colors"
+            title="Remove from bookmarks"
+          >
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              className="h-6 w-6" 
+              viewBox="0 0 20 20" 
+              fill="currentColor"
+            >
+              <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-3">
+          <h3 className="font-medium text-gray-900 truncate hover:underline">{book.title}</h3>
+          <p className="text-gray-500 text-sm">{book.author}</p>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function BookmarksPage() {
   const { isAuthenticated, user } = useAuth();
   const router = useRouter();
   const [key, setKey] = useState(0);
-  const [activeTab, setActiveTab] = useState<'posts' | 'maps'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'maps' | 'books'>('posts');
   const [bookmarkedMaps, setBookmarkedMaps] = useState<SavedMap[]>([]);
+  const [bookmarkedBooks, setBookmarkedBooks] = useState<BookData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedBook, setSelectedBook] = useState<BookData | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -24,22 +85,41 @@ export default function BookmarksPage() {
   }, [isAuthenticated, router]);
 
   useEffect(() => {
-    const fetchBookmarkedMaps = async () => {
-      if (activeTab === 'maps') {
-        setLoading(true);
-        try {
+    const fetchBookmarkedItems = async () => {
+      setLoading(true);
+      try {
+        if (activeTab === 'maps') {
           const maps = await getBookmarkedMaps();
           setBookmarkedMaps(maps);
-        } catch (error) {
-          console.error('Error fetching bookmarked maps:', error);
-        } finally {
-          setLoading(false);
+        } else if (activeTab === 'books') {
+          const books = await getBookmarkedBooks();
+          // Sort books by bookmark timestamp, newest first
+          const sortedBooks = [...books].sort((a, b) => {
+            // Find the timestamp for the current user's bookmark
+            const timestampA = a.bookmarks?.find(bm => 
+              typeof bm.user === 'string' 
+                ? bm.user === user?._id 
+                : (bm.user as { _id: string })._id === user?._id)?.timestamp || '';
+            
+            const timestampB = b.bookmarks?.find(bm => 
+              typeof bm.user === 'string' 
+                ? bm.user === user?._id 
+                : (bm.user as { _id: string })._id === user?._id)?.timestamp || '';
+            
+            // Sort descending (newest first)
+            return new Date(timestampB).getTime() - new Date(timestampA).getTime();
+          });
+          setBookmarkedBooks(sortedBooks);
         }
+      } catch (error) {
+        console.error(`Error fetching bookmarked ${activeTab}:`, error);
+      } finally {
+        setLoading(false);
       }
     };
 
-    fetchBookmarkedMaps();
-  }, [activeTab]);
+    fetchBookmarkedItems();
+  }, [activeTab, user?._id]);
 
   const handlePostUpdated = () => {
     setKey(prev => prev + 1);
@@ -90,7 +170,7 @@ export default function BookmarksPage() {
   };
 
   // Handle bookmarking/unbookmarking a map
-  const handleBookmark = async (mapId: string) => {
+  const handleBookmarkMap = async (mapId: string) => {
     if (!user) {
       toast.error('You must be logged in to bookmark maps');
       return;
@@ -114,37 +194,82 @@ export default function BookmarksPage() {
     }
   };
 
+  // Handle bookmarking/unbookmarking a book
+  const handleBookmarkBook = async (bookId: string) => {
+    if (!user) {
+      toast.error('You must be logged in to bookmark books');
+      return;
+    }
+    
+    try {
+      const result = await bookmarkBook(bookId);
+      
+      if (result.success) {
+        // If the book was successfully unbookmarked, remove it from the list
+        if (!result.isBookmarked) {
+          setBookmarkedBooks(prevBooks => prevBooks.filter(book => book._id !== bookId));
+          toast.success('Book removed from bookmarks');
+        }
+      } else {
+        toast.error('Failed to update bookmark status');
+      }
+    } catch (error) {
+      console.error('Error bookmarking book:', error);
+      toast.error('Failed to update bookmark status');
+    }
+  };
+
+  // Handle opening book details
+  const handleOpenBook = (book: BookData) => {
+    // Open book in modal instead of redirecting
+    setSelectedBook(book);
+  };
+
+  // Handle closing book modal
+  const handleCloseBookModal = () => {
+    setSelectedBook(null);
+  };
+
+  // Handle book submission (if needed)
+  const handleBookSubmit = (bookData: any) => {
+    handleCloseBookModal();
+  };
+
   if (!isAuthenticated) {
     return null;
   }
 
   return (
     <div className="max-w-4xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-6">Bookmarks</h1>
+      <h1 className="text-2xl font-bold mb-6 text-black">Bookmarks</h1>
       
       {/* Tabs */}
       <div className="flex border-b border-gray-200 mb-6">
         <button
-          className={`py-2 px-4 ${activeTab === 'posts' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500'}`}
+          className={`py-2 px-4 ${activeTab === 'posts' ? 'border-b-2 border-gray-700 text-gray-900' : 'text-gray-500'}`}
           onClick={() => setActiveTab('posts')}
         >
           Posts
         </button>
         <button
-          className={`py-2 px-4 ${activeTab === 'maps' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500'}`}
+          className={`py-2 px-4 ${activeTab === 'maps' ? 'border-b-2 border-gray-700 text-gray-900' : 'text-gray-500'}`}
           onClick={() => setActiveTab('maps')}
         >
           Maps
+        </button>
+        <button
+          className={`py-2 px-4 ${activeTab === 'books' ? 'border-b-2 border-gray-700 text-gray-900' : 'text-gray-500'}`}
+          onClick={() => setActiveTab('books')}
+        >
+          Books
         </button>
       </div>
       
       {/* Content based on active tab */}
       {activeTab === 'posts' ? (
         <PostList onPostUpdated={handlePostUpdated} isBookmarksPage={true} />
-      ) : (
+      ) : activeTab === 'maps' ? (
         <div>
-          <h2 className="text-xl font-bold mb-4">Bookmarked Maps</h2>
-          
           {loading ? (
             <div className="flex justify-center items-center h-64">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
@@ -194,7 +319,7 @@ export default function BookmarksPage() {
                       <div className="flex items-center space-x-2 text-sm">
                         {user && (
                           <button
-                            onClick={() => handleBookmark(map._id)}
+                            onClick={() => handleBookmarkMap(map._id)}
                             className="text-gray-600 hover:text-gray-800"
                             title="Remove from bookmarks"
                           >
@@ -230,6 +355,61 @@ export default function BookmarksPage() {
             </div>
           )}
         </div>
+      ) : (
+        <div>
+          {loading ? (
+            <div className="flex justify-center items-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+            </div>
+          ) : bookmarkedBooks.length === 0 ? (
+            <div className="bg-white shadow rounded-lg p-8 text-center">
+              <h2 className="text-xl text-gray-600 mb-4">No bookmarked books found</h2>
+              <p className="text-gray-500 mb-6">Bookmark books to see them here</p>
+              <Link 
+                href="/books" 
+                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+              >
+                View All Books
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
+              {bookmarkedBooks.map((book) => (
+                <BookCard 
+                  key={book._id}
+                  book={book} 
+                  onBookmarkToggle={handleBookmarkBook} 
+                  onOpen={handleOpenBook} 
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Book Modal */}
+      {selectedBook && (
+        <SearchModal
+          onClose={handleCloseBookModal}
+          onBookSubmit={handleBookSubmit}
+          initialBook={{
+            key: selectedBook._id,
+            _id: selectedBook._id,
+            title: selectedBook.title,
+            author_name: selectedBook.author ? (Array.isArray(selectedBook.author) ? selectedBook.author : [selectedBook.author]) : [],
+            description: selectedBook.description,
+            thumbnail: selectedBook.coverImage,
+            highResThumbnail: selectedBook.coverImage,
+            source: 'alphy',
+            publishedYear: selectedBook.publishedYear,
+            bookmarks: selectedBook.bookmarks,
+            flibustaStatus: selectedBook.flibustaStatus,
+            flibustaVariants: selectedBook.flibustaVariants
+          }}
+          error={null}
+          shouldSaveToDb={false}
+          isBookmarksPage={true}
+        />
       )}
     </div>
   );
