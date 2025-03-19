@@ -38,7 +38,7 @@ export const bookmarkBook = async (bookId: string): Promise<{success: boolean, i
       return { success: false, isBookmarked: false };
     }
 
-    // The router is mounted at /api/books in index.js so the full path needs to include /api
+    // The endpoint must include /api prefix
     const endpoint = `/api/books/${bookId}/bookmark`;
     console.log(`Attempting to bookmark book with ID: ${bookId}`);
     console.log(`Full endpoint: ${endpoint}`);
@@ -91,7 +91,7 @@ export const getBookmarkedBooks = async (): Promise<BookData[]> => {
       return [];
     }
 
-    // The router is mounted at /api/books in index.js
+    // The endpoint must include /api prefix
     const endpoint = '/api/books/bookmarked';
     console.log(`Fetching bookmarked books from: ${endpoint}`);
     
