@@ -39,7 +39,7 @@ export const bookmarkBook = async (bookId: string): Promise<{success: boolean, i
     }
 
     // The endpoint must include /api prefix
-    const endpoint = `/api/books/${bookId}/bookmark`;
+    const endpoint = `/books/${bookId}/bookmark`;
     console.log(`Attempting to bookmark book with ID: ${bookId}`);
     console.log(`Full endpoint: ${endpoint}`);
     
@@ -92,7 +92,7 @@ export const getBookmarkedBooks = async (): Promise<BookData[]> => {
     }
 
     // The endpoint must include /api prefix
-    const endpoint = '/api/books/bookmarked';
+    const endpoint = '/books/bookmarked';
     console.log(`Fetching bookmarked books from: ${endpoint}`);
     
     const response = await api.get(endpoint);
