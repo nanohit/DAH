@@ -84,6 +84,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (token) {
       fetchUserData(token);
     }
+    
+    // Set up a periodic auth verification to prevent session timeouts
+    const verifyAuth = () => {
+      const currentToken = localStorage.getItem('token');
+      const currentUser = localStorage.getItem('user');
+      
+      if (currentToken && !currentUser) {
+        console.log('Detected token but no user data, attempting to restore session');
+        fetchUserData(currentToken);
+      }
+    };
+    
+    // Check every 2 minutes
+    const authVerificationInterval = setInterval(verifyAuth, 2 * 60 * 1000);
+    
+    return () => {
+      clearInterval(authVerificationInterval);
+    };
   }, []);
 
   const login = async (emailOrUsername: string, password: string) => {

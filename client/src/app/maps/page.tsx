@@ -19,6 +19,7 @@ import { bookmarkBook } from '@/utils/bookUtils';
 import { useAuth } from '@/context/AuthContext';
 import { SearchModal } from '@/components/Search/SearchModal';
 import { isTokenExpiring, refreshToken } from '@/services/auth';
+import { API_BASE_URL } from '@/config/api';
 
 
 
@@ -4228,14 +4229,53 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
       }
     };
     
-    // Run check immediately
-    checkAndRefreshToken();
+    // Authentication heartbeat to prevent session loss
+    const authHeartbeat = () => {
+      const token = localStorage.getItem('token');
+      const userStr = localStorage.getItem('user');
+      
+      if (!token) {
+        console.warn("Token missing during heartbeat check");
+        return;
+      }
+      
+      if (!userStr && token) {
+        console.log("User data missing but token exists, attempting to restore session");
+        // If we have a token but no user data, try to fetch user data again
+        const api = axios.create({
+          baseURL: API_BASE_URL,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        api.get('/api/auth/me')
+          .then(response => {
+            if (response.data && !response.data.error) {
+              console.log("Session restored during heartbeat");
+              localStorage.setItem('user', JSON.stringify(response.data));
+            }
+          })
+          .catch(err => {
+            console.error("Failed to restore session during heartbeat", err);
+            // Don't remove token here - just log the error
+          });
+      }
+    };
     
-    // Set up interval to check every 15 minutes
-    const tokenRefreshInterval = setInterval(checkAndRefreshToken, 15 * 60 * 1000);
+    // Run checks immediately
+    checkAndRefreshToken();
+    authHeartbeat();
+    
+    // Set up interval to check more frequently (every 5 minutes for token refresh,
+    // every 1 minute for heartbeat check)
+    const tokenRefreshInterval = setInterval(checkAndRefreshToken, 5 * 60 * 1000);
+    const heartbeatInterval = setInterval(authHeartbeat, 60 * 1000);
     
     return () => {
       clearInterval(tokenRefreshInterval);
+      clearInterval(heartbeatInterval);
     };
   }, []);
   

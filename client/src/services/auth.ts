@@ -36,7 +36,16 @@ export const isTokenExpiring = () => {
     const currentTime = Math.floor(Date.now() / 1000);
     const bufferTime = 60 * 60; // 1 hour buffer
     
-    return payload.exp < (currentTime + bufferTime);
+    const isExpiring = payload.exp < (currentTime + bufferTime);
+    
+    // Log expiration details for debugging
+    if (isExpiring) {
+      const expiryDate = new Date(payload.exp * 1000);
+      const timeUntilExpiry = Math.floor((payload.exp - currentTime) / 60); // minutes
+      console.log(`Token expires on ${expiryDate.toISOString()}, in ${timeUntilExpiry} minutes`);
+    }
+    
+    return isExpiring;
   } catch (error) {
     console.error('Error checking token expiration:', error);
     return true;
