@@ -251,6 +251,39 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// @desc    Refresh auth token
+// @route   POST /api/auth/refresh
+// @access  Private
+router.post('/refresh', protect, async (req, res) => {
+  try {
+    // User is already authenticated through the protect middleware
+    // Generate a new token
+    const user = req.user;
+    
+    if (!user) {
+      return res.status(401).json({ message: 'Not authorized' });
+    }
+    
+    // Generate a new token
+    const token = generateToken(user._id);
+    
+    // Log the refresh
+    console.log('Token refreshed for user:', {
+      id: user._id,
+      username: user.username
+    });
+    
+    // Return the new token
+    res.json({
+      token,
+      message: 'Token refreshed successfully'
+    });
+  } catch (error) {
+    console.error('Token refresh error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
 // @desc    Get raw user data from MongoDB (DEVELOPMENT ONLY)
 // @route   GET /api/auth/dev/user/:username
 // @access  Public (for development)

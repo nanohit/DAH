@@ -17,6 +17,10 @@ import ReactMarkdown from 'react-markdown';
 import { BsBookmark, BsBookmarkFill } from 'react-icons/bs';
 import { bookmarkBook } from '@/utils/bookUtils';
 import { useAuth } from '@/context/AuthContext';
+import { SearchModal } from '@/components/Search/SearchModal';
+import { isTokenExpiring, refreshToken } from '@/services/auth';
+
+
 
 interface MapElement {
   id: string;
@@ -177,7 +181,11 @@ const ConnectionPoint = ({ position, elementId, isSelected, onStartConnection, s
                          position === 'bottom' ? 'center top' :
                          'right center',
         zIndex: 100,
-        pointerEvents: 'none'
+        pointerEvents: 'none',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        MozUserSelect: 'none',
+        msUserSelect: 'none'
       }}
     >
     <div
@@ -197,7 +205,11 @@ const ConnectionPoint = ({ position, elementId, isSelected, onStartConnection, s
           fontSize: `${fontSize}px`,
         fontWeight: 'bold',
         zIndex: 10,
-        pointerEvents: 'all'
+        pointerEvents: 'all',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        MozUserSelect: 'none',
+        msUserSelect: 'none'
       }}
       onMouseDown={(e) => {
         e.stopPropagation();
@@ -1233,996 +1245,7 @@ const snapToGrid = (args: SnapToGridArgs) => {
   };
 };
 
-const SearchModal = ({ onClose, onBookSubmit }: { 
-  onClose: () => void;
-  onBookSubmit: (bookData: BookSearchResult) => void;
-}) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [searchResults, setSearchResults] = useState<BookSearchResult[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalResults, setTotalResults] = useState(0);
-  const [activeApi, setActiveApi] = useState<'openlib' | 'google' | 'alphy'>('openlib');
-  const [error, setError] = useState<string | null>(null);
-  const [selectedBook, setSelectedBook] = useState<BookSearchResult | null>(null);
-  const [confirmedBook, setConfirmedBook] = useState<BookSearchResult | null>(null);
-  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
-  const [isEditingDescription, setIsEditingDescription] = useState(false);
-  const [showFullDescription, setShowFullDescription] = useState(false);
-  const [displayAll, setDisplayAll] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-  const [isFlibustaSearching, setIsFlibustaSearching] = useState(false);
-  const [flibustaResults, setFlibustaResults] = useState<any[]>([]);
-  const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
-  const [showFlibustaResults, setShowFlibustaResults] = useState(false);
-  const [flibustaError, setFlibustaError] = useState<string | null>(null);
-  const resultsPerPage = 10;
-  const searchCache = useRef<{[key: string]: { timestamp: number; results: any }}>({});
-  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-  const getCachedResults = (cacheKey: string): { combinedResults: BookSearchResult[]; total: number } | null => {
-    const cached = searchCache.current[cacheKey];
-    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      return cached.results;
-    }
-    return null;
-  };
-
-  const setCachedResults = (cacheKey: string, results: { combinedResults: BookSearchResult[]; total: number }) => {
-    searchCache.current[cacheKey] = {
-      timestamp: Date.now(),
-      results
-    };
-  };
-
-  const handleParallelSearch = async (page = 1) => {
-    console.log('handleParallelSearch called with:', {
-      activeApi,
-      isLoading,
-      searchTerm,
-      displayAll,
-      page
-    });
-    
-    if (isLoading) {
-      console.log('Search blocked due to isLoading');
-      return;
-    }
-    
-    setIsLoading(true);
-    setError(null);
-    
-    // Only reset search results if this is a new search (page 1)
-    // For pagination, we'll append results instead
-    const isNewSearch = page === 1;
-    if (isNewSearch) {
-      setSearchResults([]);
-      setHasSearched(true);
-    }
-    
-    // Update the current page
-    setCurrentPage(page);
-
-    try {
-      console.log('Starting search with API:', activeApi);
-      if (activeApi === 'alphy') {
-        if (!searchTerm.trim() && !displayAll) {
-          setIsLoading(false);
-          setSearchResults([]);
-          setTotalResults(0);
-          return;
-        }
-        const result = await handleAlphySearch(page);
-        console.log('Alphy search completed:', result);
-        
-        // Append results if loading more pages, otherwise replace
-        if (page > 1) {
-          setSearchResults(prevResults => [...prevResults, ...result.books]);
-        } else {
-          setSearchResults(result.books);
-        }
-        
-        setTotalResults(result.total);
-      } else if (searchTerm.trim()) {
-        console.log('External API search starting');
-        const cacheKey = `${activeApi}-${searchTerm}-${page}`;
-        const cachedResults = getCachedResults(cacheKey);
-
-        if (cachedResults) {
-          console.log('Using cached results');
-          
-          // Append results if loading more pages, otherwise replace
-          if (page > 1) {
-            setSearchResults(prevResults => [...prevResults, ...cachedResults.combinedResults]);
-          } else {
-            setSearchResults(cachedResults.combinedResults);
-          }
-          
-          setTotalResults(cachedResults.total);
-        } else {
-          // For page 1, we need both database and external results
-          // For page > 1, we only need additional external results
-          let databaseResults: BookSearchResult[] = [];
-          
-          if (page === 1) {
-            databaseResults = await searchDatabase(searchTerm);
-          }
-          
-          const externalResults = await (activeApi === 'openlib' ? 
-            handleOpenLibSearch : handleGoogleSearch)(page);
-          
-          // Filter out books that already exist in the database
-          const filteredExternalResults = externalResults.books.filter((externalBook: BookSearchResult) => {
-            const externalAuthor = Array.isArray(externalBook.author_name) 
-              ? externalBook.author_name[0] 
-              : externalBook.author_name;
-              
-            return !databaseResults.some((dbBook: BookSearchResult) => 
-              dbBook.title.toLowerCase() === externalBook.title.toLowerCase() &&
-              dbBook.author_name?.[0]?.toLowerCase() === externalAuthor?.toLowerCase()
-            );
-          });
-
-          // Prepare combined results
-          const newResults = page === 1 
-            ? [...databaseResults, ...filteredExternalResults] 
-            : filteredExternalResults;
-          
-          // Cache the results for this page
-          setCachedResults(cacheKey, {
-            combinedResults: newResults,
-            total: externalResults.total
-          });
-
-          // Update state - append for page > 1, replace for page 1
-          if (page > 1) {
-            setSearchResults(prevResults => [...prevResults, ...newResults]);
-          } else {
-            setSearchResults(newResults);
-          }
-          
-          setTotalResults(externalResults.total);
-        }
-      } else {
-        setSearchResults([]);
-        setTotalResults(0);
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'An unexpected error occurred');
-      if (page === 1) {
-        setSearchResults([]);
-        setTotalResults(0);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleParallelSearch(1);
-    }
-  };
-
-  // Memoize book filtering logic
-  const filteredResults = useMemo(() => {
-    return searchResults.map((book, index) => {
-      const isFirstExternalResult = index > 0 && 
-        searchResults[index - 1].source === 'alphy' && 
-        book.source !== 'alphy' &&
-        activeApi !== 'alphy';
-
-      return {
-        book,
-        isFirstExternalResult,
-        hasDbResults: searchResults.some(b => b.source === 'alphy')
-      };
-    });
-  }, [searchResults, activeApi]);
-
-  const GOOGLE_BOOKS_API_KEY = 'AIzaSyB2DtSUPFGE0aV_ehA6M9Img7XqO8sr8-Y';
-
-  const fetchOpenLibraryDetails = async (key: string) => {
-    try {
-      const response = await fetch(`https://openlibrary.org${key}.json`);
-      if (!response.ok) throw new Error('Failed to fetch book details from Open Library');
-      const data = await response.json();
-      return data.description?.value || data.description || null;
-    } catch (error) {
-      console.error('Error fetching Open Library details:', error);
-      return null;
-    }
-  };
-
-  const fetchGoogleBooksDetails = async (id: string) => {
-    try {
-      const response = await fetch(
-        `https://www.googleapis.com/books/v1/volumes/${id}?key=${GOOGLE_BOOKS_API_KEY}`
-      );
-      if (!response.ok) throw new Error('Failed to fetch book details from Google Books');
-      const data = await response.json();
-      return data.volumeInfo?.description || null;
-    } catch (error) {
-      console.error('Error fetching Google Books details:', error);
-      return null;
-    }
-  };
-
-  const handleOpenLibSearch = async (page = 1): Promise<{ books: BookSearchResult[]; total: number }> => {
-    const offset = (page - 1) * resultsPerPage;
-    try {
-      const response = await fetch(
-        `https://openlibrary.org/search.json?q=${encodeURIComponent(searchTerm)}&offset=${offset}&limit=${resultsPerPage}`
-      );
-      if (!response.ok) throw new Error('Failed to fetch from Open Library');
-      const data = await response.json();
-      return {
-        books: data.docs.map((doc: any) => ({
-          key: doc.key,
-          title: doc.title,
-          author_name: doc.author_name,
-          first_publish_year: doc.first_publish_year,
-          thumbnail: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-S.jpg` : undefined,
-          highResThumbnail: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : undefined,
-          source: 'openlib' as const
-        })),
-        total: data.numFound
-      };
-    } catch (error) {
-      throw new Error('Error fetching from Open Library. Please try again.');
-    }
-  };
-
-  const handleGoogleSearch = async (page = 1): Promise<{ books: BookSearchResult[]; total: number }> => {
-    const startIndex = (page - 1) * resultsPerPage;
-    try {
-      const response = await fetch(
-        `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(searchTerm)}&startIndex=${startIndex}&maxResults=${resultsPerPage}&key=${GOOGLE_BOOKS_API_KEY}`
-      );
-      if (!response.ok) throw new Error('Failed to fetch from Google Books');
-      const data = await response.json();
-      
-      if (data.error) {
-        throw new Error(data.error.message || 'Error fetching from Google Books');
-      }
-
-      return {
-        books: data.items?.map((item: any) => {
-          // Get the base image URL without zoom parameter
-          const baseImageUrl = item.volumeInfo.imageLinks?.thumbnail?.replace('http:', 'https:')?.split('&zoom=')[0];
-          
-          // Try to get the highest quality image available
-          const highResImage = item.volumeInfo.imageLinks?.highResImage || 
-                             item.volumeInfo.imageLinks?.largeImage || 
-                             item.volumeInfo.imageLinks?.mediumImage;
-          
-          return {
-            key: item.id,
-            title: item.volumeInfo.title,
-            author_name: item.volumeInfo.authors,
-            first_publish_year: item.volumeInfo.publishedDate ? parseInt(item.volumeInfo.publishedDate) : undefined,
-            thumbnail: baseImageUrl ? `${baseImageUrl}&zoom=1` : undefined, // zoom=1 for small thumbnail
-            highResThumbnail: highResImage || (baseImageUrl ? `${baseImageUrl}&zoom=3` : undefined), // Try highest quality available
-            source: 'google' as const
-          };
-        }) || [],
-        total: data.totalItems || 0
-      };
-    } catch (error) {
-      throw new Error('Error fetching from Google Books. Please try again.');
-    }
-  };
-
-  const handleAlphySearch = async (page = 1): Promise<{ books: BookSearchResult[]; total: number }> => {
-    try {
-      const endpoint = displayAll 
-        ? `/api/books?page=${page}&limit=${resultsPerPage}` 
-        : `/api/books?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${resultsPerPage}`;
-
-      const response = await api.get(endpoint);
-      const data = response.data;
-      
-      const books = data.books.map((book: any) => ({
-        key: book._id,
-        _id: book._id,
-        title: book.title,
-        author_name: [book.author],
-        thumbnail: book.coverImage,
-        description: book.description,
-        source: 'alphy' as const,
-        publishedYear: book.publishedYear,
-        flibustaStatus: book.flibustaStatus,
-        flibustaVariants: book.flibustaVariants
-      }));
-
-      return {
-        books,
-        total: data.pagination.total
-      };
-    } catch (error) {
-      throw new Error('Error fetching from Alphy database');
-    }
-  };
-
-  const searchDatabase = async (searchTerm: string): Promise<BookSearchResult[]> => {
-    try {
-      const response = await api.get(`/api/books?search=${encodeURIComponent(searchTerm)}&limit=5`);
-      const data = response.data;
-      
-      return data.books.map((book: any) => ({
-        key: book._id,
-        _id: book._id,
-        title: book.title,
-        author_name: [book.author],
-        thumbnail: book.coverImage,
-        description: book.description,
-        source: 'alphy' as const,
-        publishedYear: book.publishedYear,
-        inDatabase: true,
-        flibustaStatus: book.flibustaStatus,
-        flibustaVariants: book.flibustaVariants
-      }));
-    } catch (error) {
-      console.error('Error searching database:', error);
-      return [];
-    }
-  };
-
-  const handleBookClick = async (book: BookSearchResult) => {
-    if (selectedBook?.key === book.key) {
-      if (book.source === 'alphy') {
-        // If it's an Alphy book, create map element directly
-        onBookSubmit(book);
-        onClose();
-        return;
-      }
-
-      setIsLoadingDetails(true);
-      try {
-        const description = await (book.source === 'openlib' 
-          ? fetchOpenLibraryDetails(book.key)
-          : fetchGoogleBooksDetails(book.key));
-        
-        setConfirmedBook({
-          ...book,
-          description
-        });
-      } catch (error) {
-        console.error('Error fetching book details:', error);
-        setConfirmedBook(book);
-      } finally {
-        setIsLoadingDetails(false);
-      }
-    } else {
-      setSelectedBook(book);
-    }
-  };
-
-  const handleBackToSearch = () => {
-    setConfirmedBook(null);
-    setSelectedBook(null);
-  };
-
-  const handleRequestDownloadLinks = async () => {
-    if (!confirmedBook) return;
-    
-    setIsFlibustaSearching(true);
-    setFlibustaError(null);
-    setShowFlibustaResults(true);
-
-    try {
-      const response = await api.get(`/api/books/flibusta/search?query=${encodeURIComponent(confirmedBook.title)}`);
-      const data = response.data;
-
-      if (!data) {
-        throw new Error('Failed to search on Flibusta');
-      }
-
-      setFlibustaResults(data.data || []);
-    } catch (err) {
-      setFlibustaError(err instanceof Error ? err.message : 'Failed to search on Flibusta');
-    } finally {
-      setIsFlibustaSearching(false);
-    }
-  };
-
-  const handleVariantSelect = (variant: any) => {
-    const originalVariant = {
-      id: variant.id,
-      title: variant.title,
-      author: variant.author,
-      formats: variant.formats.map((format: any) => ({
-        format: format.format,
-        url: `/api/books/flibusta/download/${variant.id}/${format.format}`
-      }))
-    };
-
-    setSelectedVariant(originalVariant);
-    setShowFlibustaResults(false);
-  };
-
-  const handleFinalSubmit = async () => {
-    if (!confirmedBook) return;
-
-    try {
-      // Step 1: Save book to database (without download links)
-      const response = await api.post('/api/books', {
-        title: confirmedBook.title,
-        author: Array.isArray(confirmedBook.author_name) 
-          ? confirmedBook.author_name.join(', ') 
-          : confirmedBook.author_name || 'Unknown',
-        description: confirmedBook.description || '',
-        coverImage: confirmedBook.thumbnail || '',
-        publishedYear: confirmedBook.first_publish_year,
-        flibustaStatus: 'not_checked' // Start with not_checked status
-      });
-
-      const savedBook = response.data;
-      console.log('Book saved successfully:', savedBook);
-      
-      // Step 2: If we have selected variant, save download links
-      if (selectedVariant && savedBook._id) {
-        console.log('Saving download links for book:', savedBook._id);
-        console.log('Selected variant data:', selectedVariant);
-        
-        try {
-          // Use the save-flibusta endpoint to save download links
-          const linkResponse = await api.post(`/api/books/${savedBook._id}/save-flibusta`, {
-            variant: {
-              title: selectedVariant.title,
-              author: selectedVariant.author,
-              sourceId: selectedVariant.id,
-              formats: [
-                ...selectedVariant.formats.map((format: any) => ({
-                  format: format.format,
-                  url: `/api/books/flibusta/download/${selectedVariant.id}/${format.format}`
-                })),
-                {
-                  format: 'read',
-                  url: `https://flibusta.is/b/${selectedVariant.id}/read`
-                }
-              ]
-            }
-          });
-          
-          console.log('Download links saved successfully:', linkResponse.data);
-          
-          // Update the bookData with flibustaVariants and status from the response
-          const bookData: BookSearchResult = {
-            ...confirmedBook,
-            _id: linkResponse.data._id,
-            flibustaStatus: 'uploaded',
-            flibustaVariants: linkResponse.data.flibustaVariants
-          };
-
-          onBookSubmit(bookData);
-          onClose();
-          toast.success('Book saved with download links!');
-          return;
-        } catch (linkError) {
-          console.error('Error saving download links:', linkError);
-          toast.error('Book saved but failed to save download links');
-        }
-      }
-      
-      // If we didn't save download links or it failed, just use the saved book data
-      const bookData: BookSearchResult = {
-        ...confirmedBook,
-        _id: savedBook._id,
-        flibustaStatus: savedBook.flibustaStatus,
-        flibustaVariants: savedBook.flibustaVariants
-      };
-
-      onBookSubmit(bookData);
-      onClose();
-      toast.success('Book saved successfully!');
-    } catch (error) {
-      console.error('Error saving book:', error);
-      toast.error('Failed to save book. Please try again.');
-    }
-  };
-
-  useEffect(() => {
-    console.log('API changed to:', activeApi);
-    handleParallelSearch(1);
-  }, [activeApi, displayAll]);
-
-  if (confirmedBook) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center z-50">
-        <div className="absolute inset-0 bg-black bg-opacity-80 backdrop-blur-sm" onClick={onClose}></div>
-        
-        <div 
-          className="bg-black border border-gray-800 rounded-xl w-[800px] h-[85vh] relative flex flex-col overflow-hidden"
-          style={{
-            boxShadow: '0 0 40px rgba(0, 0, 0, 0.5)',
-            background: 'linear-gradient(to bottom right, #0a0a0a, #000000)'
-          }}
-        >
-          <div className="p-8 flex-1 overflow-y-auto custom-scrollbar">
-            <div className="flex justify-between items-start mb-8">
-              <button
-                onClick={handleBackToSearch}
-                className="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1 group"
-              >
-                <svg 
-                  xmlns="http://www.w3.org/2000/svg" 
-                  className="h-4 w-4 transform group-hover:-translate-x-1 transition-transform" 
-                  fill="none" 
-                  viewBox="0 0 24 24" 
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-                <span>Back to search</span>
-              </button>
-            </div>
-
-            <div className="flex flex-col md:flex-row gap-12">
-              {/* Book cover */}
-              <div className="w-full md:w-64 flex-shrink-0">
-                <div className="relative group">
-                  {confirmedBook.thumbnail ? (
-                    <img 
-                      src={confirmedBook.highResThumbnail || confirmedBook.thumbnail} 
-                      alt={confirmedBook.title}
-                      className="w-full h-auto object-cover bg-gray-900 shadow-lg"
-                      style={{ 
-                        borderRadius: '4px',
-                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
-                      }}
-                      onError={(e) => {
-                        if (e.currentTarget.src !== confirmedBook.thumbnail) {
-                          e.currentTarget.src = confirmedBook.thumbnail || '';
-                        }
-                      }}
-                    />
-                  ) : (
-                    <div 
-                      className="w-full h-96 bg-gray-900 flex items-center justify-center shadow-lg" 
-                      style={{ 
-                        borderRadius: '4px',
-                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
-                      }}
-                    >
-                      <span className="text-gray-600">No cover</span>
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent opacity-0 group-hover:opacity-40 transition-opacity duration-300" />
-                </div>
-              </div>
-
-              {/* Book details */}
-              <div className="flex-1 mt-4 md:mt-0">
-                <h2 className="text-3xl font-bold text-white mb-3">{confirmedBook.title}</h2>
-                {confirmedBook.author_name && (
-                  <p className="text-lg text-gray-300 mb-6 font-light">
-                    {Array.isArray(confirmedBook.author_name) 
-                      ? confirmedBook.author_name.join(', ') 
-                      : confirmedBook.author_name}
-                  </p>
-                )}
-
-                {/* Rating */}
-                <div className="flex items-center gap-2 mb-6">
-                  <div className="flex">
-                    {[1,2,3,4,5].map((star) => (
-                      <span key={star} className="text-gray-700">★</span>
-                    ))}
-                  </div>
-                  <span className="text-gray-600">n/a</span>
-                </div>
-
-                {/* Description */}
-                <div className="mb-8">
-                  <h3 className="text-gray-200 text-lg font-medium mb-3">About this book</h3>
-                  {isEditingDescription ? (
-                    <div>
-                      <textarea
-                        value={confirmedBook.description || ''}
-                        onChange={(e) => {
-                          setConfirmedBook({
-                            ...confirmedBook,
-                            description: e.target.value
-                          });
-                        }}
-                        className="w-full h-32 p-2 border border-gray-700 rounded bg-gray-900 text-white text-sm"
-                        placeholder="Enter book description..."
-                      />
-                      <div className="flex justify-end gap-2 mt-2">
-                        <button
-                          onClick={() => setIsEditingDescription(false)}
-                          className="px-3 py-1 text-sm bg-gray-800 text-gray-300 rounded hover:bg-gray-700 transition-colors"
-                        >
-                          Done
-                        </button>
-                      </div>
-                    </div>
-                  ) : confirmedBook.description ? (
-                    <div>
-                      <p className="text-gray-400 leading-relaxed" style={{ fontSize: '0.95rem' }}>
-                        {showFullDescription 
-                          ? confirmedBook.description
-                          : confirmedBook.description.slice(0, 420)}
-                      </p>
-                      {confirmedBook.description.length > 420 && (
-                        <button
-                          onClick={() => setShowFullDescription(!showFullDescription)}
-                          className="text-sm text-gray-500 hover:text-gray-300 mt-3 transition-colors focus:outline-none"
-                        >
-                          {showFullDescription ? 'Show less' : 'Show more'}
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-gray-500">No description available</span>
-                  )}
-                </div>
-
-                {/* Download section */}
-                <div className="mt-8">
-                  <h3 className="text-gray-200 text-lg font-medium mb-4">Download</h3>
-                  {selectedVariant ? (
-                    <div>
-                      {/* Preview download buttons */}
-                      <div className="flex flex-wrap gap-3 pt-3">
-                        {[
-                          ...selectedVariant.formats.filter((format: any) => format.format !== 'mobi'),
-                          { format: 'read', url: `https://flibusta.is/b/${selectedVariant.id}/read` }
-                        ].map((format: any) => (
-                          <button
-                            key={format.format}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              try {
-                                if (format.format === 'read') {
-                                  window.open(format.url, '_blank');
-                                  return;
-                                }
-
-                                window.location.href = `https://flibusta-proxy.alphy-flibusta.workers.dev/${selectedVariant.id}/${format.format}`;
-                              } catch (err) {
-                                console.error('Error getting download link:', err);
-                                toast.error('Failed to get download link. Please try again.');
-                              }
-                            }}
-                            className={`px-6 py-3 rounded-md transition-all duration-300 hover:scale-105 ${
-                              format.format === 'read'
-                                ? 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700'
-                                : 'bg-gray-900 text-white hover:bg-gray-800 border border-gray-700'
-                            }`}
-                          >
-                            {format.format === 'read' ? 'Read online (VPN)' : `.${format.format}`}
-                          </button>
-                        ))}
-                      </div>
-                      <button
-                        onClick={handleFinalSubmit}
-                        className="mt-6 px-6 py-3 bg-gray-800 text-white rounded-md hover:bg-gray-700 transition-colors border border-gray-700"
-                      >
-                        Save book with download links
-                      </button>
-                      <button
-                        onClick={() => setSelectedVariant(null)}
-                        className="mt-4 ml-4 text-sm text-gray-500 hover:text-gray-300 transition-colors"
-                      >
-                        Clear selection
-                      </button>
-                    </div>
-                  ) : (
-                    <div>
-                      <button
-                        onClick={handleRequestDownloadLinks}
-                        className="px-6 py-3 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-all duration-300 border border-gray-700 hover:scale-105"
-                      >
-                        {isFlibustaSearching ? 
-                          <span className="flex items-center">
-                            <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Searching...
-                          </span> : 
-                          'Request download links'
-                        }
-                      </button>
-                      <button
-                        onClick={handleFinalSubmit}
-                        className="mt-4 px-6 py-3 bg-gray-800 text-white rounded-md hover:bg-gray-700 transition-colors border border-gray-700"
-                      >
-                        Save Book Without Links
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Flibusta search results dropdown */}
-                  {showFlibustaResults && flibustaResults.length > 0 && (
-                    <div className="mt-4 border border-gray-800 rounded-md shadow-lg bg-gray-900 max-h-60 overflow-y-auto custom-scrollbar">
-                      <div className="p-3 bg-gray-800 border-b border-gray-700">
-                        <h4 className="text-sm font-medium text-white">Select a book variant:</h4>
-                      </div>
-                      {flibustaResults.map((result: any) => (
-                        <button
-                          key={result.id}
-                          onClick={() => handleVariantSelect(result)}
-                          className="w-full p-3 text-left hover:bg-gray-800 border-b border-gray-800 last:border-b-0 transition-colors"
-                        >
-                          <div className="font-medium text-sm text-white">{result.title}</div>
-                          <div className="text-xs text-gray-400">{result.author}</div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            Available formats: {result.formats.map((f: any) => f.format.toUpperCase()).join(', ')}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Error message */}
-                  {flibustaError && (
-                    <div className="mt-3 text-sm text-red-400">
-                      {flibustaError}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="fixed inset-0 flex items-center justify-center z-50">
-      <div className="absolute inset-0 bg-black bg-opacity-80 backdrop-blur-sm" onClick={onClose}></div>
-      
-      <div 
-        className="bg-black rounded-lg w-[800px] h-[800px] relative flex flex-col border border-gray-800 overflow-hidden"
-        style={{
-          background: 'linear-gradient(to bottom right, #0a0a0a, #000000)',
-          boxShadow: '0 0 40px rgba(0, 0, 0, 0.5)'
-        }}
-      >
-        <div className="p-6">
-          <div className="flex gap-4">
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setDisplayAll(false);
-              }}
-              onKeyPress={handleKeyPress}
-              placeholder="Enter book name...."
-              className="flex-1 px-4 py-2 rounded-md bg-[#080808] border border-gray-800 text-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button 
-              onClick={() => handleParallelSearch(1)}
-              className="px-6 py-2 rounded-md bg-[#080808] text-white text-base font-medium hover:bg-gray-900 border border-gray-800"
-            >
-              Search
-            </button>
-          </div>
-          
-          {/* API Toggle */}
-          <div className="flex gap-2 mt-2">
-            <button
-              onClick={() => {
-                console.log('OpenLib button clicked');
-                setActiveApi('openlib');
-                setDisplayAll(false);
-                setSearchResults([]);
-                setHasSearched(false);
-              }}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                activeApi === 'openlib'
-                  ? 'bg-white text-black'
-                  : 'bg-[#080808] text-white hover:bg-gray-900 border border-gray-800'
-              }`}
-            >
-              Openlibrary
-            </button>
-            <button
-              onClick={() => {
-                console.log('Google button clicked');
-                setActiveApi('google');
-                setDisplayAll(false);
-                setSearchResults([]);
-                setHasSearched(false);
-              }}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                activeApi === 'google'
-                  ? 'bg-white text-black'
-                  : 'bg-[#080808] text-white hover:bg-gray-900 border border-gray-800'
-              }`}
-            >
-              Google Books
-            </button>
-            
-            {/* Combined Alphy button with Display all */}
-            <div className="flex items-stretch">
-              <button
-                onClick={() => {
-                  setActiveApi('alphy');
-                  setDisplayAll(false);
-                  setSearchResults([]);
-                  setHasSearched(false);
-                }}
-                className={`px-3 py-1 text-sm font-medium transition-colors ${
-                  activeApi === 'alphy'
-                    ? 'bg-white text-black'
-                    : 'bg-[#080808] text-white hover:bg-gray-900 border border-gray-800'
-                } ${activeApi === 'alphy' ? 'rounded-l-md border-r-0' : 'rounded-md'}`}
-              >
-                Alphy
-              </button>
-              {activeApi === 'alphy' && (
-                <button
-                  onClick={() => {
-                    const newDisplayAll = !displayAll;
-                    setDisplayAll(newDisplayAll);
-                    setSearchTerm('');
-                    setSearchResults([]);
-                  }}
-                  className={`px-3 py-1 text-sm font-medium transition-colors rounded-r-md ${
-                    displayAll
-                      ? 'bg-white text-black border border-white'
-                      : 'bg-[#080808] text-white hover:bg-gray-900 border border-gray-800'
-                  }`}
-                >
-                  All
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Content area with class for scroll position management */}
-        <div className="flex-1 px-6 overflow-y-auto search-results-container custom-scrollbar">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-            </div>
-          ) : error ? (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-red-500 text-center">{error}</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filteredResults.map(({ book, isFirstExternalResult, hasDbResults }) => (
-                <div key={book.key}>
-                  {isFirstExternalResult && hasDbResults && (
-                    <div className="border-t border-gray-800 my-4 pt-2" />
-                  )}
-                  <div
-                    className={`p-3 hover:bg-gray-900 cursor-pointer border-b border-gray-800 flex gap-3 ${
-                      selectedBook?.key === book.key ? 'bg-gray-900' : ''
-                    }`}
-                    onClick={() => handleBookClick(book)}
-                  >
-                    {book.thumbnail ? (
-                      <img 
-                        src={book.thumbnail} 
-                        alt={book.title}
-                        className="w-12 h-auto object-cover"
-                      />
-                    ) : (
-                      <div className="w-12 h-16 bg-gray-800 flex items-center justify-center">
-                        <span className="text-gray-400 text-xs">No cover</span>
-                      </div>
-                    )}
-                    <div>
-                      <h3 className="text-base font-semibold text-white">
-                        {book.title}
-                        {book.source === 'alphy' && (
-                          <span className="ml-2 text-xs text-green-500 font-normal">
-                            In database
-                          </span>
-                        )}
-                      </h3>
-                      {book.author_name && (
-                        <p className="text-sm text-gray-400">
-                          by {Array.isArray(book.author_name) ? book.author_name.join(', ') : book.author_name}
-                          {book.first_publish_year && ` (${book.first_publish_year})`}
-                        </p>
-                      )}
-                      {selectedBook?.key === book.key && (
-                        <p className="text-sm text-blue-400 mt-1">Click again to confirm selection</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {/* Suggestions for different APIs */}
-              {searchTerm.trim() && hasSearched && searchResults.length === 0 && (
-                <div className="text-center py-4 text-sm text-gray-600">
-                  {(activeApi === 'openlib' || activeApi === 'alphy') && (
-                    "Haven't found what you were looking for? Switch to Google Books."
-                  )}
-                </div>
-              )}
-
-              {/* Pagination */}
-              {searchResults.length > 0 && currentPage * resultsPerPage < totalResults && (
-                <div className="flex justify-center py-3">
-                  <button
-                    onClick={() => handleParallelSearch(currentPage + 1)}
-                    className="flex items-center gap-2 px-5 py-2.5 text-sm bg-gray-800 text-gray-400 hover:text-gray-200 rounded-md border border-gray-700 hover:bg-gray-700 transition-colors"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        <span>Loading...</span>
-                      </>
-                    ) : (
-                      <>
-                        Load more results
-                        <svg 
-                          className="w-4 h-4" 
-                          fill="none" 
-                          stroke="currentColor" 
-                          viewBox="0 0 24 24"
-                        >
-                          <path 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            strokeWidth={2} 
-                            d="M19 9l-7 7-7-7" 
-                          />
-                        </svg>
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <style jsx>{`
-          .custom-scrollbar::-webkit-scrollbar {
-            width: 6px;
-          }
-          .custom-scrollbar::-webkit-scrollbar-track {
-            background: rgba(20, 20, 20, 0.8);
-            border-radius: 3px;
-          }
-          .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: rgba(80, 80, 80, 0.8);
-            border-radius: 3px;
-            transition: background 0.3s;
-          }
-          .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: rgba(100, 100, 100, 0.9);
-          }
-        `}</style>
-
-        {/* Bottom buttons */}
-        <div className="flex mt-auto">
-          {confirmedBook ? (
-            <>
-              <button
-                onClick={handleFinalSubmit}
-                className="flex-1 py-4 text-base font-medium bg-gray-300 hover:bg-gray-400 rounded-br-lg text-gray-900"
-              >
-                {selectedVariant ? 'Save book with download links' : 'Save book'}
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={onClose}
-              className="flex-1 py-4 text-base font-medium bg-gray-800 hover:bg-gray-700 border-t border-gray-700 text-gray-300 rounded-b-lg transition-colors"
-            >
-              Cancel
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const Line = ({ 
   element,
@@ -2623,6 +1646,10 @@ const ScaledConnectionPoint = ({
             transform: `translate(-50%, -50%) ${getRotation(position)}`,
             pointerEvents: 'all',
             transition: 'transform 0.2s, background-color 0.2s',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            MozUserSelect: 'none',
+            msUserSelect: 'none'
           }}
           onMouseDown={(e) => {
             e.stopPropagation();
@@ -2835,12 +1862,14 @@ function MapsContent() {
     // Calculate initial center position
     const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
     const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 1080;
-    const canvasWidth = 2700; // Increased from 1800 to 2700
-    const canvasHeight = 2700; // Increased from 1800 to 2700
+    const canvasWidth = 2700; // Canvas width
+    const canvasHeight = 2700; // Canvas height
+    const initialScale = 1; // Initial scale factor
     
+    // Calculate the center position, taking into account the scale
     return {
-      x: (viewportWidth - canvasWidth) / 2,
-      y: (viewportHeight - canvasHeight) / 2
+      x: (viewportWidth - (canvasWidth * initialScale)) / 2,
+      y: (viewportHeight - (canvasHeight * initialScale)) / 2
     };
   });
   const [isPanning, setIsPanning] = useState(false);
@@ -2850,6 +1879,7 @@ function MapsContent() {
   // Add state for tracking last autosave time and autosave UI
   const [lastSavedTime, setLastSavedTime] = useState<Date | null>(null);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
+  const [isRefreshingToken, setIsRefreshingToken] = useState(false);
   
   // Add a ref to store the last data for comparison
   const lastDataRef = useRef<string>('');
@@ -3628,6 +2658,13 @@ function MapsContent() {
       console.log('Saving download links for book:', bookId);
       console.log('Selected variant data:', selectedVariant);
       
+      // Ensure we have the token for the request
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast.error('You must be logged in to save download links');
+        return;
+      }
+      
       // Update the book in the database using the correct endpoint
       const response = await axios.post(`/api/books/${bookId}/save-flibusta`, {
         variant: {
@@ -3644,6 +2681,10 @@ function MapsContent() {
               url: `https://flibusta.is/b/${selectedVariant.id}/read`
             }
           ]
+        }
+      }, {
+        headers: {
+          Authorization: `Bearer ${token}`
         }
       });
 
@@ -4555,6 +3596,19 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
   const saveMapToDatabase = async () => {
     console.log('[DEBUG] saveMapToDatabase called, current autosave state:', isAutoSaving);
     
+    // Check if token is expiring and refresh if needed
+    if (isTokenExpiring() && !isRefreshingToken) {
+      console.log("Token needs refresh before saving map");
+      setIsRefreshingToken(true);
+      try {
+        await refreshToken();
+      } catch (error) {
+        console.error("Error refreshing token before map save:", error);
+      } finally {
+        setIsRefreshingToken(false);
+      }
+    }
+    
     if (autosaveInProgressRef.current) {
       console.log('[DEBUG] Skipping save due to existing autosave in progress');
       return false;
@@ -5152,6 +4206,39 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
   
   // ... existing code
   
+  // Add token check and refresh on component mount and at intervals
+  useEffect(() => {
+    // Check token on component mount
+    const checkAndRefreshToken = async () => {
+      if (isTokenExpiring()) {
+        console.log("Token is expiring soon, attempting to refresh");
+        setIsRefreshingToken(true);
+        try {
+          const success = await refreshToken();
+          if (success) {
+            console.log("Token refreshed successfully in Maps component");
+          } else {
+            console.warn("Failed to refresh token");
+          }
+        } catch (error) {
+          console.error("Error refreshing token:", error);
+        } finally {
+          setIsRefreshingToken(false);
+        }
+      }
+    };
+    
+    // Run check immediately
+    checkAndRefreshToken();
+    
+    // Set up interval to check every 15 minutes
+    const tokenRefreshInterval = setInterval(checkAndRefreshToken, 15 * 60 * 1000);
+    
+    return () => {
+      clearInterval(tokenRefreshInterval);
+    };
+  }, []);
+  
   return (
     <DndContext 
       onDragStart={handleDragStart}
@@ -5519,7 +4606,6 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
         </div>
       </div>
 
-      {/* Existing modals and other UI elements */}
       {isSearchModalOpen && (
         <SearchModal
           onClose={() => setIsSearchModalOpen(false)}
@@ -5527,6 +4613,7 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
             handleBookSubmit(bookData);
             setIsSearchModalOpen(false);
           }}
+    shouldSaveToDb={true}
         />
       )}
       

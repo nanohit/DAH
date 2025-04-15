@@ -1,7 +1,9 @@
 import axios, { AxiosError } from 'axios';
+import { API_BASE_URL } from '@/config/api';
 
-// Create axios instance with relative base URL
+// Create axios instance with proper base URL
 const api = axios.create({
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -18,6 +20,59 @@ api.interceptors.request.use(request => {
   });
   return request;
 });
+
+// Check if token is expired (or will expire soon)
+export const isTokenExpiring = () => {
+  const token = localStorage.getItem('token');
+  if (!token) return true;
+  
+  try {
+    // Decode the JWT token (without verification)
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(window.atob(base64));
+    
+    // Check if token expires in less than 1 hour
+    const currentTime = Math.floor(Date.now() / 1000);
+    const bufferTime = 60 * 60; // 1 hour buffer
+    
+    return payload.exp < (currentTime + bufferTime);
+  } catch (error) {
+    console.error('Error checking token expiration:', error);
+    return true;
+  }
+};
+
+// Refresh token by using current user info
+export const refreshToken = async () => {
+  try {
+    // Only proceed if there's a token
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('No token to refresh');
+    }
+    
+    console.log('Attempting to refresh token');
+    // Call a refresh token endpoint (needs to be implemented on server)
+    const response = await api.post('/api/auth/refresh', {}, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    
+    if (response.data.token) {
+      // Update token in localStorage
+      localStorage.setItem('token', response.data.token);
+      console.log('Token refreshed successfully');
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Failed to refresh token:', error);
+    // Don't automatically remove token here
+    return false;
+  }
+};
 
 export const login = async (emailOrUsername: string, password: string) => {
   try {

@@ -48,8 +48,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
-      localStorage.removeItem('token');
-      setUser(null);
+      
+      // Check if we're on a Maps page - don't remove token automatically if so
+      if (typeof window !== 'undefined' && window.location.pathname.includes('/maps')) {
+        console.log('Error fetching user data while on Maps page - preserving token');
+        // Keep the token but clear user state
+        setUser(null);
+      } else {
+        // Not on Maps page, handle normally by removing token
+        localStorage.removeItem('token');
+        setUser(null);
+      }
     }
   };
 
