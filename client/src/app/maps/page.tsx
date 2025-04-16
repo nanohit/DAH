@@ -3785,6 +3785,8 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
         connections: Connection[];
         canvasPosition: { x: number; y: number };
         scale: number;
+        canvasWidth: number;
+        canvasHeight: number;
       } | null | undefined, 
       previous: {
         name: string;
@@ -3792,6 +3794,8 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
         connections: Connection[];
         canvasPosition: { x: number; y: number };
         scale: number;
+        canvasWidth: number;
+        canvasHeight: number;
       } | null | undefined
     ) => {
       // If previous data doesn't exist, treat as changed
@@ -3858,7 +3862,9 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
       elements,
       connections,
       canvasPosition,
-      scale
+      scale,
+      canvasWidth: containerRef.current?.clientWidth || 1000,
+      canvasHeight: containerRef.current?.clientHeight || 800
     };
     
     // Get previous data
