@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
+import { API_BASE_URL } from '@/config/api';
 
 // Define Map interfaces
 interface MapElement {
@@ -131,7 +132,6 @@ const debouncePromise = <F extends (...args: any[]) => Promise<any>>(func: F, wa
 // Clean line data to ensure it's properly formatted for MongoDB storage
 const cleanLineData = (lineData: MapElement['lineData']) => {
   if (!lineData) {
-    // Create default line data if none exists
     return {
       startX: 0,
       startY: 0,
@@ -141,244 +141,64 @@ const cleanLineData = (lineData: MapElement['lineData']) => {
   }
 
   // Keep only the essential coordinate properties and ensure they're numbers
-  return {
+  const cleanedData = {
     startX: typeof lineData.startX === 'number' ? lineData.startX : 0,
     startY: typeof lineData.startY === 'number' ? lineData.startY : 0,
     endX: typeof lineData.endX === 'number' ? lineData.endX : 100,
     endY: typeof lineData.endY === 'number' ? lineData.endY : 100
   };
+  
+  // Check for NaN or Infinity values
+  Object.entries(cleanedData).forEach(([key, value]) => {
+    if (Number.isNaN(value) || !Number.isFinite(value)) {
+      (cleanedData as any)[key] = 0;
+    }
+  });
+  
+  return cleanedData;
 };
 
 // Save a map to the server
-export const saveMap = async (
-  mapData: MapData, 
-  mapId: string | null = null
-): Promise<SavedMap | null> => {
+export const saveMap = async (mapData: MapData, mapId?: string | null): Promise<any> => {
   try {
-    const token = localStorage.getItem('token');
+    // Create a deep clone to avoid mutating the original data
+    const clonedMapData = JSON.parse(JSON.stringify(mapData));
     
-    if (!token) {
-      toast.error('You must be logged in to save maps');
-      return null;
-    }
-
-    // Deep clone the map data to avoid modifying the original
-    const clonedMapData = JSON.parse(JSON.stringify(mapData)) as MapData;
-
-    // PRE-PROCESSING: Analyze elements to identify completed books
-    const booksWithCompletedStatus = clonedMapData.elements.filter(
-      el => el.type === 'book' && el.bookData && el.bookData.completed === true
-    );
+    // Process line elements to ensure valid data
+    clonedMapData.elements = clonedMapData.elements.map((element: any) => {
+      if (element.type === 'line') {
+        // Ensure the line has a valid text field
+        if (!element.text) {
+          element.text = 'Line';
+        }
+        
+        // Clean line data to ensure valid coordinates
+        if (element.lineData) {
+          element.lineData = cleanLineData(element.lineData);
+        }
+      }
+      return element;
+    });
     
-    console.log(`[UTILS] PRE-PROCESS: Found ${booksWithCompletedStatus.length} books marked as completed`);
-    
-    if (booksWithCompletedStatus.length > 0) {
-      console.log('[UTILS] Completed books details:', 
-        booksWithCompletedStatus.map(book => ({
-          id: book.id,
-          title: book.bookData?.title
-        }))
+    // Save the map based on whether it's new or existing
+    if (mapId) {
+      const response = await axios.put(
+        `${API_BASE_URL}/api/maps/${mapId}`,
+        clonedMapData
       );
-      
-      // Explicitly ensure all book elements have a completed status defined
-      clonedMapData.elements = clonedMapData.elements.map(el => {
-        if (el.type === 'book' && el.bookData) {
-          // If this element should be completed, make sure it's explicitly set
-          const shouldBeCompleted = booksWithCompletedStatus.some(book => book.id === el.id);
-          
-          const bookDataWithCompletedStatus = {
-            ...el.bookData,
-            // Explicitly set completed to true or false
-            completed: shouldBeCompleted ? true : false
-          };
-          
-          return {
-            ...el,
-            bookData: bookDataWithCompletedStatus
-          };
-        }
-        return el;
-      });
-      
-      // Verify preprocessing was successful
-      const verifyCompletedBooks = clonedMapData.elements.filter(
-        el => el.type === 'book' && el.bookData && el.bookData.completed === true
+      return response.data;
+    } else {
+      const response = await axios.post(
+        `${API_BASE_URL}/api/maps`,
+        clonedMapData
       );
-      
-      console.log(`[UTILS] After preprocessing: ${verifyCompletedBooks.length} books have completed=true`);
-      
-      // Convert to string and check for completed occurrences as final verification
-      const jsonData = JSON.stringify(clonedMapData);
-      const completedOccurrences = (jsonData.match(/"completed"\s*:\s*true/g) || []).length;
-      console.log(`[UTILS] API request contains ${completedOccurrences} occurrences of "completed":true`);
-    }
-
-    // ENHANCED: Check for line elements
-    const lineElements = clonedMapData.elements.filter(el => el.type === 'line');
-    const hasLineElements = lineElements.length > 0;
-    
-    if (hasLineElements) {
-      console.log(`[UTILS] Found ${lineElements.length} line elements in the map`);
-      
-      // Clean all line elements to ensure they're properly formatted
-      clonedMapData.elements = clonedMapData.elements.map(el => {
-        if (el.type === 'line') {
-          return {
-            ...el,
-            lineData: cleanLineData(el.lineData)
-          };
-        }
-        return el;
-      });
-      
-      console.log('[UTILS] Line elements have been cleaned for MongoDB storage');
-    }
-
-    const headers = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    };
-
-    let response;
-    let success = false;
-    let errorMessage = '';
-
-    // First try saving with all elements including lines
-    try {
-      if (mapId) {
-        console.log(`[UTILS] Sending PUT request to /api/maps/${mapId}`);
-        response = await axios.put(
-          `/api/maps/${mapId}`,
-          clonedMapData,
-          { headers }
-        );
-        success = true;
-      } else {
-        console.log('[UTILS] Sending POST request to /api/maps');
-        response = await axios.post(
-          '/api/maps',
-          clonedMapData,
-          { headers }
-        );
-        success = true;
-      }
-    } catch (saveError: any) {
-      console.error('[UTILS] Initial save attempt failed:', saveError.message);
-      errorMessage = saveError.message;
-      
-      // Only try the fallback if there are line elements and we got a 500 error
-      if (hasLineElements && saveError.response && saveError.response.status === 500) {
-        console.log('[UTILS] Attempting fallback save without line elements...');
-        
-        // Create a version without line elements
-        const fallbackData = {
-          ...clonedMapData,
-          elements: clonedMapData.elements.filter(el => el.type !== 'line')
-        };
-        
-        // Also remove any connections to/from line elements
-        if (fallbackData.connections.length > 0) {
-          const lineElementIds = lineElements.map(el => el.id);
-          fallbackData.connections = fallbackData.connections.filter(conn => 
-            !lineElementIds.includes(conn.start) && !lineElementIds.includes(conn.end)
-          );
-        }
-        
-        console.log(`[UTILS] Fallback data has ${fallbackData.elements.length} elements and ${fallbackData.connections.length} connections`);
-        
-        try {
-          // Try the fallback save
-          if (mapId) {
-            console.log(`[UTILS] Sending fallback PUT request to /api/maps/${mapId}`);
-            response = await axios.put(
-              `/api/maps/${mapId}`,
-              fallbackData,
-              { headers }
-            );
-            success = true;
-            toast.success('Map saved successfully (without line elements)');
-          } else {
-            console.log('[UTILS] Sending fallback POST request to /api/maps');
-            response = await axios.post(
-              '/api/maps',
-              fallbackData,
-              { headers }
-            );
-            success = true;
-            toast.success('Map saved successfully (without line elements)');
-          }
-        } catch (fallbackError: any) {
-          console.error('[UTILS] Fallback save attempt also failed:', fallbackError.message);
-          // Re-throw the original error since both attempts failed
-          throw saveError;
-        }
-      } else {
-        // If there are no line elements or the error isn't a 500, just re-throw
-        throw saveError;
-      }
-    }
-
-    if (success) {
-      if (!response?.data) {
-        console.error('[UTILS] Save succeeded but no data was returned');
-        return null;
-      }
-      
-      // Only show the success toast if we didn't already show the fallback success toast
-      if (hasLineElements) {
-        toast.success('Map saved successfully');
-      }
-      
-      // POST-PROCESSING: Verify server response and fix if needed
-      if (response.data.elements && booksWithCompletedStatus.length > 0) {
-        const responseCompletedBooks = response.data.elements.filter(
-          (el: any) => el.type === 'book' && el.bookData && el.bookData.completed === true
-        );
-        
-        console.log(`[UTILS] POST-PROCESS: Server returned ${responseCompletedBooks.length} books with completed=true`);
-        
-        if (responseCompletedBooks.length !== booksWithCompletedStatus.length) {
-          console.warn(`[UTILS] WARNING: Completed status changed in API response! Client: ${booksWithCompletedStatus.length}, Server: ${responseCompletedBooks.length}`);
-          
-          // Fix the response data
-          response.data.elements = response.data.elements.map((el: any) => {
-            if (el.type === 'book' && el.bookData) {
-              // Check if this book should be marked as completed
-              const shouldBeCompleted = booksWithCompletedStatus.some(book => book.id === el.id);
-              
-              if (shouldBeCompleted) {
-                console.log(`[UTILS] Fixing book ${el.id} in response`);
-                return {
-                  ...el,
-                  bookData: {
-                    ...el.bookData,
-                    completed: true
-                  }
-                };
-              }
-            }
-            return el;
-          });
-          
-          // Verify fix succeeded
-          const fixedBooks = response.data.elements.filter(
-            (el: any) => el.type === 'book' && el.bookData && el.bookData.completed === true
-          );
-          
-          console.log(`[UTILS] After fix: Response now has ${fixedBooks.length} books with completed=true`);
-        } else {
-          console.log(`[UTILS] Server successfully preserved completed status for all ${responseCompletedBooks.length} books`);
-        }
-      }
-      
       return response.data;
     }
-
-    return null;
-  } catch (error) {
-    console.error('Error saving map:', error);
-    toast.error('Failed to save map');
-    return null;
+  } catch (error: any) {
+    console.error("Error in saveMap:", error);
+    
+    // Rethrow to allow the calling function to handle the error
+    throw error;
   }
 };
 
@@ -399,7 +219,7 @@ export const loadMap = async (mapId: string): Promise<SavedMap | null> => {
     try {
       console.log('Attempting to load map as owner');
       // First try to load the map as the owner
-      const response = await axios.get(`/api/maps/${mapId}`, { headers });
+      const response = await axios.get(`${API_BASE_URL}/api/maps/${mapId}`, { headers });
       // If successful, the user is the owner
       const mapData = response.data;
       mapData.isOwner = true;
@@ -422,7 +242,7 @@ export const loadMap = async (mapId: string): Promise<SavedMap | null> => {
         }
         
         // Try to load the map in view-only mode
-        const viewResponse = await axios.get(`/api/maps/${mapId}/view`, { headers });
+        const viewResponse = await axios.get(`${API_BASE_URL}/api/maps/${mapId}/view`, { headers });
         console.log('Successfully loaded map in view-only mode');
         return viewResponse.data;
       }
@@ -431,7 +251,7 @@ export const loadMap = async (mapId: string): Promise<SavedMap | null> => {
     }
   } catch (error) {
     console.error('Error loading map:', error);
-    toast.error('Failed to load map');
+    toast.error('Error loading map');
     return null;
   }
 };
@@ -453,7 +273,7 @@ export const loadMapViewOnly = async (mapId: string): Promise<SavedMap | null> =
     };
 
     console.log('Sending request to /api/maps/:id/view endpoint');
-    const response = await axios.get(`/api/maps/${mapId}/view`, { headers });
+    const response = await axios.get(`${API_BASE_URL}/api/maps/${mapId}/view`, { headers });
     console.log('View-only map data received:', response.data ? 'yes' : 'no');
     return response.data;
   } catch (error) {
@@ -496,7 +316,7 @@ export const getUserMaps = async (): Promise<SavedMap[]> => {
 
     console.log('Fetching maps from API...');
     // Request comments and bookmarks to be populated in the response
-    const response = await axios.get('/api/maps?include=comments,bookmarks', { headers });
+    const response = await axios.get(`${API_BASE_URL}/api/maps?include=comments,bookmarks`, { headers });
     
     console.log(`API returned ${response.data.length} maps`);
     
@@ -603,7 +423,7 @@ export const deleteMap = async (mapId: string): Promise<boolean> => {
       Authorization: `Bearer ${token}`,
     };
 
-    await axios.delete(`/api/maps/${mapId}`, { headers });
+    await axios.delete(`${API_BASE_URL}/api/maps/${mapId}`, { headers });
     toast.success('Map deleted successfully');
     return true;
   } catch (error) {
@@ -675,7 +495,7 @@ export const bookmarkMap = async (mapId: string): Promise<boolean> => {
 
     // Make sure the URL doesn't get confused with other routes
     // Use an object in the request body to ensure it's treated as a proper POST
-    const response = await axios.post(`/api/maps/${mapId}/bookmark`, { action: 'toggle' }, { headers });
+    const response = await axios.post(`${API_BASE_URL}/api/maps/${mapId}/bookmark`, { action: 'toggle' }, { headers });
     
     if (response.data.success) {
       return true;
@@ -703,7 +523,7 @@ export const getBookmarkedMaps = async (): Promise<SavedMap[]> => {
       Authorization: `Bearer ${token}`,
     };
 
-    const response = await axios.get('/api/maps/bookmarked', { headers });
+    const response = await axios.get(`${API_BASE_URL}/api/maps/bookmarked`, { headers });
     return response.data.maps;
   } catch (error) {
     console.error('Error fetching bookmarked maps:', error);

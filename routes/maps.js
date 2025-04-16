@@ -1,14 +1,50 @@
 const express = require('express');
-const router = express.Router();
-const Map = require('../models/Map');
+const mongoose = require('mongoose');
 const { protect } = require('../middleware/auth');
+const Map = require('../models/Map');
+const User = require('../models/User');
+const Comment = require('../models/Comment');
+const { debugLineElements, validateMapStructure } = require('./maps-debug');
+
+const router = express.Router();
 
 // @desc    Create a new map
 // @route   POST /api/maps
 // @access  Private
 router.post('/', protect, async (req, res) => {
   try {
-    const { name, elements, connections, canvasPosition, scale } = req.body;
+    console.log('\n=== POST /api/maps Processing ===');
+    const { 
+      name, 
+      elements, 
+      connections, 
+      canvasPosition, 
+      scale,
+      canvasWidth,
+      canvasHeight
+    } = req.body;
+
+    console.log('Map creation request from user:', req.user.id);
+    
+    // Debug request body summary
+    console.log('Map creation received with:', {
+      nameProvided: !!name,
+      elementsCount: elements?.length || 0,
+      connectionsCount: connections?.length || 0
+    });
+    
+    // Enhanced debugging for line elements
+    if (elements && elements.length > 0) {
+      const lineElements = elements.filter(el => el.type === 'line');
+      if (lineElements.length > 0) {
+        console.log(`Found ${lineElements.length} line elements in the new map`);
+        // Use the debug utility
+        debugLineElements({ elements });
+      }
+    }
+    
+    // Validate overall map structure
+    validateMapStructure(req.body);
 
     // Clean line elements before processing
     const cleanedElements = elements?.map(element => {
@@ -601,18 +637,54 @@ const cleanLineElement = (element) => {
 // @access  Private
 router.put('/:id', protect, async (req, res) => {
   try {
-    let map = await Map.findById(req.params.id);
+    console.log('\n=== PUT /api/maps/:id Processing ===');
+    const { 
+      name, 
+      elements, 
+      connections, 
+      canvasPosition, 
+      scale,
+      canvasWidth,
+      canvasHeight
+    } = req.body;
+
+    // Validate the map ID is a valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      console.error('Invalid map ID format:', req.params.id);
+      return res.status(400).json({ message: 'Invalid map ID format' });
+    }
+
+    // Find the map by ID and user ID
+    console.log(`Looking for map with ID ${req.params.id} belonging to user ${req.user.id}`);
+    let map = await Map.findOne({ _id: req.params.id, user: req.user.id });
 
     if (!map) {
-      return res.status(404).json({ message: 'Map not found' });
+      console.error('Map not found or user does not have permission');
+      return res.status(404).json({ message: 'Map not found or permission denied' });
     }
 
-    // Check map belongs to user
-    if (map.user.toString() !== req.user._id.toString()) {
-      return res.status(401).json({ message: 'Not authorized to update this map' });
+    console.log('Map found, processing update...');
+    
+    // Add debugging for the request body
+    console.log('Map update received with:', {
+      nameProvided: !!name,
+      elementsCount: elements?.length || 0,
+      connectionsCount: connections?.length || 0
+    });
+    
+    // Enhanced debugging for line elements
+    if (elements && elements.length > 0) {
+      const lineElements = elements.filter(el => el.type === 'line');
+      if (lineElements.length > 0) {
+        console.log(`Found ${lineElements.length} line elements in the update`);
+        
+        // Use the debug utility
+        debugLineElements({ elements });
+      }
     }
-
-    const { name, elements, connections, canvasPosition, scale } = req.body;
+    
+    // Validate overall map structure
+    validateMapStructure(req.body);
 
     // Update map fields
     map.name = name || map.name;

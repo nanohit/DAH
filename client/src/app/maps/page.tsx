@@ -1294,6 +1294,37 @@ const Line = ({
     };
   }, []);
 
+  // If lineData is missing or incomplete, fix it immediately
+  useEffect(() => {
+    if (!element.lineData || 
+        typeof element.lineData.startX !== 'number' || 
+        typeof element.lineData.startY !== 'number' || 
+        typeof element.lineData.endX !== 'number' || 
+        typeof element.lineData.endY !== 'number' ||
+        element.text === '') {
+      
+      // Create default or fixed line data
+      const fixedLineData = {
+        startX: element.lineData?.startX || 0,
+        startY: element.lineData?.startY || 0,
+        endX: element.lineData?.endX || 100,
+        endY: element.lineData?.endY || 0
+      };
+      
+      // Update the element with fixed line data and ensure text is set
+      setElements(prev => prev.map(el => 
+        el.id === element.id ? { 
+          ...el, 
+          lineData: fixedLineData,
+          text: el.text || 'Line'  // Ensure text is non-empty
+        } : el
+      ));
+      
+      // Return void instead of null
+      return;
+    }
+  }, [element, setElements]);
+
   if (!element.lineData) return null;
 
   const { startX, startY, endX, endY } = element.lineData;
@@ -2756,13 +2787,13 @@ function MapsContent() {
       type: 'line',
       left: 0,
       top: 0,
-      text: '',
+      text: 'Line', // Set a non-empty default text value
       orientation: 'horizontal',
       lineData: {
-        startX,
-        startY: centerY,
-        endX,
-        endY: centerY,
+        startX: Number.isFinite(startX) ? Number(startX) : 0,
+        startY: Number.isFinite(centerY) ? Number(centerY) : 0,
+        endX: Number.isFinite(endX) ? Number(endX) : 100,
+        endY: Number.isFinite(centerY) ? Number(centerY) : 0,
       }
     };
 
@@ -3602,11 +3633,7 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
   };
 
   const saveMapToDatabase = async () => {
-    console.log('[DEBUG] saveMapToDatabase called, current autosave state:', isAutoSaving);
-    
-    // Check if token is expiring and refresh if needed
     if (isTokenExpiring() && !isRefreshingToken) {
-      console.log("Token needs refresh before saving map");
       setIsRefreshingToken(true);
       try {
         await refreshToken();
@@ -3618,42 +3645,41 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     }
     
     if (autosaveInProgressRef.current) {
-      console.log('[DEBUG] Skipping save due to existing autosave in progress');
       return false;
     }
     
     // Track save state with existing autoSaving state
     setIsAutoSaving(true);
     
+    // Clean line elements before saving
+    const cleanedElements = elements.map(element => {
+      if (element.type === 'line' && element.lineData) {
+        // Make sure all line data is properly formatted with valid numbers
+        return {
+          ...element,
+          lineData: {
+            startX: typeof element.lineData.startX === 'number' ? element.lineData.startX : 0,
+            startY: typeof element.lineData.startY === 'number' ? element.lineData.startY : 0,
+            endX: typeof element.lineData.endX === 'number' ? element.lineData.endX : 100,
+            endY: typeof element.lineData.endY === 'number' ? element.lineData.endY : 0
+          }
+        };
+      }
+      return element;
+    });
+    
     // Find books with completed status
-    const booksWithCompletedStatus = elements.filter(
+    const booksWithCompletedStatus = cleanedElements.filter(
       el => el.type === 'book' && el.bookData && el.bookData.completed === true
     );
-    
-    if (booksWithCompletedStatus.length > 0) {
-      console.log('[DEBUG] Saving map with books marked as completed:', 
-        booksWithCompletedStatus.map(book => ({
-          id: book.id,
-          title: book.bookData?.title,
-          completed: book.bookData?.completed
-        }))
-      );
-    }
-    
-    // Check all books for debugging
-    const allBooks = elements.filter(el => el.type === 'book' && el.bookData);
-    console.log('[DEBUG] All books in the map:', allBooks);
     
     // Create mapData structure
     const mapData = {
       name: mapName,
-      elements: elements.map(element => {
+      elements: cleanedElements.map(element => {
         // Ensure completed property is explicitly set for book elements
         if (element.type === 'book' && element.bookData) {
           if (element.bookData.completed) {
-            console.log(`[DEBUG] Ensuring 'completed' property is set to true for book ${element.id}`);
-            
-            // Create a new object with the completed property explicitly set
             return {
               ...element,
               bookData: {
@@ -3672,90 +3698,26 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
       canvasHeight: containerRef.current?.clientHeight || 800
     };
     
-    // Store local copy of books with completed status before save
-    const completedBooksBeforeSave = mapData.elements
-      .filter(el => el.type === 'book' && el.bookData && el.bookData.completed === true)
-      .map(book => ({ id: book.id, completed: true }));
-    
-    console.log('[DEBUG] Saving map to database...');
     const searchParams = new URLSearchParams(window.location.search);
     const mapId = searchParams.get('id');
     
-    const savedMap = await saveMap(mapData, mapId);
-    
-    // Reset auto-saving state regardless of result
-    setIsAutoSaving(false);
-    
-    if (savedMap) {
-      console.log('[DEBUG] Map saved successfully');
+    try {
+      const savedMap = await saveMap(mapData, mapId);
       
-      // Check if the saved map contains book elements
-      console.log('[DEBUG] Raw savedMap response elements:', savedMap.elements);
-      
-      // Check for completed status in returned books
-      const bookElements = savedMap.elements.filter(el => el.type === 'book' && el.bookData);
-      
-      console.log('[DEBUG] Server returned book elements:');
-      bookElements.forEach((book, index) => {
-        console.log(`[DEBUG] Book ${index} (${book.id}):`, {
-          hasBookData: !!book.bookData,
-          bookDataKeys: book.bookData ? Object.keys(book.bookData) : [],
-          completedValue: book.bookData?.completed,
-          completedType: typeof book.bookData?.completed
-        });
-      });
-      
-      // Check if any books lost their completed status
-      const lostCompletedStatus = completedBooksBeforeSave.filter(
-        originalBook => {
-          const savedBook = savedMap.elements.find(el => el.id === originalBook.id);
-          return !(savedBook?.bookData?.completed === true);
-        }
-      );
-      
-      if (lostCompletedStatus.length > 0) {
-        console.log('[DEBUG] Warning: Books marked as completed were lost during save!');
-        
-        // Restore completed status in our local state for books that lost it
-        const updatedElements = elements.map(element => {
-          const shouldBeCompleted = lostCompletedStatus.find(book => book.id === element.id);
-          
-          if (shouldBeCompleted && element.type === 'book' && element.bookData) {
-            console.log(`[DEBUG] Restoring completed status for book: ${element.id}`);
-            
-            // Create a new element with updated bookData
-            return {
-              ...element,
-              bookData: {
-                ...element.bookData,
-                completed: true
-              }
-            };
-          }
-          
-          return element;
-        });
-        
-        // Update local state with restored completed status
-        setElements(updatedElements);
-        
-        // Show a warning to the user about the issue
-        toast.error('Some book completion statuses were not saved properly. This has been fixed locally.', {
-          duration: 5000
-        });
+      if (!savedMap) {
+        toast.error('Failed to save map. Please try again.');
+        setIsAutoSaving(false);
+        return false;
       }
       
-      if (!savedMapId) {
-        setSavedMapId(savedMap._id);
-        // Update URL with map ID without reloading page
-        window.history.pushState({}, '', `/maps?id=${savedMap._id}`);
-      }
-      
-      setLastSavedTime(new Date());
-      
+      toast.success('Map saved successfully!');
       return true;
-    } else {
+    } catch (error: any) {
+      console.error('Error saving map:', error);
+      toast.error(`Failed to save map: ${error.message || 'Unknown error'}`);
       return false;
+    } finally {
+      setIsAutoSaving(false);
     }
   };
   
@@ -4313,6 +4275,19 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     };
   }, [handleSaveMap]);  // Include handleSaveMap in dependencies
 
+  // Add this function near other helper functions
+  const adjustSvgLayer = () => {
+    const svgElement = document.querySelector('#map-svg-layer');
+    if (svgElement) {
+      svgElement.style.zIndex = '15'; // Set z-index higher than elements (10)
+    }
+  };
+
+  // Call this function in the main useEffect or where elements are rendered
+  useEffect(() => {
+    adjustSvgLayer();
+  }, [elements]); // Adjust whenever elements change
+
   return (
     <DndContext 
       onDragStart={handleDragStart}
@@ -4596,8 +4571,9 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
   onClick={handleContainerClick}
 >
             <svg
+              id="map-svg-layer" // Add an ID to the SVG layer
               className="absolute inset-0 w-full h-full"
-              style={{ zIndex: 5 }}
+              style={{ zIndex: 5 }} // Initial lower z-index
             >
               {elements.map((element) => (
                 element.type === 'line' ? (
