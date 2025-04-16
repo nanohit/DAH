@@ -467,8 +467,10 @@ const DraggableElement = ({
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault(); // Prevent default text selection
+    
     if (isEditing || isResizing) {
-      e.stopPropagation();
       return;
     }
     setIsDragStarted(false);
@@ -1333,6 +1335,7 @@ const Line = ({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault(); // Prevent default text selection
     
     // Select the element
     onSelect(element.id);
@@ -1427,6 +1430,7 @@ const Line = ({
       if (!elementId || !handle || elementId !== element.id) return;
 
       e.stopPropagation();
+      e.preventDefault(); // Prevent default text selection when dragging handles
       
       const handleMouseMove = (e: MouseEvent) => handleLineHandleMove(e, handle as 'start' | 'end');
       const handleMouseUp = () => {
@@ -1654,6 +1658,7 @@ const ScaledConnectionPoint = ({
           }}
           onMouseDown={(e) => {
             e.stopPropagation();
+            e.preventDefault(); // Prevent default text selection
             onStartConnection(elementId, position, e);
           }}
           onMouseOver={(e) => {
@@ -2816,6 +2821,8 @@ function MapsContent() {
       if (!elementId || !handle) return;
 
       e.stopPropagation();
+      e.preventDefault(); // Prevent default text selection when dragging handles
+      
       setIsDraggingLineHandle({
         elementId,
         handle: handle as 'start' | 'end'
@@ -4278,7 +4285,26 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
       clearInterval(heartbeatInterval);
     };
   }, []);
-  
+
+  // Add keyboard shortcut for save
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Cmd+S (Mac) or Ctrl+S (Windows)
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault(); // Prevent browser's save dialog
+        handleSaveMap();
+      }
+    };
+    
+    // Add event listener
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleSaveMap]);  // Include handleSaveMap in dependencies
+
   return (
     <DndContext 
       onDragStart={handleDragStart}

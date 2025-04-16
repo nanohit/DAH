@@ -83,7 +83,7 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
     setIsEditingDescription,
     showFullDescription,
     setShowFullDescription,
-    handleBookClick,
+    handleBookClick: originalHandleBookClick,
     handleBackToSearch,
     handleSubmit
   } = useBookDetails() as {
@@ -105,9 +105,9 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
   // Flibusta integration states
   const [isFlibustaStage, setIsFlibustaStage] = useState(false);
   const [isFlibustaSearching, setIsFlibustaSearching] = useState(false);
-  const [flibustaResults, setFlibustaResults] = useState<FlibustaResult[]>([]);
+  const [flibustaResults, setFlibustaResults] = useState<any[]>([]);
   const [flibustaError, setFlibustaError] = useState<string | null>(null);
-  const [selectedVariant, setSelectedVariant] = useState<FlibustaResult | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<any>(null);
   const [showFlibustaResults, setShowFlibustaResults] = useState(false);
 
   const router = useRouter();
@@ -213,24 +213,25 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
       const response = await api.get(`/api/books/flibusta/search?query=${encodeURIComponent(confirmedBook.title)}`);
       const data = response.data;
 
-      if (!response.data) {
+      if (!data) {
         throw new Error('Failed to search on Flibusta');
       }
 
       setFlibustaResults(data.data || []);
     } catch (err) {
       setFlibustaError(err instanceof Error ? err.message : 'Failed to search on Flibusta');
+      toast.error('Failed to search on Flibusta');
     } finally {
       setIsFlibustaSearching(false);
     }
   };
 
-  const handleVariantSelect = (variant: FlibustaResult) => {
+  const handleVariantSelect = (variant: any) => {
     const originalVariant = {
       id: variant.id,
       title: variant.title,
       author: variant.author,
-      formats: variant.formats.map(format => ({
+      formats: variant.formats.map((format: any) => ({
         format: format.format,
         url: `/api/books/flibusta/download/${variant.id}/${format.format}`
       }))
@@ -240,11 +241,24 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
     setShowFlibustaResults(false);
   };
 
+  // Override handleBookClick to handle books from database
+  const handleBookClick = async (book: BookSearchResult) => {
+    // If it's an Alphy book or a book from our database, create map element directly
+    if (book.source === 'alphy' || book._id) {
+      onBookSubmit(book);
+      onClose();
+      return;
+    }
+
+    // Otherwise use the original handler
+    originalHandleBookClick(book);
+  };
+
   const handleFinalSubmit = async () => {
     if (confirmedBook) {
       try {
         // If the book already exists in the Alphy database, just pass it to the parent component
-        if (confirmedBook.source === 'alphy' && confirmedBook._id) {
+        if (confirmedBook.source === 'alphy' || confirmedBook._id) {
           onBookSubmit(confirmedBook);
           onClose();
           return;
@@ -256,6 +270,24 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
             throw new Error('You must be logged in to add books');
           }
 
+          // First check if the book already exists in our database
+          try {
+            const existingBookResponse = await api.get(`/api/books/by-key/${confirmedBook.key}`);
+            if (existingBookResponse.data && existingBookResponse.data._id) {
+              // Book already exists, use it directly
+              onBookSubmit({
+                ...confirmedBook,
+                _id: existingBookResponse.data._id,
+                flibustaStatus: existingBookResponse.data.flibustaStatus,
+                flibustaVariants: existingBookResponse.data.flibustaVariants
+              });
+              onClose();
+              return;
+            }
+          } catch (error) {
+            // Book not found, continue with saving
+          }
+
           // Ensure required fields have valid values
           const bookData = {
             title: confirmedBook.title.trim(),
@@ -264,7 +296,7 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
               : (confirmedBook.author_name || 'Unknown').trim(),
             description: confirmedBook.description?.trim() || 'No description available.',
             coverImage: confirmedBook.source === 'openlib'
-              ? confirmedBook.thumbnail?.replace('-S.jpg', '-L.jpg') // Use large resolution for database
+              ? (confirmedBook.thumbnail?.replace('-S.jpg', '-L.jpg') || 'https://via.placeholder.com/300x400?text=No+Cover')
               : confirmedBook.highResThumbnail || confirmedBook.thumbnail || 'https://via.placeholder.com/300x400?text=No+Cover',
             publishedYear: confirmedBook.first_publish_year,
             key: confirmedBook.key,
@@ -284,6 +316,12 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
           // If there's a selected variant from Flibusta, add the download links
           if (selectedVariant && response.data && response.data._id) {
             try {
+              // Ensure we have the token for the request
+              const token = localStorage.getItem('token');
+              if (!token) {
+                throw new Error('You must be logged in to save download links');
+              }
+
               const variantResponse = await api.post(`/api/books/${response.data._id}/save-flibusta`, {
                 variant: {
                   title: selectedVariant.title,
@@ -300,6 +338,10 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
                     }
                   ]
                 }
+              }, {
+                headers: {
+                  Authorization: `Bearer ${token}`
+                }
               });
               
               // Use the updated book with download links
@@ -307,14 +349,16 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
                 onBookSubmit({
                   ...confirmedBook,
                   _id: variantResponse.data._id,
-                  // Use type assertion to include the flibustaVariants property
-                } as BookSearchResult & { flibustaVariants: any });
+                  flibustaStatus: 'uploaded',
+                  flibustaVariants: variantResponse.data.flibustaVariants
+                });
                 onClose();
                 router.refresh();
                 return;
               }
             } catch (variantError) {
               console.error('Error saving download links:', variantError);
+              toast.error('Failed to save download links. Please try again later.');
               // Continue with normal book submission if variant saving fails
             }
           }
@@ -323,7 +367,9 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
             // Pass the book with its new _id to prevent duplicate saving
             onBookSubmit({
               ...confirmedBook,
-              _id: response.data._id
+              _id: response.data._id,
+              flibustaStatus: response.data.flibustaStatus,
+              flibustaVariants: response.data.flibustaVariants
             });
             onClose();
             router.refresh();
@@ -331,7 +377,7 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
         }
       } catch (error) {
         console.error('Error in handleFinalSubmit:', error);
-        throw error;
+        toast.error(error instanceof Error ? error.message : 'Failed to save book');
       }
     }
   };
@@ -390,27 +436,6 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
     setIsHovering(false);
     setTilt({ x: 0, y: 0 });
   };
-
-  // Override handleBookClick to sync bookmark status
-  const originalHandleBookClick = handleBookClick;
-  const enhancedHandleBookClick = (book: BookSearchResult) => {
-    console.log('Enhanced book click handler called with:', book);
-    
-    // Call the original handler
-    originalHandleBookClick(book);
-    
-    // Check bookmark status for Alphy books
-    if (book.source === 'alphy' && book._id && user) {
-      const isMarked = book.bookmarks?.some((bookmark) => 
-        getUserId(bookmark.user) === getUserId(user)
-      );
-      console.log('Setting bookmark status:', !!isMarked);
-      setIsBookmarked(!!isMarked);
-    }
-  };
-  
-  // Replace the original handleBookClick with our enhanced version
-  const handleBookClickWithBookmarkCheck = enhancedHandleBookClick;
 
   if (isFlibustaStage && confirmedBook) {
     return (
@@ -559,19 +584,14 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
                     ) : (
                       <>
                         <button
-                          onClick={moveToFlibustaStage}
-                          className="px-6 py-3 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-all duration-300 border border-gray-700 hover:scale-105"
+                          onClick={skipFlibustaAndSave}
+                          className="w-full px-6 py-3 bg-gray-800 text-white rounded-md hover:bg-gray-700 transition-colors border border-gray-700"
                         >
-                          Find download links
+                          Save Book
                         </button>
-                        {!isBookmarksPage && (
-                          <button
-                            onClick={skipFlibustaAndSave}
-                            className="mt-4 px-6 py-3 bg-gray-800 text-white rounded-md hover:bg-gray-700 transition-colors border border-gray-700"
-                          >
-                            Skip and save book
-                          </button>
-                        )}
+                        <p className="mt-2 text-sm text-gray-400 text-center">
+                          You will be able to request download links once you add book to canvas.
+                        </p>
                       </>
                     )}
                 </div>
@@ -831,19 +851,14 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
                     ) : (
                       <>
                         <button
-                          onClick={moveToFlibustaStage}
-                          className="px-6 py-3 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-all duration-300 border border-gray-700 hover:scale-105"
+                          onClick={skipFlibustaAndSave}
+                          className="w-full px-6 py-3 bg-gray-800 text-white rounded-md hover:bg-gray-700 transition-colors border border-gray-700"
                         >
-                          Find download links
+                          Save Book
                         </button>
-                        {!isBookmarksPage && (
-                          <button
-                            onClick={skipFlibustaAndSave}
-                            className="mt-4 px-6 py-3 bg-gray-800 text-white rounded-md hover:bg-gray-700 transition-colors border border-gray-700"
-                          >
-                            Skip and save book
-                          </button>
-                        )}
+                        <p className="mt-2 text-sm text-gray-400 text-center">
+                          You will be able to request download links once you add book to canvas.
+                        </p>
                       </>
                     )}
                 </div>
@@ -980,7 +995,7 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
                     className={`p-3 hover:bg-gray-900 cursor-pointer border-b border-gray-800 flex gap-3 ${
                       selectedBook?.key === book.key ? 'bg-gray-900' : ''
                     }`}
-                    onClick={() => handleBookClickWithBookmarkCheck(book)}
+                    onClick={() => handleBookClick(book)}
                   >
                     {book.thumbnail ? (
                       <img 

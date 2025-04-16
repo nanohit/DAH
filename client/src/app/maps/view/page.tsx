@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect, useMemo, Suspense } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo, Suspense, useLayoutEffect } from 'react';
 import Xarrow, { Xwrapper } from 'react-xarrows';
 import { toast } from 'react-hot-toast';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -136,6 +136,9 @@ function MapViewContent() {
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   
+  // Add ref to track if position has been initialized
+  const positionInitializedRef = useRef<boolean>(false);
+  
   // Modal states - EXACT SAME as main editor
   const [bookDetailsModal, setBookDetailsModal] = useState<MapElement | null>(null);
   const [fullscreenImage, setFullscreenImage] = useState<{ url: string; alt: string } | null>(null);
@@ -208,8 +211,17 @@ function MapViewContent() {
       setElements(mapData.elements);
       setConnections(mapData.connections);
       
-      // Calculate initial position to center the content
-      if (containerRef.current && mapData.elements.length > 0) {
+      // Check if there is a saved canvas position first
+      if (mapData.canvasPosition) {
+        console.log('Using saved canvas position:', mapData.canvasPosition);
+        // Apply saved position and scale immediately
+        setCanvasPosition(mapData.canvasPosition);
+        setScale(mapData.scale || 1);
+        // Mark position as initialized
+        positionInitializedRef.current = true;
+      }
+      // Only calculate and center if there's no saved position
+      else if (containerRef.current && mapData.elements.length > 0) {
         const containerWidth = window.innerWidth;
         const containerHeight = window.innerHeight - 56; // Minus the header height
         
@@ -235,19 +247,27 @@ function MapViewContent() {
           const initialY = (containerHeight / 2) - (contentCenterY * scale);
           
           setCanvasPosition({ x: initialX, y: initialY });
+          // Mark position as initialized
+          positionInitializedRef.current = true;
         } else {
           // Default position if no elements
           setCanvasPosition({ x: containerWidth / 4, y: containerHeight / 4 });
+          // Mark position as initialized
+          positionInitializedRef.current = true;
         }
-      } else if (mapData.canvasPosition) {
-        // Use saved canvas position if available
-        setCanvasPosition(mapData.canvasPosition);
-        setScale(mapData.scale || 1);
+      } else {
+        // Fallback position if no elements and no saved position
+        const containerWidth = window.innerWidth;
+        const containerHeight = window.innerHeight - 56;
+        setCanvasPosition({ x: containerWidth / 4, y: containerHeight / 4 });
+        // Mark position as initialized
+        positionInitializedRef.current = true;
       }
       
       console.log('Map data loaded successfully:', {
         elements: mapData.elements.length,
-        connections: mapData.connections.length
+        connections: mapData.connections.length,
+        canvasPosition: mapData.canvasPosition
       });
     } catch (error) {
       console.error('Error loading map:', error);
@@ -291,31 +311,74 @@ function MapViewContent() {
   }, [scale, canvasPosition, bookDetailsModal, fullscreenImage, textEditModal]);
 
   // Panning handlers
-  const handlePanStart = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return; // Only start panning on left-click
+  const handlePanStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    // For mouse events, only start panning on left-click
+    if ('button' in e && e.button !== 0) return;
     
     setIsPanning(true);
-    setPanStart({ x: e.clientX - canvasPosition.x, y: e.clientY - canvasPosition.y });
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    setPanStart({ x: clientX - canvasPosition.x, y: clientY - canvasPosition.y });
     
-    // Prevent default text selection behavior
+    // Prevent default behavior
     e.preventDefault();
   }, [canvasPosition]);
   
-  const handlePanMove = useCallback((e: MouseEvent) => {
+  const handlePanMove = useCallback((e: MouseEvent | TouchEvent) => {
     if (!isPanning) return;
     
-    const newX = e.clientX - panStart.x;
-    const newY = e.clientY - panStart.y;
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    
+    const newX = clientX - panStart.x;
+    const newY = clientY - panStart.y;
     
     setCanvasPosition({ x: newX, y: newY });
     
-    // Prevent default text selection behavior
+    // Prevent default behavior
     e.preventDefault();
   }, [isPanning, panStart]);
   
   const handlePanEnd = useCallback(() => {
     setIsPanning(false);
   }, []);
+
+  // Touch scaling handler
+  const handleTouchScale = useCallback((e: TouchEvent) => {
+    // Prevent scaling when a modal is open
+    if (bookDetailsModal || fullscreenImage || textEditModal) return;
+    
+    if (e.touches.length !== 2) return;
+    
+    e.preventDefault();
+    
+    const touch1 = e.touches[0];
+    const touch2 = e.touches[1];
+    
+    // Calculate the distance between the two touches
+    const currentDistance = Math.hypot(
+      touch2.clientX - touch1.clientX,
+      touch2.clientY - touch1.clientY
+    );
+    
+    // Get the midpoint of the two touches
+    const midX = (touch1.clientX + touch2.clientX) / 2;
+    const midY = (touch1.clientY + touch2.clientY) / 2;
+    
+    // Calculate the point on the canvas where the midpoint is
+    const pointX = (midX - canvasPosition.x) / scale;
+    const pointY = (midY - canvasPosition.y) / scale;
+    
+    // Calculate new scale based on the change in distance
+    const newScale = Math.max(0.25, Math.min(2, scale * (currentDistance / 100)));
+    
+    // Calculate new position that keeps the midpoint under the fingers
+    const newX = midX - pointX * newScale;
+    const newY = midY - pointY * newScale;
+    
+    setScale(newScale);
+    setCanvasPosition({ x: newX, y: newY });
+  }, [scale, canvasPosition, bookDetailsModal, fullscreenImage, textEditModal]);
 
   // Handle element DOUBLE CLICK to show details - EXACT SAME as main editor
   const handleElementDoubleClick = (element: MapElement) => {
@@ -343,18 +406,87 @@ function MapViewContent() {
     router.push('/saved-maps');
   };
 
+  // Add useLayoutEffect to set initial position only once
+  useLayoutEffect(() => {
+    if (!isLoading && elements.length > 0 && !positionInitializedRef.current) {
+      // This will run only once after loading is complete if position hasn't been set yet
+      const containerWidth = window.innerWidth;
+      const containerHeight = window.innerHeight - 56;
+      
+      if (containerRef.current) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        
+        // Find boundaries if needed
+        elements.forEach((element) => {
+          const width = element.width || (element.orientation === 'horizontal' ? 160 : 140);
+          const height = element.height || (element.orientation === 'horizontal' ? 128 : 200);
+          
+          minX = Math.min(minX, element.left);
+          minY = Math.min(minY, element.top);
+          maxX = Math.max(maxX, element.left + width);
+          maxY = Math.max(maxY, element.top + height);
+        });
+        
+        if (minX !== Infinity) {
+          const contentCenterX = (minX + maxX) / 2;
+          const contentCenterY = (minY + maxY) / 2;
+          
+          const initialX = (containerWidth / 2) - (contentCenterX * scale);
+          const initialY = (containerHeight / 2) - (contentCenterY * scale);
+          
+          // Set position once and mark as initialized
+          setCanvasPosition({ x: initialX, y: initialY });
+          positionInitializedRef.current = true;
+          console.log('Canvas position initialized in useLayoutEffect');
+        }
+      }
+    }
+  }, [isLoading, elements, scale]);
+
+  // Add effect to prevent post-load position changes  
+  useEffect(() => {
+    // Add event handlers for elements loaded after the map
+    const handleDOMChanges = () => {
+      if (positionInitializedRef.current && !isPanning) {
+        // Block any automatic repositioning attempts
+        console.log('Blocking automatic repositioning');
+      }
+    };
+
+    const observer = new MutationObserver(handleDOMChanges);
+    
+    // Start observing the container for changes
+    if (containerRef.current) {
+      observer.observe(containerRef.current, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+      });
+    }
+    
+    return () => {
+      observer.disconnect();
+    };
+  }, [isPanning]);
+
   // Set up event listeners for panning and zooming
   useEffect(() => {
     window.addEventListener('mousemove', handlePanMove);
     window.addEventListener('mouseup', handlePanEnd);
     window.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('touchmove', handlePanMove, { passive: false });
+    window.addEventListener('touchend', handlePanEnd);
+    window.addEventListener('touchmove', handleTouchScale, { passive: false });
     
     return () => {
       window.removeEventListener('mousemove', handlePanMove);
       window.removeEventListener('mouseup', handlePanEnd);
       window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('touchmove', handlePanMove);
+      window.removeEventListener('touchend', handlePanEnd);
+      window.removeEventListener('touchmove', handleTouchScale);
     };
-  }, [handlePanMove, handlePanEnd, handleWheel]);
+  }, [handlePanMove, handlePanEnd, handleWheel, handleTouchScale]);
 
   // Line renderer for line elements
   const renderLine = (element: MapElement) => {
@@ -676,9 +808,11 @@ function MapViewContent() {
             backgroundPosition: 'center center',
             overflow: 'visible',
             willChange: 'transform',
-            transition: 'cursor 0.2s'
+            transition: 'cursor 0.2s',
+            touchAction: 'none' // Prevent default touch actions
           }}
           onMouseDown={handlePanStart}
+          onTouchStart={handlePanStart}
         >
           {/* Lines */}
           <svg

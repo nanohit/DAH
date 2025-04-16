@@ -16,18 +16,46 @@ interface User {
   createdAt: string;
 }
 
+// Define the Map interface
+interface UserMap {
+  _id: string;
+  name: string;
+  user: {
+    _id: string;
+    username: string;
+    badge?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+  elementCount: number;
+  connectionCount: number;
+  isMap: boolean;
+  headline?: string;
+  text?: string;
+  author?: any;
+  comments?: any[];
+  likes?: any[];
+  dislikes?: any[];
+}
+
 export default function UserProfile() {
   const { username } = useParams();
   const { user: currentUser } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [maps, setMaps] = useState<UserMap[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [bio, setBio] = useState('');
   const [initialLoading, setInitialLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadingMorePosts, setLoadingMorePosts] = useState(false);
+  const [loadingMoreMaps, setLoadingMoreMaps] = useState(false);
   const [error, setError] = useState('');
-  const [skip, setSkip] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
+  const [postsSkip, setPostsSkip] = useState(0);
+  const [mapsSkip, setMapsSkip] = useState(0);
+  const [hasMorePosts, setHasMorePosts] = useState(true);
+  const [hasMoreMaps, setHasMoreMaps] = useState(true);
+  const [activeTab, setActiveTab] = useState<'posts' | 'maps'>('posts');
+  const [mapsLoaded, setMapsLoaded] = useState(false);
   const LIMIT = 10;
 
   const badges = [
@@ -50,6 +78,7 @@ export default function UserProfile() {
   const fetchUserData = async () => {
     try {
       setInitialLoading(true);
+      // Only fetch user data and posts initially
       const [userResponse, postsResponse] = await Promise.all([
         api.get(`/api/users/${username}`),
         api.get(`/api/users/${username}/posts?limit=${LIMIT}&skip=0`)
@@ -58,8 +87,8 @@ export default function UserProfile() {
       setUser(userResponse.data);
       setPosts(postsResponse.data.posts);
       setBio(userResponse.data.bio || '');
-      setHasMore(postsResponse.data.hasMore);
-      setSkip(LIMIT);
+      setHasMorePosts(postsResponse.data.hasMore);
+      setPostsSkip(LIMIT);
     } catch (error) {
       console.error('Error fetching user data:', error);
       setError('Failed to load user data');
@@ -68,19 +97,75 @@ export default function UserProfile() {
     }
   };
 
-  const loadMorePosts = async () => {
-    if (loadingMore || !hasMore) return;
-
-    setLoadingMore(true);
+  const fetchUserMaps = async () => {
+    if (mapsLoaded) return;
+    
     try {
-      const response = await api.get(`/api/users/${username}/posts?limit=${LIMIT}&skip=${skip}`);
+      const mapsResponse = await api.get(`/api/users/${username}/maps?limit=${LIMIT}&skip=0`);
+      
+      // Process maps to fit the expected format for PostList
+      const processedMaps = mapsResponse.data.maps.map((map: any) => ({
+        ...map,
+        isMap: true,
+        headline: map.name,
+        text: `Elements: ${map.elementCount}, Connections: ${map.connectionCount}`,
+        author: map.user,
+        likes: [],
+        dislikes: [],
+        comments: map.comments || []
+      }));
+      
+      setMaps(processedMaps);
+      setHasMoreMaps(mapsResponse.data.hasMore);
+      setMapsSkip(LIMIT);
+      setMapsLoaded(true);
+    } catch (error) {
+      console.error('Error fetching maps:', error);
+    }
+  };
+
+  const loadMorePosts = async () => {
+    if (loadingMorePosts || !hasMorePosts) return;
+
+    setLoadingMorePosts(true);
+    try {
+      const response = await api.get(`/api/users/${username}/posts?limit=${LIMIT}&skip=${postsSkip}`);
       setPosts(prev => [...prev, ...response.data.posts]);
-      setHasMore(response.data.hasMore);
-      setSkip(prev => prev + LIMIT);
+      setHasMorePosts(response.data.hasMore);
+      setPostsSkip(prev => prev + LIMIT);
     } catch (error) {
       console.error('Error loading more posts:', error);
     } finally {
-      setLoadingMore(false);
+      setLoadingMorePosts(false);
+    }
+  };
+
+  const loadMoreMaps = async () => {
+    if (loadingMoreMaps || !hasMoreMaps) return;
+
+    setLoadingMoreMaps(true);
+    try {
+      const response = await api.get(`/api/users/${username}/maps?limit=${LIMIT}&skip=${mapsSkip}`);
+      
+      // Process maps to fit the expected format for PostList
+      const processedMaps = response.data.maps.map((map: any) => ({
+        ...map,
+        isMap: true,
+        headline: map.name,
+        text: `Elements: ${map.elementCount}, Connections: ${map.connectionCount}`,
+        author: map.user,
+        likes: [],
+        dislikes: [],
+        comments: map.comments || []
+      }));
+      
+      setMaps(prev => [...prev, ...processedMaps]);
+      setHasMoreMaps(response.data.hasMore);
+      setMapsSkip(prev => prev + LIMIT);
+    } catch (error) {
+      console.error('Error loading more maps:', error);
+    } finally {
+      setLoadingMoreMaps(false);
     }
   };
 
@@ -88,9 +173,18 @@ export default function UserProfile() {
     fetchUserData();
   }, [username]);
 
+  // Load maps data when maps tab is activated
+  useEffect(() => {
+    if (activeTab === 'maps' && !mapsLoaded && !initialLoading) {
+      fetchUserMaps();
+    }
+  }, [activeTab, mapsLoaded, initialLoading]);
+
   const handlePostUpdated = () => {
-    setSkip(0);
-    setHasMore(true);
+    setPostsSkip(0);
+    setMapsSkip(0);
+    setHasMorePosts(true);
+    setHasMoreMaps(true);
     fetchUserData();
   };
 
@@ -122,12 +216,19 @@ export default function UserProfile() {
     }
   };
 
+  const handleTabChange = (tab: 'posts' | 'maps') => {
+    setActiveTab(tab);
+    if (tab === 'maps' && !mapsLoaded) {
+      fetchUserMaps();
+    }
+  };
+
   if (initialLoading) return <div className="text-center p-4">Loading...</div>;
   if (error) return <div className="text-center p-4 text-red-500">{error}</div>;
   if (!user) return <div className="text-center p-4">User not found</div>;
 
   return (
-    <div className="max-w-4xl mx-auto p-4">
+    <div className="max-w-4xl mx-auto px-4 mt-8">
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
         <div className="flex items-center gap-4">
           {user.profilePicture && (
@@ -205,15 +306,52 @@ export default function UserProfile() {
       </div>
 
       <div>
-        <h2 className="text-xl font-semibold mb-4 text-black">Posts by {user.username}</h2>
-        <PostList 
-          posts={posts} 
-          onPostUpdated={handlePostUpdated} 
-          showPostCreation={false}
-          hasMorePosts={hasMore}
-          onLoadMore={loadMorePosts}
-          isLoading={loadingMore}
-        />
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 mb-4">
+          <button
+            className={`py-2 px-4 mr-2 font-medium text-sm focus:outline-none ${
+              activeTab === 'posts'
+                ? 'text-black border-b-2 border-gray-800 font-semibold'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => handleTabChange('posts')}
+          >
+            Posts
+          </button>
+          <button
+            className={`py-2 px-4 font-medium text-sm focus:outline-none ${
+              activeTab === 'maps'
+                ? 'text-black border-b-2 border-gray-800 font-semibold'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => handleTabChange('maps')}
+          >
+            Maps
+          </button>
+        </div>
+
+        {/* Content based on active tab */}
+        {activeTab === 'posts' && (
+          <PostList 
+            posts={posts} 
+            onPostUpdated={handlePostUpdated}
+            showPostCreation={false}
+            hasMorePosts={hasMorePosts}
+            onLoadMore={loadMorePosts}
+            isLoading={loadingMorePosts}
+          />
+        )}
+
+        {activeTab === 'maps' && (
+          <PostList 
+            posts={maps as Post[]} 
+            onPostUpdated={handlePostUpdated}
+            showPostCreation={false}
+            hasMorePosts={hasMoreMaps}
+            onLoadMore={loadMoreMaps}
+            isLoading={loadingMoreMaps || (!mapsLoaded && !initialLoading)}
+          />
+        )}
       </div>
     </div>
   );

@@ -10,19 +10,234 @@ router.post('/', protect, async (req, res) => {
   try {
     const { name, elements, connections, canvasPosition, scale } = req.body;
 
-    // Create map with user ID from auth middleware
-    const map = await Map.create({
-      name: name || 'Untitled Map',
-      user: req.user._id,
-      elements,
-      connections,
-      canvasPosition,
-      scale
+    // Clean line elements before processing
+    const cleanedElements = elements?.map(element => {
+      if (element.type === 'line') {
+        const cleaned = cleanLineElement(element);
+        console.log(`[SERVER] Cleaned line element ${element.id}:`);
+        console.log('  - Before:', JSON.stringify(element.lineData));
+        console.log('  - After:', JSON.stringify(cleaned.lineData));
+        return cleaned;
+      }
+      return element;
     });
 
-    res.status(201).json(map);
+    // Process elements before saving - similar to PUT route
+    let processedElements = [];
+    if (cleanedElements && Array.isArray(cleanedElements)) {
+      // Process each element
+      for (const element of cleanedElements) {
+        if (!element || !element.id || !element.type) {
+          console.log('[SERVER] Skipping invalid element');
+          continue;
+        }
+        
+        // Create a clean copy of the element as a plain object
+        const processedElement = {
+          id: element.id,
+          type: element.type,
+          left: element.left,
+          top: element.top,
+          width: element.width,
+          height: element.height,
+          text: element.text,
+          orientation: element.orientation
+        };
+        
+        // Handle book-specific data
+        if (element.type === 'book' && element.bookData) {
+          processedElement.bookData = {
+            key: element.bookData.key,
+            _id: element.bookData._id,
+            title: element.bookData.title,
+            author: [...(element.bookData.author || [])],
+            thumbnail: element.bookData.thumbnail,
+            highResThumbnail: element.bookData.highResThumbnail,
+            description: element.bookData.description,
+            source: element.bookData.source,
+            flibustaStatus: element.bookData.flibustaStatus,
+            completed: element.bookData.completed === true ? true : false
+          };
+          
+          // Add flibusta variants if present
+          if (element.bookData.flibustaVariants && Array.isArray(element.bookData.flibustaVariants)) {
+            processedElement.bookData.flibustaVariants = element.bookData.flibustaVariants.map(variant => ({
+              title: variant.title,
+              author: variant.author,
+              sourceId: variant.sourceId,
+              formats: (variant.formats || []).map(format => ({
+                format: format.format,
+                url: format.url
+              }))
+            }));
+          }
+        }
+        
+        // Handle line-specific data
+        if (element.type === 'line' && element.lineData) {
+          processedElement.lineData = {
+            startX: element.lineData.startX,
+            startY: element.lineData.startY,
+            endX: element.lineData.endX,
+            endY: element.lineData.endY
+          };
+        }
+        
+        // Handle image-specific data
+        if (element.type === 'image' && element.imageData) {
+          processedElement.imageData = {
+            url: element.imageData.url,
+            alt: element.imageData.alt
+          };
+        }
+        
+        // Handle link-specific data
+        if (element.type === 'link' && element.linkData) {
+          processedElement.linkData = {
+            url: element.linkData.url,
+            title: element.linkData.title,
+            previewUrl: element.linkData.previewUrl,
+            description: element.linkData.description,
+            siteName: element.linkData.siteName,
+            favicon: element.linkData.favicon,
+            displayUrl: element.linkData.displayUrl,
+            image: element.linkData.image,
+            youtubeVideoId: element.linkData.youtubeVideoId
+          };
+        }
+        
+        // Add to our processed elements array
+        processedElements.push(processedElement);
+      }
+    }
+
+    // Process connections
+    let processedConnections = [];
+    if (connections && Array.isArray(connections)) {
+      processedConnections = connections.map(conn => ({
+        id: conn.id,
+        start: conn.start,
+        end: conn.end,
+        startPoint: conn.startPoint,
+        endPoint: conn.endPoint
+      })).filter(conn => conn.id && conn.start && conn.end);
+    }
+
+    // Create map with user ID from auth middleware
+    try {
+      console.log('[SERVER] About to create map with', processedElements.length, 'elements');
+      
+      // Pre-validate line elements before saving
+      const lineElements = processedElements.filter(el => el.type === 'line');
+      if (lineElements.length > 0) {
+        console.log('[SERVER] Pre-validating', lineElements.length, 'line elements');
+        for (const lineEl of lineElements) {
+          const { lineData } = lineEl;
+          // Ensure line elements have valid coordinate data
+          if (!lineData || 
+              typeof lineData.startX !== 'number' || 
+              typeof lineData.startY !== 'number' || 
+              typeof lineData.endX !== 'number' || 
+              typeof lineData.endY !== 'number') {
+            console.error('[SERVER] Invalid line data found:', lineEl);
+            
+            // Fix invalid line data instead of failing
+            if (!lineData) {
+              lineEl.lineData = {
+                startX: 0,
+                startY: 0,
+                endX: 100,
+                endY: 100
+              };
+            } else {
+              lineEl.lineData.startX = typeof lineData.startX === 'number' ? lineData.startX : 0;
+              lineEl.lineData.startY = typeof lineData.startY === 'number' ? lineData.startY : 0;
+              lineEl.lineData.endX = typeof lineData.endX === 'number' ? lineData.endX : 100;
+              lineEl.lineData.endY = typeof lineData.endY === 'number' ? lineData.endY : 100;
+            }
+            console.log('[SERVER] Fixed line data:', lineEl.lineData);
+          }
+        }
+      }
+      
+      const map = new Map({
+        user: req.user.id,
+        name,
+        elements: processedElements,
+        connections,
+        canvasPosition,
+        scale,
+      });
+
+      const savedMap = await map.save();
+      
+      // Log summary of what was saved
+      const lineSummary = processedElements.filter(el => el.type === 'line').length;
+      console.log(`[SERVER] Saved map with ${processedElements.length} elements (${lineSummary} lines) and ${connections?.length || 0} connections`);
+      
+      res.status(201).json(savedMap);
+    } catch (saveError) {
+      console.error('[SERVER] Error during map creation:', saveError);
+      
+      // Try to identify the specific validation issue
+      if (saveError.name === 'ValidationError') {
+        console.error('[SERVER] Validation error details:', saveError.errors);
+        
+        // Check for line element validation issues
+        let isLineElementIssue = false;
+        Object.keys(saveError.errors || {}).forEach(path => {
+          if (path.includes('lineData')) {
+            isLineElementIssue = true;
+            console.error(`[SERVER] Line element validation error at ${path}:`, saveError.errors[path]);
+          }
+        });
+        
+        if (isLineElementIssue) {
+          return res.status(400).json({ 
+            message: 'Map contains invalid line elements', 
+            error: saveError.message
+          });
+        }
+      }
+      
+      // If we got here, rethrow to be caught by the main error handler
+      throw saveError;
+    }
   } catch (error) {
     console.error('Error creating map:', error);
+    console.error('Error details:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
+      code: error.code
+    });
+    
+    // Try to determine what part of the data is causing issues
+    try {
+      const sanitizedRequestData = {
+        name: req.body.name,
+        elementsCount: req.body.elements ? req.body.elements.length : 0,
+        connectionsCount: req.body.connections ? req.body.connections.length : 0,
+        hasCanvasPosition: !!req.body.canvasPosition,
+        hasScale: typeof req.body.scale !== 'undefined'
+      };
+      console.error('Request data summary:', sanitizedRequestData);
+      
+      // Check for problematic line elements
+      if (req.body.elements) {
+        const lineElements = req.body.elements.filter(el => el.type === 'line');
+        if (lineElements.length > 0) {
+          console.error('Line elements found:', lineElements.map(el => ({
+            id: el.id,
+            hasLineData: !!el.lineData,
+            lineDataProps: el.lineData ? Object.keys(el.lineData) : []
+          })));
+        }
+      }
+    } catch (analyzeError) {
+      console.error('Error while analyzing request data:', analyzeError);
+    }
+    
     res.status(500).json({ message: 'Server Error', error: error.message });
   }
 });
@@ -351,6 +566,36 @@ router.get('/:id/view', protect, async (req, res) => {
   }
 });
 
+// Helper function to clean line elements
+const cleanLineElement = (element) => {
+  // Skip non-line elements
+  if (!element || element.type !== 'line') {
+    return element;
+  }
+  
+  // Make a clean copy of the base element
+  const cleanedElement = {
+    id: element.id,
+    type: 'line',
+    left: typeof element.left === 'number' ? element.left : 0,
+    top: typeof element.top === 'number' ? element.top : 0,
+    width: typeof element.width === 'number' ? element.width : undefined,
+    height: typeof element.height === 'number' ? element.height : undefined,
+    text: typeof element.text === 'string' ? element.text : '',
+    orientation: ['horizontal', 'vertical'].includes(element.orientation) ? element.orientation : 'horizontal'
+  };
+  
+  // Create a clean lineData object
+  cleanedElement.lineData = {
+    startX: typeof element.lineData?.startX === 'number' ? element.lineData.startX : 0,
+    startY: typeof element.lineData?.startY === 'number' ? element.lineData.startY : 0,
+    endX: typeof element.lineData?.endX === 'number' ? element.lineData.endX : 0,
+    endY: typeof element.lineData?.endY === 'number' ? element.lineData.endY : 0
+  };
+  
+  return cleanedElement;
+};
+
 // @desc    Update a map
 // @route   PUT /api/maps/:id
 // @access  Private
@@ -371,11 +616,23 @@ router.put('/:id', protect, async (req, res) => {
 
     // Update map fields
     map.name = name || map.name;
-    
+
+    // Clean line elements before processing
+    const cleanedElements = elements?.map(element => {
+      if (element.type === 'line') {
+        const cleaned = cleanLineElement(element);
+        console.log(`[SERVER] Cleaned line element ${element.id}:`);
+        console.log('  - Before:', JSON.stringify(element.lineData));
+        console.log('  - After:', JSON.stringify(cleaned.lineData));
+        return cleaned;
+      }
+      return element;
+    });
+
     // Process elements with completed status before saving
-    if (elements) {
+    if (cleanedElements) {
       // Find books with completed status
-      const booksWithCompletedStatus = elements.filter(el => 
+      const booksWithCompletedStatus = cleanedElements.filter(el => 
         el && el.type === 'book' && el.bookData && el.bookData.completed === true
       );
       
@@ -385,7 +642,7 @@ router.put('/:id', protect, async (req, res) => {
       const processedElements = [];
       
       // Process each element, handling completed status specially
-      for (const element of elements) {
+      for (const element of cleanedElements) {
         if (!element || !element.id || !element.type) {
           console.log('[SERVER] Skipping invalid element');
           continue;
@@ -444,17 +701,35 @@ router.put('/:id', protect, async (req, res) => {
         
         // Handle line-specific data
         if (element.type === 'line' && element.lineData) {
-          processedElement.lineData = { ...element.lineData };
+          processedElement.lineData = {
+            startX: element.lineData.startX,
+            startY: element.lineData.startY,
+            endX: element.lineData.endX,
+            endY: element.lineData.endY
+          };
         }
         
         // Handle image-specific data
         if (element.type === 'image' && element.imageData) {
-          processedElement.imageData = { ...element.imageData };
+          processedElement.imageData = {
+            url: element.imageData.url,
+            alt: element.imageData.alt
+          };
         }
         
         // Handle link-specific data
         if (element.type === 'link' && element.linkData) {
-          processedElement.linkData = { ...element.linkData };
+          processedElement.linkData = {
+            url: element.linkData.url,
+            title: element.linkData.title,
+            previewUrl: element.linkData.previewUrl,
+            description: element.linkData.description,
+            siteName: element.linkData.siteName,
+            favicon: element.linkData.favicon,
+            displayUrl: element.linkData.displayUrl,
+            image: element.linkData.image,
+            youtubeVideoId: element.linkData.youtubeVideoId
+          };
         }
         
         // Add to our processed elements array
@@ -507,7 +782,70 @@ router.put('/:id', protect, async (req, res) => {
     map.lastSaved = Date.now();
 
     // Save the map
-    await map.save();
+    try {
+      console.log('[SERVER] About to save map with', map.elements.length, 'elements');
+      
+      // Pre-validate line elements before saving
+      const lineElements = map.elements.filter(el => el.type === 'line');
+      if (lineElements.length > 0) {
+        console.log('[SERVER] Pre-validating', lineElements.length, 'line elements');
+        for (const lineEl of lineElements) {
+          const { lineData } = lineEl;
+          // Ensure line elements have valid coordinate data
+          if (!lineData || 
+              typeof lineData.startX !== 'number' || 
+              typeof lineData.startY !== 'number' || 
+              typeof lineData.endX !== 'number' || 
+              typeof lineData.endY !== 'number') {
+            console.error('[SERVER] Invalid line data found:', lineEl);
+            
+            // Fix invalid line data instead of failing
+            if (!lineData) {
+              lineEl.lineData = {
+                startX: 0,
+                startY: 0,
+                endX: 100,
+                endY: 100
+              };
+            } else {
+              lineEl.lineData.startX = typeof lineData.startX === 'number' ? lineData.startX : 0;
+              lineEl.lineData.startY = typeof lineData.startY === 'number' ? lineData.startY : 0;
+              lineEl.lineData.endX = typeof lineData.endX === 'number' ? lineData.endX : 100;
+              lineEl.lineData.endY = typeof lineData.endY === 'number' ? lineData.endY : 100;
+            }
+            console.log('[SERVER] Fixed line data:', lineEl.lineData);
+          }
+        }
+      }
+      
+      await map.save();
+    } catch (saveError) {
+      console.error('[SERVER] Error during map save operation:', saveError);
+      
+      // Try to identify the specific validation issue
+      if (saveError.name === 'ValidationError') {
+        console.error('[SERVER] Validation error details:', saveError.errors);
+        
+        // Check for line element validation issues
+        let isLineElementIssue = false;
+        Object.keys(saveError.errors || {}).forEach(path => {
+          if (path.includes('lineData')) {
+            isLineElementIssue = true;
+            console.error(`[SERVER] Line element validation error at ${path}:`, saveError.errors[path]);
+          }
+        });
+        
+        if (isLineElementIssue) {
+          return res.status(400).json({ 
+            message: 'Map contains invalid line elements', 
+            error: saveError.message
+          });
+        }
+      }
+      
+      // If we got here, it's a different type of error, re-throw it
+      throw saveError;
+    }
     
     // Verify saved data by querying again
     const savedMap = await Map.findById(map._id);
@@ -561,12 +899,79 @@ router.put('/:id', protect, async (req, res) => {
     res.json(savedMap);
   } catch (error) {
     console.error('Error updating map:', error);
+    console.error('Error stack:', error.stack);
+    
+    // More detailed error analysis
+    let detailedError = {
+      name: error.name,
+      message: error.message,
+      code: error.code
+    };
+    
+    // Check for mongoose validation errors
+    if (error.name === 'ValidationError') {
+      detailedError.validationErrors = {};
+      for (let field in error.errors) {
+        detailedError.validationErrors[field] = {
+          message: error.errors[field].message,
+          kind: error.errors[field].kind,
+          path: error.errors[field].path,
+          value: error.errors[field].value
+        };
+      }
+      console.error('Validation error details:', JSON.stringify(detailedError.validationErrors, null, 2));
+    }
+    
+    // Check for MongoDB-specific errors
+    if (error.name === 'MongoError' || error.name === 'MongoServerError') {
+      detailedError.mongoCode = error.code;
+      detailedError.keyPattern = error.keyPattern;
+      detailedError.keyValue = error.keyValue;
+      console.error('MongoDB error details:', JSON.stringify({
+        code: error.code,
+        keyPattern: error.keyPattern,
+        keyValue: error.keyValue
+      }, null, 2));
+    }
+    
     if (error.kind === 'ObjectId') {
       return res.status(404).json({ message: 'Map not found' });
     }
+    
+    // Try to determine what part of the data is causing issues
+    try {
+      const sanitizedRequestData = {
+        name: req.body.name,
+        elementsCount: req.body.elements ? req.body.elements.length : 0,
+        connectionsCount: req.body.connections ? req.body.connections.length : 0,
+        hasCanvasPosition: !!req.body.canvasPosition,
+        hasScale: typeof req.body.scale !== 'undefined'
+      };
+      console.error('Request data summary:', sanitizedRequestData);
+      
+      // Check for problematic line elements
+      if (req.body.elements) {
+        const lineElements = req.body.elements.filter(el => el.type === 'line');
+        if (lineElements.length > 0) {
+          console.error('Problematic line elements may include:', lineElements.map(el => ({
+            id: el.id,
+            hasLineData: !!el.lineData,
+            lineDataKeys: el.lineData ? Object.keys(el.lineData) : [],
+            lineDataTypes: el.lineData ? Object.entries(el.lineData).reduce((acc, [key, val]) => {
+              acc[key] = typeof val;
+              return acc;
+            }, {}) : {}
+          })));
+        }
+      }
+    } catch (analyzeError) {
+      console.error('Error while analyzing request data:', analyzeError);
+    }
+    
     res.status(500).json({ 
       message: 'Server Error', 
       error: error.message,
+      details: detailedError,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }

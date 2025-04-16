@@ -151,7 +151,7 @@ export default function BooksPage() {
           ? bookData.author_name.join(', ') 
           : bookData.author_name || 'Unknown',
         description: bookData.description || '',
-        coverImage: bookData.thumbnail || '',
+        coverImage: bookData.thumbnail || 'https://via.placeholder.com/300x400?text=No+Cover',
         publishedYear: bookData.first_publish_year
       });
 

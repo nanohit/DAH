@@ -11,7 +11,7 @@ export default function ClientLayout({
   return (
     <AuthProvider>
       <Navigation />
-      <main className="min-h-screen bg-gray-50">
+      <main className="min-h-screen bg-gray-50 pt-16">
         {children}
       </main>
     </AuthProvider>

@@ -40,13 +40,15 @@ const BookDataSchema = new mongoose.Schema({
 
 // Line data schema for element
 const LineDataSchema = new mongoose.Schema({
-  startX: Number,
-  startY: Number,
-  endX: Number,
-  endY: Number,
-  isDraggingStart: Boolean,
-  isDraggingEnd: Boolean
-}, { _id: false });
+  startX: { type: Number, default: 0 },
+  startY: { type: Number, default: 0 },
+  endX: { type: Number, default: 0 },
+  endY: { type: Number, default: 0 }
+}, { 
+  _id: false,
+  strict: false,   // Allow additional fields in lineData to prevent validation errors
+  minimize: false  // Prevent empty objects from being removed
+});
 
 // Image data schema for element
 const ImageDataSchema = new mongoose.Schema({
@@ -238,6 +240,115 @@ MapSchema.set('toJSON', {
       });
     }
     return ret;
+  }
+});
+
+// Add a pre-validate hook to fix line elements before validation
+MapSchema.pre('validate', function(next) {
+  console.log('[MODEL] Pre-validate hook triggered');
+  
+  try {
+    // Check for line elements and ensure they have valid data
+    const lineElements = this.elements.filter(el => el.type === 'line');
+    
+    if (lineElements.length > 0) {
+      console.log(`[MODEL] Pre-validate: Found ${lineElements.length} line elements`);
+      
+      // Detailed diagnostics for each line element
+      lineElements.forEach((lineEl, index) => {
+        console.log(`[MODEL] Pre-validate: Line element ${index + 1}:`);
+        console.log(`  - id: ${lineEl.id}`);
+        
+        if (lineEl.lineData) {
+          console.log('  - lineData before fix:', JSON.stringify(lineEl.lineData));
+          // Log all properties including non-standard ones
+          Object.keys(lineEl.lineData).forEach(key => {
+            console.log(`    - ${key}: ${typeof lineEl.lineData[key]} (${lineEl.lineData[key]})`);
+          });
+        } else {
+          console.log('  - lineData is missing or null!');
+        }
+        
+        // Fix each line element
+        const idx = this.elements.indexOf(lineEl);
+        if (idx >= 0) {
+          // Ensure lineData exists and has valid properties
+          if (!this.elements[idx].lineData) {
+            this.elements[idx].lineData = {
+              startX: 0,
+              startY: 0,
+              endX: 100,
+              endY: 100
+            };
+            console.log(`[MODEL] Pre-validate: Created missing lineData for element ${idx}`);
+          } else {
+            // Ensure all required properties exist and remove non-standard ones
+            const lineData = this.elements[idx].lineData;
+            
+            // Keep only the standard coordinate properties
+            const cleanedLineData = {
+              startX: typeof lineData.startX === 'number' ? lineData.startX : 0,
+              startY: typeof lineData.startY === 'number' ? lineData.startY : 0,
+              endX: typeof lineData.endX === 'number' ? lineData.endX : 100,
+              endY: typeof lineData.endY === 'number' ? lineData.endY : 100
+            };
+            
+            // Replace with cleaned data
+            this.elements[idx].lineData = cleanedLineData;
+            console.log(`[MODEL] Pre-validate: Fixed lineData for element ${idx}:`, JSON.stringify(cleanedLineData));
+          }
+          
+          // Mark as modified
+          this.markModified(`elements.${idx}.lineData`);
+        }
+      });
+    }
+  } catch (err) {
+    console.error('[MODEL] Error in pre-validate hook:', err);
+  }
+  
+  next();
+});
+
+// Add additional hook to catch any validation errors
+MapSchema.pre('save', function(next) {
+  console.log('[MODEL] Pre-save hook triggered');
+  
+  try {
+    // Check for line elements after pre-validate fixes
+    const lineElements = this.elements.filter(el => el.type === 'line');
+    
+    if (lineElements.length > 0) {
+      console.log(`[MODEL] Pre-save: ${lineElements.length} line elements survived validation`);
+      lineElements.forEach((lineEl, index) => {
+        console.log(`[MODEL] Pre-save: Line element ${index + 1}:`, JSON.stringify(lineEl.lineData || 'missing lineData'));
+      });
+    }
+  } catch (err) {
+    console.error('[MODEL] Error in additional pre-save hook:', err);
+  }
+  
+  next();
+});
+
+// Add specific post-save check for line elements
+MapSchema.post('save', function(doc) {
+  console.log('[MODEL] Post-save hook triggered');
+  
+  try {
+    // Check if line elements were saved successfully
+    const lineElements = doc.elements.filter(el => el.type === 'line');
+    
+    if (lineElements.length > 0) {
+      console.log(`[MODEL] Post-save: Successfully saved ${lineElements.length} line elements`);
+      lineElements.forEach((lineEl, index) => {
+        console.log(`[MODEL] Post-save: Line element ${index + 1}:`, JSON.stringify(lineEl.lineData || 'missing lineData'));
+      });
+    } else {
+      console.warn('[MODEL] Post-save: No line elements found after save! They may have been lost.');
+    }
+  } catch (err) {
+    console.error('[MODEL] Error in post-save hook:', err);
   }
 });
 

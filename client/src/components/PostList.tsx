@@ -1032,7 +1032,7 @@ export default function PostList({
               value={headline}
               onChange={(e) => setHeadline(e.target.value)}
               onKeyDown={(e) => handleKeyPress(e)}
-              className="w-full p-2 border rounded-lg focus:outline-none text-[#000000] mb-4"
+              className="w-full py-2 px-2 border rounded-lg focus:outline-none text-[#000000] mb-3 text-sm"
               placeholder="Headline"
             />
             <div className="relative">
@@ -1041,7 +1041,7 @@ export default function PostList({
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="w-full p-2 border rounded-lg focus:outline-none text-[#000000] min-h-[100px] mb-3"
+                className="w-full py-1 px-2 border rounded-lg focus:outline-none text-[#000000] min-h-[60px] mb-2 text-sm"
                 placeholder="Post text (Tab for formatting)"
               />
               <FormatToolbar
@@ -1067,7 +1067,7 @@ export default function PostList({
                     };
                     input.click();
                   }}
-                  className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors text-sm"
+                  className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
                 >
                   Add Image
                 </button>
@@ -1076,7 +1076,7 @@ export default function PostList({
               </div>
               <button
                 onClick={handleSubmit}
-                className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors text-sm"
+                className="border border-gray-400/50 bg-black text-white hover:bg-gray-800 px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
               >
                 Post!
               </button>

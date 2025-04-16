@@ -27,6 +27,7 @@ export const FlibustaSearch = ({ trigger, showText = false }: { trigger?: () => 
   const [searchResults, setSearchResults] = useState<BookResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<SearchError | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -40,6 +41,7 @@ export const FlibustaSearch = ({ trigger, showText = false }: { trigger?: () => 
 
     setIsLoading(true);
     setError(null);
+    setHasSearched(true);
 
     try {
       const response = await api.get(`/api/books/flibusta/search?query=${encodeURIComponent(searchTerm)}`);
@@ -99,8 +101,8 @@ export const FlibustaSearch = ({ trigger, showText = false }: { trigger?: () => 
         <div className="fixed inset-0 flex items-center justify-center z-[9999]">
           <div className="fixed inset-0 bg-black bg-opacity-75" onClick={() => setIsModalOpen(false)}></div>
           
-          <div className="bg-black rounded-lg w-[800px] max-h-[800px] relative flex flex-col">
-            <div className="p-6">
+          <div className="bg-white rounded-lg w-[700px] max-h-[800px] relative flex flex-col">
+            <div className="p-4">
               <div className="flex gap-2 mb-6">
                 <input
                   type="text"
@@ -108,12 +110,12 @@ export const FlibustaSearch = ({ trigger, showText = false }: { trigger?: () => 
                   onChange={(e) => setSearchTerm(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
                   placeholder="Search books..."
-                  className="flex-1 px-4 py-2 border border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500 bg-black text-gray-200 placeholder-gray-500"
+                  className="flex-1 h-[38px] px-4 py-2 border border-gray-200 rounded-md focus:outline-none bg-white text-gray-900 placeholder-gray-400"
                 />
                 <button
                   onClick={handleSearch}
                   disabled={isLoading}
-                  className="px-4 py-2 bg-black text-white rounded-md hover:bg-white hover:text-black disabled:bg-gray-900 disabled:text-gray-400 transition-colors duration-200 border border-gray-700"
+                  className="px-6 py-2 h-[38px] bg-white text-[15px] font-medium text-black rounded-md hover:bg-black hover:text-white disabled:bg-gray-100 disabled:text-gray-400 transition-colors duration-200 border border-gray-200"
                 >
                   {isLoading ? 'Searching...' : 'Search'}
                 </button>
@@ -122,8 +124,8 @@ export const FlibustaSearch = ({ trigger, showText = false }: { trigger?: () => 
               {error && (
                 <div className={`mb-4 p-3 rounded-md ${
                   error.isWarning 
-                    ? 'bg-yellow-900 text-yellow-200' 
-                    : 'bg-red-900 text-red-200'
+                    ? 'bg-yellow-50 text-yellow-800 border border-yellow-200' 
+                    : 'bg-red-50 text-red-800 border border-red-200'
                 }`}>
                   {error.message}
                 </div>
@@ -131,9 +133,9 @@ export const FlibustaSearch = ({ trigger, showText = false }: { trigger?: () => 
 
               <div className="overflow-y-auto max-h-[600px]">
                 {searchResults.map((book) => (
-                  <div key={book.id} className="mb-2 p-2 hover:bg-gray-900 border border-gray-700 rounded-md">
-                    <h3 className="text-sm font-medium text-gray-200">{book.title}</h3>
-                    <p className="text-xs text-gray-400 mb-1">{book.author}</p>
+                  <div key={book.id} className="mb-2 p-2 hover:bg-gray-50 border border-gray-200 rounded-md">
+                    <h3 className="text-sm font-medium text-gray-900">{book.title}</h3>
+                    <p className="text-xs text-gray-600 mb-1">{book.author}</p>
                     <div className="flex gap-1">
                       {book.formats
                         .filter(format => format.format !== 'mobi')
@@ -141,7 +143,7 @@ export const FlibustaSearch = ({ trigger, showText = false }: { trigger?: () => 
                         <button
                           key={format.id}
                           onClick={() => handleDownload(book.id, format.format)}
-                          className="px-2 py-0.5 text-xs bg-gray-900 text-gray-300 rounded hover:bg-gray-800 border border-gray-600"
+                          className="px-2 py-0.5 text-xs bg-white text-gray-700 rounded hover:bg-gray-100 border border-gray-200"
                         >
                           {format.format.toUpperCase()}
                         </button>
@@ -150,7 +152,7 @@ export const FlibustaSearch = ({ trigger, showText = false }: { trigger?: () => 
                         href={`https://flibusta.is/b/${book.id}/read`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="px-2 py-0.5 text-xs bg-gray-900 text-gray-400 rounded hover:bg-gray-800 border border-gray-600"
+                        className="px-2 py-0.5 text-xs bg-white text-gray-600 rounded hover:bg-gray-100 border border-gray-200"
                         onClick={(e) => e.stopPropagation()}
                       >
                         Read online (VPN)
@@ -159,8 +161,8 @@ export const FlibustaSearch = ({ trigger, showText = false }: { trigger?: () => 
                   </div>
                 ))}
 
-                {!isLoading && searchResults.length === 0 && !error && (
-                  <div className="text-center text-gray-400 py-4">
+                {!isLoading && searchResults.length === 0 && !error && hasSearched && (
+                  <div className="text-center text-gray-600 py-4">
                     No books found. Try a different search term.
                   </div>
                 )}

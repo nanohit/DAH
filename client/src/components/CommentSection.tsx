@@ -163,10 +163,27 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       ).map(sortCommentRepliesRecursively);
       
+      // Debug log to inspect comment structure
+      console.log('Debug - Initial comments structure:', JSON.stringify(initialComments.slice(0, 2), null, 2));
+      
+      // Check if replies are properly structured
+      const hasNestedReplies = initialComments.some(comment => 
+        comment.replies && 
+        comment.replies.length > 0 && 
+        comment.replies.some(reply => reply.replies && reply.replies.length > 0)
+      );
+      
+      console.log('Debug - Has nested replies in initialComments:', hasNestedReplies);
+      
       setComments(sortedInitialComments);
     } else {
       // Otherwise fetch comments (if not an optimistic post)
-      fetchComments().then(setComments);
+      fetchComments().then(comments => {
+        console.log('Debug - Fetched comments structure:', 
+          JSON.stringify(comments.slice(0, 2), null, 2)
+        );
+        setComments(comments);
+      });
     }
   }, [postId, initialComments]);
 
@@ -254,8 +271,9 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
         post: postId
       };
       
-      if (shouldLogCommentSubmission) {
-        console.log(`[CommentSection] Created optimistic comment with ID: ${optimisticId}`);
+      console.log(`Debug - Creating ${parentId ? 'reply' : 'new comment'} for post ${postId}`);
+      if (parentId) {
+        console.log(`Debug - This is a reply to comment ID: ${parentId}`);
       }
       
       // Update UI immediately
@@ -268,28 +286,35 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
         
         // Update comments with the new reply
         setComments(prevComments => {
-          const updatedComments = prevComments.map(comment => {
-            if (comment._id === parentId) {
-              return {
-                ...comment,
-                replies: [optimisticComment, ...(comment.replies || [])]
-              };
-            }
-            
-            // Check nested replies
-            if (comment.replies && comment.replies.length > 0) {
-              return {
-                ...comment,
-                replies: updateRepliesRecursively(comment.replies, parentId, optimisticComment, true)
-              };
-            }
-            
-            return comment;
-          });
-          if (shouldLogCommentSubmission) {
-            console.log(`[CommentSection] Updated comments with optimistic reply`);
+          // First, check if it's a direct reply to a top-level comment
+          const parentComment = prevComments.find(c => c._id === parentId);
+          
+          if (parentComment) {
+            console.log(`Debug - Found parent comment (top-level) with ID: ${parentId}`);
+            // It's a direct reply to a top-level comment
+            return prevComments.map(comment => {
+              if (comment._id === parentId) {
+                return {
+                  ...comment,
+                  replies: [optimisticComment, ...(comment.replies || [])]
+                };
+              }
+              return comment;
+            });
+          } else {
+            // It might be a reply to a nested comment
+            console.log(`Debug - Looking for nested parent comment with ID: ${parentId}`);
+            const updatedComments = prevComments.map(comment => {
+              if (comment.replies && comment.replies.length > 0) {
+                return {
+                  ...comment,
+                  replies: updateRepliesRecursively(comment.replies, parentId, optimisticComment, true)
+                };
+              }
+              return comment;
+            });
+            return updatedComments;
           }
-          return updatedComments;
         });
         
         // Clear input field immediately
@@ -310,76 +335,33 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
       }
       
       // Make the actual API request
-      if (shouldLogCommentSubmission) {
-        console.log(`[CommentSection] Sending API request to create comment`);
-      }
+      console.log(`Debug - Sending API request to create comment`);
       const response = await api.post(`/api/comments/post/${postId}`, {
         content,
         parentCommentId: parentId
       });
       
-      // Get the real comment data from the response
-      const realComment = response.data;
-      if (shouldLogCommentSubmission) {
-        console.log(`[CommentSection] Received real comment with ID: ${realComment._id}`);
+      // Replace the optimistic comment with the real one
+      const serverComment = response.data;
+      console.log(`Debug - Received server response:`, serverComment);
+      
+      // After successful server response, refresh comments to ensure
+      // we have the correct structure especially for nested replies
+      if (parentId) {
+        // Fetch fresh comments to ensure proper structure for nested replies
+        console.log(`Debug - Fetching fresh comments after adding a reply`);
+        const freshComments = await fetchComments();
+        setComments(freshComments);
+      } else {
+        // For top-level comments, just replace the optimistic one
+        setComments(prevComments => 
+          prevComments.map(c => 
+            c._id === optimisticId ? { ...serverComment, replies: [] } : c
+          )
+        );
       }
       
-      // Add a client-side flag to identify this comment in our state
-      // This will help avoid duplicates from socket events
-      const localRealComment = {
-        ...realComment,
-        clientHandled: true // Flag to indicate we've processed this server-side comment
-      };
-      
-      // CRITICAL: We're going to replace our optimistic comment with the real one
-      // But we need to make sure we're not going to get duplicates from the socket event
-      
-      // Use a separate function to replace optimistic comment without adding duplicates
-      const safelyReplaceOptimisticComment = () => {
-        if (parentId) {
-          // For replies, replace the optimistic comment with the real one
-          setComments(prevComments => {
-            return prevComments.map(comment => {
-              if (comment._id === parentId) {
-                // Find and replace the optimistic comment in replies
-                const updatedReplies = comment.replies ? 
-                  comment.replies.map(reply => 
-                    reply._id === optimisticId ? localRealComment : reply
-                  ) : [];
-                
-                return {
-                  ...comment,
-                  replies: updatedReplies
-                };
-              }
-              
-              // Check nested replies
-              if (comment.replies && comment.replies.length > 0) {
-                return {
-                  ...comment,
-                  replies: replaceCommentRecursively(comment.replies, optimisticId, localRealComment)
-                };
-              }
-              
-              return comment;
-            });
-          });
-        } else {
-          // For top-level comments, replace the optimistic one
-          setComments(prevComments => 
-            prevComments.map(comment => 
-              comment._id === optimisticId ? localRealComment : comment
-            )
-          );
-        }
-      };
-      
-      // Perform the replacement
-      safelyReplaceOptimisticComment();
-      
-      if (shouldLogCommentSubmission) {
-        console.log(`[CommentSection] Successfully replaced optimistic comment with real one`);
-      }
+      // ... rest of the function ...
     } catch (error) {
       console.error('Error posting comment:', error);
       // Remove optimistic comment on error
@@ -629,6 +611,18 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     const isCollapsed = branchCollapsed[comment._id];
     const totalReplies = countRepliesRecursively(comment);
 
+    // Debug nested replies
+    if (hasReplies && depth === 0) {
+      console.log(`Debug - Comment ${comment._id} has ${replies.length} direct replies`);
+      const nestedReplies = replies.filter(reply => reply.replies && reply.replies.length > 0);
+      if (nestedReplies.length > 0) {
+        console.log(`Debug - Comment ${comment._id} has ${nestedReplies.length} replies with nested replies`);
+        nestedReplies.forEach(reply => {
+          console.log(`Debug - Reply ${reply._id} has ${reply.replies?.length || 0} nested replies`);
+        });
+      }
+    }
+
     // Skip rendering if the comment data is invalid
     if (!comment.user || !comment.createdAt) {
       console.error('Invalid comment data:', comment);
@@ -800,7 +794,10 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
 
         {hasReplies && !isCollapsed && (
           <div className="mt-3">
-            {replies.map(reply => renderComment(reply, depth + 1))}
+            {replies.map(reply => {
+              console.log(`Debug - Rendering reply ${reply._id}, has nested replies: ${(reply.replies && reply.replies.length > 0) ? 'Yes' : 'No'}`);
+              return renderComment(reply, depth + 1);
+            })}
           </div>
         )}
       </div>

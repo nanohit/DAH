@@ -18,7 +18,7 @@ const BookSchema = new mongoose.Schema({
   },
   coverImage: {
     type: String,
-    required: [true, 'Please add a cover image URL']
+    default: 'https://via.placeholder.com/300x400?text=No+Cover'
   },
   publishedYear: {
     type: Number

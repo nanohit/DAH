@@ -23,6 +23,27 @@ const populateReplies = (depth = 0) => {
   };
 };
 
+// Helper to inspect and log the comment structure for debugging
+const inspectCommentReplies = (comments) => {
+  console.log(`Debug - Inspecting ${comments.length} comments`);
+  comments.forEach((comment, idx) => {
+    if (comment.replies && comment.replies.length > 0) {
+      console.log(`Debug - Comment ${idx} (${comment._id}) has ${comment.replies.length} direct replies`);
+      comment.replies.forEach((reply, replyIdx) => {
+        if (reply.replies && reply.replies.length > 0) {
+          console.log(`Debug - Reply ${replyIdx} (${reply._id}) has ${reply.replies.length} nested replies`);
+          // Check for deeper nesting
+          reply.replies.forEach((nestedReply, nestedIdx) => {
+            if (nestedReply.replies && nestedReply.replies.length > 0) {
+              console.log(`Debug - Deep nested reply ${nestedIdx} (${nestedReply._id}) has ${nestedReply.replies.length} replies`);
+            }
+          });
+        }
+      });
+    }
+  });
+};
+
 // @desc    Get comments for a map
 // @route   GET /api/comments/map/:mapId
 // @access  Public
@@ -39,6 +60,9 @@ router.get('/map/:mapId', async (req, res) => {
     .populate('user', 'username badge')
     .populate(populateReplies())
     .sort({ createdAt: -1 });
+
+    // Inspect comments structure for debugging
+    inspectCommentReplies(comments);
 
     console.log(`Found ${comments.length} comments for map ${mapId}`);
     res.json(comments);
@@ -161,6 +185,9 @@ router.get('/post/:postId', async (req, res) => {
     .populate('user', 'username badge')
     .populate(populateReplies())
     .sort({ createdAt: -1 });
+
+    // Inspect comments structure for debugging
+    inspectCommentReplies(comments);
 
     console.log(`Found ${comments.length} comments for post ${postId}`);
     res.json(comments);

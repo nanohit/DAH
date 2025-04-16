@@ -106,6 +106,26 @@ router.get('/', async (req, res) => {
             console.log('No valid auth token provided');
         }
 
+        // Define a recursive population function for nested replies
+        const populateRepliesRecursively = (depth = 0) => {
+            const maxDepth = 5; // Safety limit to prevent infinite recursion
+            if (depth >= maxDepth) return null;
+            
+            return {
+                path: 'replies',
+                options: { sort: { createdAt: -1 } },
+                populate: [
+                    {
+                        path: 'user',
+                        select: 'username badge'
+                    },
+                    populateRepliesRecursively(depth + 1)
+                ].filter(Boolean) // Filter out null values at max depth
+            };
+        };
+
+        console.log('Debug - Fetching all posts with recursive population');
+        
         const posts = await Post.find({})
             .populate('author', 'username badge')
             .populate({
@@ -118,21 +138,27 @@ router.get('/', async (req, res) => {
                         path: 'user',
                         select: 'username badge'
                     },
-                    {
-                        path: 'replies',
-                        options: {
-                            sort: { createdAt: -1 }
-                        },
-                        populate: {
-                            path: 'user',
-                            select: 'username badge'
-                        }
-                    }
+                    populateRepliesRecursively(0) // Use recursive population
                 ]
             })
             .sort({ createdAt: -1 })
             .limit(limit)
             .skip(skip);
+
+        // Log comment structure for debugging
+        if (posts.length > 0 && posts[0].comments.length > 0) {
+            console.log(`Debug - First post has ${posts[0].comments.length} comments`);
+            posts[0].comments.forEach((comment, idx) => {
+                if (comment.replies && comment.replies.length > 0) {
+                    console.log(`Debug - Comment ${idx} has ${comment.replies.length} direct replies`);
+                    comment.replies.forEach((reply, replyIdx) => {
+                        if (reply.replies && reply.replies.length > 0) {
+                            console.log(`Debug - Reply ${replyIdx} has ${reply.replies.length} nested replies`);
+                        }
+                    });
+                }
+            });
+        }
 
         // Get total count for pagination
         const total = await Post.countDocuments();
@@ -382,7 +408,25 @@ router.get('/bookmarked', protect, async (req, res) => {
         const skip = parseInt(req.query.skip) || 0;
         const userId = req.user._id;
 
-        // First, get all posts that are bookmarked by the user
+        // Define a recursive population function for nested replies
+        const populateRepliesRecursively = (depth = 0) => {
+            const maxDepth = 5; // Safety limit to prevent infinite recursion
+            if (depth >= maxDepth) return null;
+            
+            return {
+                path: 'replies',
+                options: { sort: { createdAt: -1 } },
+                populate: [
+                    {
+                        path: 'user',
+                        select: 'username badge'
+                    },
+                    populateRepliesRecursively(depth + 1)
+                ].filter(Boolean) // Filter out null values at max depth
+            };
+        };
+
+        // First, get all posts that are bookmarked by this user
         const posts = await Post.aggregate([
             // Match posts that have a bookmark from this user
             { $match: { 'bookmarks.user': userId } },
@@ -422,16 +466,7 @@ router.get('/bookmarked', protect, async (req, res) => {
                         path: 'user',
                         select: 'username badge'
                     },
-                    {
-                        path: 'replies',
-                        options: {
-                            sort: { createdAt: -1 }
-                        },
-                        populate: {
-                            path: 'user',
-                            select: 'username badge'
-                        }
-                    }
+                    populateRepliesRecursively(0) // Use recursive population
                 ]
             }
         ]);
