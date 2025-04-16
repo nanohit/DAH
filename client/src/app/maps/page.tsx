@@ -4279,7 +4279,7 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
   const adjustSvgLayer = () => {
     const svgElement = document.querySelector('#map-svg-layer');
     if (svgElement) {
-      svgElement.style.zIndex = '15'; // Set z-index higher than elements (10)
+      (svgElement as HTMLElement).style.zIndex = '15'; // Set z-index higher than elements (10)
     }
   };
 
