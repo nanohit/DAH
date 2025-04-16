@@ -328,7 +328,7 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
                   author: selectedVariant.author,
                   sourceId: selectedVariant.id,
                   formats: [
-                    ...selectedVariant.formats.map(format => ({
+                    ...selectedVariant.formats.map((format: { format: string; url?: string }) => ({
                       format: format.format,
                       url: `/api/books/flibusta/download/${selectedVariant.id}/${format.format}`
                     })),

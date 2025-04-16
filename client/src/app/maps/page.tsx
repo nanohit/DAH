@@ -3667,7 +3667,9 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
       }),
       connections,
       canvasPosition,
-      scale
+      scale,
+      canvasWidth: containerRef.current?.clientWidth || 1000,
+      canvasHeight: containerRef.current?.clientHeight || 800
     };
     
     // Store local copy of books with completed status before save
