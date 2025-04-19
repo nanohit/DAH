@@ -97,6 +97,50 @@ export default function PostList({
     autoReconnect: true
   });
 
+  // Add state for map comments visibility and counts
+  const [visibleMapComments, setVisibleMapComments] = useState<string[]>([]);
+  const [mapCommentCounts, setMapCommentCounts] = useState<Record<string, number>>({});
+  const [storedMapComments, setStoredMapComments] = useState<Record<string, any[]>>({});
+
+  // Toggle map comment visibility
+  const toggleMapComments = (mapId: string) => {
+    setVisibleMapComments(prev => 
+      prev.includes(mapId) 
+        ? prev.filter(id => id !== mapId) 
+        : [...prev, mapId]
+    );
+  };
+
+  // Handle map comment updates from child components
+  const handleMapCommentUpdate = (mapId: string, count: number, comments: any[]) => {
+    setMapCommentCounts(prev => ({
+      ...prev,
+      [mapId]: count
+    }));
+    
+    // Store the updated comments
+    setStoredMapComments(prev => ({
+      ...prev,
+      [mapId]: comments
+    }));
+  };
+
+  // Get map comment count
+  const getMapCommentCount = (post: Post): number => {
+    if (post._id in mapCommentCounts) {
+      return mapCommentCounts[post._id] || 0;
+    }
+    return post.comments?.length || 0;
+  };
+  
+  // Get map comments (either from stored state or initial data)
+  const getStoredMapComments = (post: Post): any[] => {
+    if (post._id in storedMapComments) {
+      return storedMapComments[post._id] || [];
+    }
+    return post.comments || [];
+  };
+
   // Update posts when initialPosts changes
   useEffect(() => {
     if (initialPosts) {
@@ -1209,104 +1253,180 @@ export default function PostList({
               </div>
             ) : (
               <>
-                <div className="p-4">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex flex-col -space-y-1">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-gray-800">
-                          <Link href={`/user/${post.author.username}`} className="hover:underline">
-                            {post.author.username}
-                          </Link>
-                        </span>
-                        <span className="text-gray-500 text-sm" dangerouslySetInnerHTML={{ __html: getPostTimestamp(post) }}></span>
-                      </div>
-                      <UserBadge badge={post.author.badge || ''} />
-                    </div>
-                    <div className="flex items-center space-x-2 text-sm">
-                      {user && (
-                        <button
-                          onClick={() => post.isMap ? handleBookmarkMap(post._id) : handleBookmark(post._id)}
-                          className="text-gray-600 hover:text-gray-800"
-                        >
-                          {(post.isMap ? isMapBookmarked(post.mapData) : isPostBookmarked(post)) ? (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                              <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
-                            </svg>
-                          ) : (
-                            <span>bookmark</span>
-                          )}
-                        </button>
-                      )}
-                      {user && (user._id === post.author._id || user.isAdmin) && !post.isMap && (
-                        <>
-                          <span className="text-gray-300">|</span>
-                          <button
-                            onClick={() => handleEdit(post)}
-                            className="text-gray-600 hover:text-gray-800"
-                          >
-                            edit
-                          </button>
-                          <button
-                            onClick={() => handleDelete(post._id)}
-                            className="text-gray-600 hover:text-gray-800"
-                          >
-                            delete
-                          </button>
-                        </>
-                      )}
-                      {user && (user._id === post.author._id || user.isAdmin) && post.isMap && (
-                        <>
-                          <span className="text-gray-300">|</span>
-                          <button
-                            onClick={() => handleDeleteMap(post._id)}
-                            className="text-gray-600 hover:text-gray-800"
-                          >
-                            delete
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  {post.headline && (
-                    <h2 
-                      className={`text-xl font-semibold mb-2 text-black ${post.isMap ? 'hover:underline cursor-pointer' : ''}`}
-                      onClick={() => post.isMap && handleOpenMap(post._id, post.mapData)}
-                    >
-                      {post.headline}
-                    </h2>
-                  )}
-                  {post.imageUrl && !post.isMap && (
-                    <div 
-                      className="mb-4 relative w-[300px] h-[200px] cursor-pointer"
-                      onClick={() => handleImageClick(post.imageUrl!)}
-                    >
-                      <Image 
-                        src={post.imageUrl} 
-                        alt={post.headline || 'Post image'}
-                        fill
-                        style={{ objectFit: 'cover' }}
-                        className="rounded-lg hover:opacity-90 transition-opacity"
-                      />
-                    </div>
-                  )}
-                  {post.text && (
-                    <div 
-                      className={`prose prose-sm max-w-none !text-black [&>*]:text-black [&_p]:!text-black [&_strong]:!text-black [&_em]:!text-black ${
-                        post.isMap ? 'cursor-pointer hover:text-gray-600' : ''
-                      }`}
-                      onClick={() => post.isMap && handleOpenMap(post._id, post.mapData)}
-                    >
-                      {/* @ts-ignore - Working around react-markdown type issues */}
-                      <ReactMarkdown components={markdownComponents}>
-                        {post.text}
-                      </ReactMarkdown>
-                    </div>
-                  )}
-                </div>
                 {post.isMap ? (
-                  <MapCommentSection mapId={post._id} initialComments={post.comments as any[]} />
+                  <div className="p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex flex-col -space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-gray-800">
+                            <Link href={`/user/${post.author.username}`} className="hover:underline">
+                              {post.author.username}
+                            </Link>
+                          </span>
+                          <span className="text-gray-500 text-sm" dangerouslySetInnerHTML={{ __html: getPostTimestamp(post) }}></span>
+                        </div>
+                        <UserBadge badge={post.author.badge || ''} />
+                      </div>
+                      <div className="flex items-center space-x-2 text-sm">
+                        {user && (
+                          <button
+                            onClick={() => handleBookmarkMap(post._id)}
+                            className="text-gray-600 hover:text-gray-800"
+                          >
+                            {isMapBookmarked(post.mapData) ? (
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
+                              </svg>
+                            ) : (
+                              <span>bookmark</span>
+                            )}
+                          </button>
+                        )}
+                        {user && (user._id === post.author._id || user.isAdmin) && (
+                          <>
+                            <span className="text-gray-300">|</span>
+                            <button
+                              onClick={() => handleDeleteMap(post._id)}
+                              className="text-gray-600 hover:text-gray-800"
+                            >
+                              delete
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Map title */}
+                    <div 
+                      className="cursor-pointer" 
+                      onClick={() => handleOpenMap(post._id, post.mapData)}
+                    >
+                      <h2 className="text-lg font-semibold mb-1 text-black hover:underline">
+                        {post.headline}
+                      </h2>
+                      
+                      {/* Map stats with comments on right */}
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center text-sm text-gray-500">
+                          <span>{(post.mapData?.elementCount || 0)} elements</span>
+                          <span className="mx-1">•</span>
+                          <span>{(post.mapData?.connectionCount || 0)} connections</span>
+                        </div>
+                        
+                        {/* Comment toggle button with rotating arrow */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleMapComments(post._id);
+                          }}
+                          className="text-gray-500 text-sm hover:text-gray-700 flex items-center"
+                        >
+                          <svg 
+                            xmlns="http://www.w3.org/2000/svg" 
+                            className={`h-3 w-3 mr-1 transition-transform ${visibleMapComments.includes(post._id) ? 'rotate-180' : ''}`} 
+                            fill="none" 
+                            viewBox="0 0 24 24" 
+                            stroke="currentColor"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                          {getMapCommentCount(post) > 0 
+                            ? `${getMapCommentCount(post)} comments` 
+                            : 'comments'}
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* Map comment section - conditionally visible */}
+                    {visibleMapComments.includes(post._id) && (
+                      <div className="mt-2 pt-3 border-t border-gray-100">
+                        <MapCommentSection 
+                          mapId={post._id} 
+                          initialComments={getStoredMapComments(post)} 
+                          onCommentUpdate={(count, comments) => handleMapCommentUpdate(post._id, count, comments)}
+                        />
+                      </div>
+                    )}
+                  </div>
                 ) : (
+                  <>
+                  <div className="p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex flex-col -space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-gray-800">
+                            <Link href={`/user/${post.author.username}`} className="hover:underline">
+                              {post.author.username}
+                            </Link>
+                          </span>
+                          <span className="text-gray-500 text-sm" dangerouslySetInnerHTML={{ __html: getPostTimestamp(post) }}></span>
+                        </div>
+                        <UserBadge badge={post.author.badge || ''} />
+                      </div>
+                      <div className="flex items-center space-x-2 text-sm">
+                        {user && (
+                          <button
+                            onClick={() => handleBookmark(post._id)}
+                            className="text-gray-600 hover:text-gray-800"
+                          >
+                            {isPostBookmarked(post) ? (
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
+                              </svg>
+                            ) : (
+                              <span>bookmark</span>
+                            )}
+                          </button>
+                        )}
+                        {user && (user._id === post.author._id || user.isAdmin) && (
+                          <>
+                            <span className="text-gray-300">|</span>
+                            <button
+                              onClick={() => handleEdit(post)}
+                              className="text-gray-600 hover:text-gray-800"
+                            >
+                              edit
+                            </button>
+                            <button
+                              onClick={() => handleDelete(post._id)}
+                              className="text-gray-600 hover:text-gray-800"
+                            >
+                              delete
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {post.headline && (
+                      <h2 className="text-xl font-semibold mb-2 text-black">
+                        {post.headline}
+                      </h2>
+                    )}
+                    {post.imageUrl && (
+                      <div 
+                        className="mb-4 relative w-[300px] h-[200px] cursor-pointer"
+                        onClick={() => handleImageClick(post.imageUrl!)}
+                      >
+                        <Image 
+                          src={post.imageUrl} 
+                          alt={post.headline || 'Post image'}
+                          fill
+                          style={{ objectFit: 'cover' }}
+                          className="rounded-lg hover:opacity-90 transition-opacity"
+                        />
+                      </div>
+                    )}
+                    {post.text && (
+                      <div className="prose prose-sm max-w-none !text-black [&>*]:text-black [&_p]:!text-black [&_strong]:!text-black [&_em]:!text-black">
+                        {/* @ts-ignore - Working around react-markdown type issues */}
+                        <ReactMarkdown components={markdownComponents}>
+                          {post.text}
+                        </ReactMarkdown>
+                      </div>
+                    )}
+                  </div>
                   <CommentSection postId={post._id} initialComments={post.comments} />
+                  </>
                 )}
               </>
             )}

@@ -12,6 +12,16 @@ interface CommentInputProps {
   disabled?: boolean;
   readOnly?: boolean;
   onClick?: () => void;
+  isLoading?: boolean;
+  showFormatToolbar?: boolean;
+  setShowFormatToolbar?: (show: boolean) => void;
+  inputRef?: React.RefObject<HTMLTextAreaElement>;
+  handleFormat?: (
+    type: string, 
+    selection: { start: number; end: number }, 
+    inputRef: React.RefObject<HTMLTextAreaElement>, 
+    setText: (text: string) => void
+  ) => void;
 }
 
 export default function CommentInput({
@@ -22,12 +32,24 @@ export default function CommentInput({
   buttonText = 'Post',
   disabled = false,
   readOnly = false,
-  onClick
+  onClick,
+  isLoading = false,
+  showFormatToolbar: propShowFormatToolbar,
+  setShowFormatToolbar: propSetShowFormatToolbar,
+  inputRef: propInputRef,
+  handleFormat: propHandleFormat
 }: CommentInputProps) {
-  const [showFormatToolbar, setShowFormatToolbar] = useState(false);
+  const [localShowFormatToolbar, setLocalShowFormatToolbar] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const localInputRef = useRef<HTMLTextAreaElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  
+  // Use provided or local state for format toolbar visibility
+  const showFormatToolbar = propShowFormatToolbar !== undefined ? propShowFormatToolbar : localShowFormatToolbar;
+  const setShowFormatToolbar = propSetShowFormatToolbar || setLocalShowFormatToolbar;
+  
+  // Use provided or local ref
+  const inputRef = propInputRef || localInputRef;
 
   const adjustTextareaHeight = () => {
     const textarea = inputRef.current;
@@ -42,7 +64,12 @@ export default function CommentInput({
     adjustTextareaHeight();
   }, [value]);
 
-  const handleFormat = (type: string, selection: { start: number; end: number }) => {
+  const handleLocalFormat = (type: string, selection: { start: number; end: number }) => {
+    if (propHandleFormat) {
+      propHandleFormat(type, selection, inputRef, onChange);
+      return;
+    }
+    
     if (!inputRef.current) return;
 
     const input = inputRef.current;
@@ -126,16 +153,16 @@ export default function CommentInput({
           }}
           className={`absolute right-0 top-0 bottom-0 px-6 bg-gray-600 text-white hover:bg-gray-700 transition-all duration-200 ${
             isFocused ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
-          disabled={disabled}
+          } ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
+          disabled={disabled || isLoading}
         >
-          {buttonText}
+          {isLoading ? 'Posting...' : buttonText}
         </button>
         <FormatToolbar
           inputRef={inputRef}
           isVisible={showFormatToolbar}
           onClose={() => setShowFormatToolbar(false)}
-          onFormat={handleFormat}
+          onFormat={handleLocalFormat}
         />
       </div>
     </div>

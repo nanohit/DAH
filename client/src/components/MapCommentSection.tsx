@@ -28,9 +28,10 @@ export interface Comment {
 export interface MapCommentSectionProps {
   mapId: string;
   initialComments?: Comment[];
+  onCommentUpdate?: (count: number, comments: Comment[]) => void;
 }
 
-export default function MapCommentSection({ mapId, initialComments = [] }: MapCommentSectionProps) {
+export default function MapCommentSection({ mapId, initialComments = [], onCommentUpdate }: MapCommentSectionProps) {
   const [comments, setComments] = useState<Comment[]>(initialComments);
   const [newComment, setNewComment] = useState('');
   const [newReply, setNewReply] = useState('');
@@ -106,7 +107,12 @@ export default function MapCommentSection({ mapId, initialComments = [] }: MapCo
   };
 
   useEffect(() => {
-    fetchComments();
+    fetchComments().then(fetchedComments => {
+      // Update the comment count in parent component
+      if (onCommentUpdate && fetchedComments) {
+        onCommentUpdate(countTotalComments(fetchedComments), fetchedComments);
+      }
+    });
   }, [mapId]);
 
   const updateRepliesRecursively = (comments: Comment[], parentId: string, newReply: Comment): Comment[] => {
@@ -197,12 +203,24 @@ export default function MapCommentSection({ mapId, initialComments = [] }: MapCo
         
         const refreshedComments = await fetchComments();
         setComments(refreshedComments);
+        
+        // Update the comment count
+        if (onCommentUpdate) {
+          onCommentUpdate(countTotalComments(refreshedComments), refreshedComments);
+        }
+        
         setNewReply('');
       } else {
         const newComment = response.data;
-        setComments(prevComments => [newComment, ...prevComments]);
+        const updatedComments = [newComment, ...comments];
+        setComments(updatedComments);
+        
+        // Update the comment count
+        if (onCommentUpdate) {
+          onCommentUpdate(countTotalComments(updatedComments), updatedComments);
+        }
+        
         setNewComment('');
-        setShowAllComments(true);
       }
 
       setReplyingTo(null);
@@ -231,7 +249,12 @@ export default function MapCommentSection({ mapId, initialComments = [] }: MapCo
       await api.patch(`/api/comments/${commentId}`, { content: editContent });
       setEditingComment(null);
       setEditContent('');
-      fetchComments();
+      const refreshedComments = await fetchComments();
+      
+      // Update the comment count and pass comments back to parent
+      if (onCommentUpdate) {
+        onCommentUpdate(countTotalComments(refreshedComments), refreshedComments);
+      }
     } catch (error) {
       console.error('Error editing comment:', error);
       setError('Failed to edit comment');
@@ -261,9 +284,32 @@ export default function MapCommentSection({ mapId, initialComments = [] }: MapCo
       await api.delete(`/api/comments/${commentId}`);
       
       if (parentId) {
-        setComments(prevComments => deleteReplyRecursively(prevComments, commentId));
+        setComments(comments => {
+          const updatedComments = comments.map(c => {
+            if (c._id === parentId) {
+              return {
+                ...c,
+                replies: c.replies.filter(r => r._id !== commentId)
+              };
+            }
+            return c;
+          });
+          
+          // Update comment count
+          if (onCommentUpdate) {
+            onCommentUpdate(countTotalComments(updatedComments), updatedComments);
+          }
+          
+          return updatedComments;
+        });
       } else {
-        setComments(prevComments => prevComments.filter(c => c._id !== commentId));
+        const updatedComments = comments.filter(c => c._id !== commentId);
+        setComments(updatedComments);
+        
+        // Update comment count
+        if (onCommentUpdate) {
+          onCommentUpdate(countTotalComments(updatedComments), updatedComments);
+        }
       }
     } catch (error) {
       console.error('Error deleting comment:', error);
@@ -303,7 +349,16 @@ export default function MapCommentSection({ mapId, initialComments = [] }: MapCo
         });
       };
       
-      setComments(prevComments => updateLikeRecursively(prevComments));
+      setComments(prevComments => {
+        const updatedComments = updateLikeRecursively(prevComments);
+        
+        // Update comment count and pass comments to parent
+        if (onCommentUpdate) {
+          onCommentUpdate(countTotalComments(updatedComments), updatedComments);
+        }
+        
+        return updatedComments;
+      });
     } catch (error) {
       console.error('Error liking comment:', error);
       setError('Failed to like comment');
@@ -342,7 +397,16 @@ export default function MapCommentSection({ mapId, initialComments = [] }: MapCo
         });
       };
       
-      setComments(prevComments => updateDislikeRecursively(prevComments));
+      setComments(prevComments => {
+        const updatedComments = updateDislikeRecursively(prevComments);
+        
+        // Update comment count and pass comments to parent
+        if (onCommentUpdate) {
+          onCommentUpdate(countTotalComments(updatedComments), updatedComments);
+        }
+        
+        return updatedComments;
+      });
     } catch (error) {
       console.error('Error disliking comment:', error);
       setError('Failed to dislike comment');
@@ -546,75 +610,28 @@ export default function MapCommentSection({ mapId, initialComments = [] }: MapCo
   const totalComments = countTotalComments(comments);
 
   return (
-    <div className="border-t border-gray-200">
-      {error && (
-        <div className="text-red-500 p-4">
-          {error}
-        </div>
-      )}
+    <div className="w-full">
+      {error && <div className="text-red-500 text-sm mb-2">{error}</div>}
       
-      {isLoading ? (
-        <div className="text-center py-4">
-          Loading comments...
-        </div>
-      ) : (
-        <>
-          {comments.length === 0 ? (
-            <div className="p-4">
-              <CommentInput
-                value={newComment}
-                onChange={setNewComment}
-                onSubmit={handleSubmitComment}
-                placeholder="Be the first to comment... (Tab for formatting)"
-                disabled={!user}
-                readOnly={!user}
-                onClick={() => user ? null : alert('Please log in to comment')}
-              />
-            </div>
-          ) : !showAllComments ? (
-            <button
-              onClick={() => setShowAllComments(true)}
-              className="w-full p-4 text-center text-gray-600 hover:text-gray-800 flex items-center justify-center space-x-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-              <span>Show {totalComments} {totalComments === 1 ? 'comment' : 'comments'}</span>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-          ) : (
-            <div className="p-4">
-              <button
-                onClick={() => setShowAllComments(false)}
-                className="w-full text-center text-gray-600 hover:text-gray-800 mb-4 flex items-center justify-center space-x-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                </svg>
-                <span>Hide all {totalComments} {totalComments === 1 ? 'comment' : 'comments'}</span>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                </svg>
-              </button>
-              
-              <div className="mb-4">
-                <CommentInput
-                  value={newComment}
-                  onChange={setNewComment}
-                  onSubmit={handleSubmitComment}
-                  placeholder="Write a comment... (Tab for formatting)"
-                />
-              </div>
-
-              <div className="space-y-3">
-                {comments.map(comment => renderComment(comment, 0))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
+      {/* Main comment input form */}
+      <CommentInput
+        placeholder="Add a comment..."
+        value={newComment}
+        onChange={setNewComment}
+        onSubmit={(e) => handleSubmitComment(e)}
+        isLoading={isLoading}
+        showFormatToolbar={showMainFormatToolbar}
+        setShowFormatToolbar={setShowMainFormatToolbar}
+        inputRef={mainCommentInputRef}
+        handleFormat={(type, selection, inputRef, setText) => 
+          handleFormat(type, selection, inputRef, setText)
+        }
+      />
+      
+      {/* Comment list */}
+      <div className="mt-4 space-y-4">
+        {comments.map(comment => renderComment(comment))}
+      </div>
     </div>
   );
 } 

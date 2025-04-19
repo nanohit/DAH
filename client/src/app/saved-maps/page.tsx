@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import { getUserMaps, deleteMap, SavedMap, bookmarkMap } from '@/utils/mapUtils';
@@ -79,8 +79,51 @@ export default function SavedMapsPage() {
   const [maps, setMaps] = useState<SavedMap[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'updated' | 'created'>('created');
+  const [visibleComments, setVisibleComments] = useState<string[]>([]);
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [mapComments, setMapComments] = useState<Record<string, any[]>>({});
   const router = useRouter();
   const { user } = useAuth();
+
+  // Toggle comment visibility
+  const toggleComments = (mapId: string) => {
+    setVisibleComments(prev => 
+      prev.includes(mapId) 
+        ? prev.filter(id => id !== mapId) 
+        : [...prev, mapId]
+    );
+  };
+
+  // Handle comment updates from child components
+  const handleCommentUpdate = (mapId: string, count: number, updatedComments: any[]) => {
+    setCommentCounts(prev => ({
+      ...prev,
+      [mapId]: count
+    }));
+    
+    // Store the updated comments
+    setMapComments(prev => ({
+      ...prev,
+      [mapId]: updatedComments
+    }));
+  };
+
+  // Get comment count for a map
+  const getCommentCount = (map: SavedMap): number => {
+    if (map._id in commentCounts) {
+      return commentCounts[map._id] || 0;
+    }
+    return map.comments?.length || 0;
+  };
+  
+  // Get comments for a map (either from our stored state or the initial data)
+  const getMapComments = (map: SavedMap): any[] => {
+    if (map._id in mapComments) {
+      return mapComments[map._id] || [];
+    }
+    return map.comments || [];
+  };
 
   // Fetch all saved maps on page load
   useEffect(() => {
@@ -115,6 +158,23 @@ export default function SavedMapsPage() {
 
     fetchMaps();
   }, []);
+
+  // Function to sort maps based on current sort option
+  const sortedMaps = useMemo(() => {
+    if (sortBy === 'updated') {
+      return [...maps].sort((a, b) => {
+        const dateA = new Date(a.lastSaved || a.updatedAt || a.createdAt).getTime();
+        const dateB = new Date(b.lastSaved || b.updatedAt || b.createdAt).getTime();
+        return dateB - dateA;
+      });
+    } else {
+      return [...maps].sort((a, b) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateB - dateA;
+      });
+    }
+  }, [maps, sortBy]);
 
   // Handle deleting a map
   const handleDeleteMap = async (mapId: string) => {
@@ -221,8 +281,19 @@ export default function SavedMapsPage() {
     return (
       <div className="min-h-screen py-12 px-4 sm:px-6 lg:px-8 bg-gray-50">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-3xl font-bold text-gray-900 mb-8">Saved Maps</h1>
-          <div className="flex justify-center items-center h-64">
+          <div className="flex justify-between items-center mb-6">
+            <div className="inline-flex border border-gray-400/50 rounded-md overflow-hidden opacity-50 pointer-events-none">
+              <button className="px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-800">Last Added</button>
+              <button className="px-3 py-1.5 text-xs font-medium bg-white text-black">Last Updated</button>
+            </div>
+            <Link 
+              href="/maps" 
+              className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
+            >
+              + New Map
+            </Link>
+          </div>
+          <div className="flex justify-center items-center h-48">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
           </div>
         </div>
@@ -235,10 +306,21 @@ export default function SavedMapsPage() {
     return (
       <div className="min-h-screen py-12 px-4 sm:px-6 lg:px-8 bg-gray-50">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-3xl font-bold text-gray-900 mb-8">Saved Maps</h1>
-          <div className="bg-white shadow rounded-lg p-8 text-center">
-            <h2 className="text-xl text-gray-600 mb-4">No saved maps found</h2>
-            <p className="text-gray-500 mb-6">Create a new map to get started</p>
+          <div className="flex justify-between items-center mb-6">
+            <div className="inline-flex border border-gray-400/50 rounded-md overflow-hidden opacity-50 pointer-events-none">
+              <button className="px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-800">Last Added</button>
+              <button className="px-3 py-1.5 text-xs font-medium bg-white text-black">Last Updated</button>
+            </div>
+            <Link 
+              href="/maps" 
+              className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
+            >
+              + New Map
+            </Link>
+          </div>
+          <div className="bg-white shadow rounded-lg p-6 text-center">
+            <h2 className="text-lg text-gray-600 mb-3">No saved maps found</h2>
+            <p className="text-gray-500 mb-4">Create a new map to get started</p>
             <Link 
               href="/maps" 
               className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
@@ -254,8 +336,29 @@ export default function SavedMapsPage() {
   return (
     <div className="min-h-screen py-12 px-4 sm:px-6 lg:px-8 bg-gray-50">
       <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Saved Maps</h1>
+        <div className="flex justify-between items-center mb-6">
+          <div className="inline-flex border border-gray-400/50 rounded-md overflow-hidden">
+            <button
+              onClick={() => setSortBy('created')}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors duration-200 ${
+                sortBy === 'created' 
+                  ? 'bg-gray-100 text-gray-800' 
+                  : 'bg-white text-black hover:bg-gray-50'
+              }`}
+            >
+              Last Added
+            </button>
+            <button
+              onClick={() => setSortBy('updated')}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors duration-200 ${
+                sortBy === 'updated' 
+                  ? 'bg-gray-100 text-gray-800' 
+                  : 'bg-white text-black hover:bg-gray-50'
+              }`}
+            >
+              Last Updated
+            </button>
+          </div>
           <Link 
             href="/maps" 
             className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
@@ -265,7 +368,7 @@ export default function SavedMapsPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {maps.map((map) => (
+          {sortedMaps.map((map) => (
             <div 
               key={map._id} 
               className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden"
@@ -352,18 +455,51 @@ export default function SavedMapsPage() {
                   onClick={() => handleOpenMap(map._id)}
                 >
                   {map.name && (
-                    <h2 className="text-xl font-semibold mb-2 text-black hover:underline">{map.name || 'Untitled Map'}</h2>
+                    <h2 className="text-lg font-semibold mb-1 text-black hover:underline">{map.name || 'Untitled Map'}</h2>
                   )}
                   
-                  {/* Map stats - styled like post text */}
-                  <div className="prose prose-sm max-w-none !text-black mb-4">
-                    <p className="text-black">{map.elementCount || 0} elements</p>
-                    <p className="text-black">{map.connectionCount || 0} connections</p>
+                  {/* Map stats with comments on right */}
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center text-sm text-gray-500">
+                      <span>{map.elementCount || 0} elements</span>
+                      <span className="mx-1">•</span>
+                      <span>{map.connectionCount || 0} connections</span>
+                    </div>
+                    
+                    {/* Comment toggle button with rotating arrow */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleComments(map._id);
+                      }}
+                      className="text-gray-500 text-sm hover:text-gray-700 flex items-center"
+                    >
+                      <svg 
+                        xmlns="http://www.w3.org/2000/svg" 
+                        className={`h-3 w-3 mr-1 transition-transform ${visibleComments.includes(map._id) ? 'rotate-180' : ''}`} 
+                        fill="none" 
+                        viewBox="0 0 24 24" 
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                      {getCommentCount(map) > 0 
+                        ? `${getCommentCount(map)} comments` 
+                        : 'comments'}
+                    </button>
                   </div>
                 </div>
-                
-                {/* Comment section - always visible */}
-                <MapCommentSection mapId={map._id} initialComments={map.comments || []} />
+
+                {/* Comment section - conditionally visible */}
+                {visibleComments.includes(map._id) && (
+                  <div className="mt-2 pt-3 border-t border-gray-100">
+                    <MapCommentSection 
+                      mapId={map._id} 
+                      initialComments={getMapComments(map)} 
+                      onCommentUpdate={(count, comments) => handleCommentUpdate(map._id, count, comments)}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           ))}
