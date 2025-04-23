@@ -20,6 +20,7 @@ import { useAuth } from '@/context/AuthContext';
 import { SearchModal } from '@/components/Search/SearchModal';
 import { isTokenExpiring, refreshToken } from '@/services/auth';
 import { API_BASE_URL } from '@/config/api';
+import DraggableElement from '@/components/Map/DraggableElement'; // Fixed casing
 
 
 
@@ -232,559 +233,6 @@ const ConnectionPoint = ({ position, elementId, isSelected, onStartConnection, s
   );
 };
 
-const DraggableElement = ({ 
-  id, 
-  left, 
-  top, 
-  text, 
-  orientation,
-  isSelected,
-  onSelect,
-  onStartConnection,
-  onTransformChange,
-  onTextChange,
-  onDoubleClick,
-  element,
-  scale, // Add scale prop
-  onResizeStateChange, // Add callback for resize state
-  isAltPressed, // Add Alt key state
-  isDuplicating, // Add duplicating state
-  children, // Add children prop
-}: {
-  id: string;
-  left: number;
-  top: number;
-  text: string;
-  orientation: 'horizontal' | 'vertical';
-  isSelected: boolean;
-  onSelect: (id: string) => void;
-  onStartConnection: (elementId: string, point: 'top' | 'right' | 'bottom' | 'left', e: React.MouseEvent) => void;
-  onTransformChange: (transform: { x: number; y: number } | null) => void;
-  onTextChange: (id: string, newText: string) => void;
-  onDoubleClick?: () => void;
-  element: MapElement;
-  scale: number; // Add scale type
-  onResizeStateChange?: (isResizing: boolean) => void; // Add callback type
-  isAltPressed?: boolean; // Alt key state
-  isDuplicating?: boolean; // Duplicating mode
-  children?: React.ReactNode; // Add children type
-}) => {
-  const [isDragStarted, setIsDragStarted] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [isResizing, setIsResizing] = useState(false);
-  const [resizeDirection, setResizeDirection] = useState<string | null>(null);
-  const [startResize, setStartResize] = useState({ x: 0, y: 0, width: 0, height: 0, left: 0, top: 0 });
-  const inputRef = useRef<HTMLInputElement>(null);
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id,
-    disabled: isResizing || isEditing
-  });
-
-  // Default sizes if not provided in element
-  const defaultWidth = orientation === 'horizontal' ? 160 : 140;
-  const defaultHeight = orientation === 'horizontal' ? 128 : 200;
-  
-  // Use element widths and heights if provided, otherwise use defaults
-  const elementWidth = element.width || defaultWidth;
-  const elementHeight = element.height || defaultHeight;
-
-  // Check if the element is a book (not resizable)
-  const isBook = element.type === 'book';
-
-  const currentTransform = useMemo(() => 
-    transform ? { x: transform.x, y: transform.y } : null
-  , [transform?.x, transform?.y]);
-
-  useEffect(() => {
-    onTransformChange(currentTransform);
-  }, [currentTransform, onTransformChange]);
-
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [isEditing]);
-
-  // Handle resize logic
-  useEffect(() => {
-    if (!isResizing) return;
-
-    // Get the element's initial state before any resize operations
-    const element = document.getElementById(id);
-    if (!element) return;
-
-    // Store the original element's position before any resize changes
-    const rect = element.getBoundingClientRect();
-
-    const handleResizeMouseMove = (e: MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      
-      // Calculate delta from the start position in screen coordinates
-      const dx = (e.clientX - startResize.x) / scale;
-      const dy = (e.clientY - startResize.y) / scale;
-
-      let newWidth = startResize.width;
-      let newHeight = startResize.height;
-      let newLeft = startResize.left;
-      let newTop = startResize.top;
-
-      // Handle different resize directions
-      if (resizeDirection === 'right') {
-        newWidth = Math.max(80, startResize.width + dx);
-      } else if (resizeDirection === 'bottom') {
-        newHeight = Math.max(40, startResize.height + dy);
-      } else if (resizeDirection === 'left') {
-        const widthChange = Math.min(dx, startResize.width - 80);
-        newWidth = startResize.width - widthChange;
-        newLeft = startResize.left + widthChange;
-      } else if (resizeDirection === 'top') {
-        const heightChange = Math.min(dy, startResize.height - 40);
-        newHeight = startResize.height - heightChange;
-        newTop = startResize.top + heightChange;
-      } else if (resizeDirection === 'top-left') {
-        const widthChange = Math.min(dx, startResize.width - 80);
-        const heightChange = Math.min(dy, startResize.height - 40);
-        newWidth = startResize.width - widthChange;
-        newHeight = startResize.height - heightChange;
-        newLeft = startResize.left + widthChange;
-        newTop = startResize.top + heightChange;
-      } else if (resizeDirection === 'top-right') {
-        const heightChange = Math.min(dy, startResize.height - 40);
-        newWidth = Math.max(80, startResize.width + dx);
-        newHeight = startResize.height - heightChange;
-        newTop = startResize.top + heightChange;
-      } else if (resizeDirection === 'bottom-left') {
-        const widthChange = Math.min(dx, startResize.width - 80);
-        newWidth = startResize.width - widthChange;
-        newHeight = Math.max(40, startResize.height + dy);
-        newLeft = startResize.left + widthChange;
-      } else if (resizeDirection === 'bottom-right') {
-        newWidth = Math.max(80, startResize.width + dx);
-        newHeight = Math.max(40, startResize.height + dy);
-      }
-
-      // Apply changes directly to the element's position and size
-      element.style.width = `${newWidth}px`;
-      element.style.height = `${newHeight}px`;
-      element.style.left = `${newLeft}px`;
-      element.style.top = `${newTop}px`;
-      // Remove transform during resize to prevent conflicts
-      element.style.transform = 'none';
-      
-      // Dispatch a resize-in-progress event to update connections in real-time
-      const resizeEvent = new CustomEvent('element-resize-progress', {
-        detail: {
-          id,
-          left: newLeft,
-          top: newTop,
-          width: newWidth,
-          height: newHeight
-        },
-        bubbles: true
-      });
-      element.dispatchEvent(resizeEvent);
-    };
-
-    const handleResizeMouseUp = (e: MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      // Get the final dimensions and position
-      const finalWidth = parseFloat(element.style.width);
-      const finalHeight = parseFloat(element.style.height);
-      const finalLeft = parseFloat(element.style.left);
-      const finalTop = parseFloat(element.style.top);
-
-      // Create a custom event with the final position and size
-      const event = new CustomEvent('element-resized', {
-        detail: {
-          id,
-          left: finalLeft,
-          top: finalTop,
-          width: finalWidth,
-          height: finalHeight,
-          resetTransform: true
-        },
-        bubbles: true
-      });
-      
-      // Clean up
-      setIsResizing(false);
-      setResizeDirection(null);
-      
-      // Dispatch event after state is updated
-      setTimeout(() => {
-        element.dispatchEvent(event);
-      }, 0);
-
-      document.removeEventListener('mousemove', handleResizeMouseMove);
-      document.removeEventListener('mouseup', handleResizeMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleResizeMouseMove);
-    document.addEventListener('mouseup', handleResizeMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleResizeMouseMove);
-      document.removeEventListener('mouseup', handleResizeMouseUp);
-    };
-  }, [isResizing, resizeDirection, startResize, id, scale]);
-
-  const handleResizeMouseDown = (e: React.MouseEvent, direction: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Enforce stopping propagation
-    if (e.nativeEvent) {
-      e.nativeEvent.stopImmediatePropagation();
-      e.nativeEvent.stopPropagation();
-    }
-    
-    if (!isSelected) {
-      onSelect(id);
-    }
-    
-    // Get the element
-    const element = document.getElementById(id);
-    if (!element) return;
-    
-    // Use the actual rendered size and position
-    const renderedWidth = parseFloat(element.style.width) || elementWidth;
-    const renderedHeight = parseFloat(element.style.height) || elementHeight;
-    
-    setIsResizing(true);
-    setResizeDirection(direction);
-    setStartResize({ 
-      x: e.clientX, 
-      y: e.clientY, 
-      width: renderedWidth, 
-      height: renderedHeight,
-      left: left,
-      top: top
-    });
-  };
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault(); // Prevent default text selection
-    
-    if (isEditing || isResizing) {
-      return;
-    }
-    setIsDragStarted(false);
-    if (listeners?.onMouseDown) {
-      listeners.onMouseDown(e);
-    }
-  };
-
-  const handleMouseUp = (e: React.MouseEvent) => {
-    if (!isDragStarted && !isResizing) {
-      onSelect(id);
-    }
-    setIsDragStarted(false);
-  };
-
-  const handleDragStart = () => {
-    setIsDragStarted(true);
-  };
-
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (onDoubleClick) {
-      onDoubleClick();
-    } else {
-      setIsEditing(true);
-    }
-  };
-
-  const handleInputBlur = () => {
-    setIsEditing(false);
-  };
-
-  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      setIsEditing(false);
-    }
-  };
-
-  // Add a ref for the author segment bottom connection
-  const authorBottomRef = useRef<HTMLDivElement>(null);
-  
-  // Update the author bottom ref position
-  useEffect(() => {
-    if (element.type === 'book') {
-      const bookElement = document.getElementById(id);
-      if (!bookElement) return;
-      
-      const updateAuthorRef = () => {
-        if (!authorBottomRef.current) return;
-        
-        const authorElement = bookElement.querySelector('.author-segment');
-        if (authorElement) {
-          const authorRect = authorElement.getBoundingClientRect();
-          const bookRect = bookElement.getBoundingClientRect();
-          
-          // Position the ref at the bottom of the author element
-          authorBottomRef.current.style.left = `${bookRect.width / 2}px`;
-          authorBottomRef.current.style.top = `${authorRect.bottom - bookRect.top}px`;
-        }
-      };
-      
-      // Initial update
-      updateAuthorRef();
-      
-      // Set up observer to watch for changes
-      const observer = new MutationObserver(updateAuthorRef);
-      observer.observe(bookElement, { 
-        childList: true, 
-        subtree: true, 
-        attributes: true,
-        attributeFilter: ['style', 'class'] 
-      });
-      
-      return () => observer.disconnect();
-    }
-  }, [element.type, id]);
-
-  // Notify parent when resize state changes
-  useEffect(() => {
-    if (onResizeStateChange) {
-      onResizeStateChange(isResizing);
-    }
-  }, [isResizing, onResizeStateChange]);
-
-  return (
-    <>
-      <div
-        ref={setNodeRef}
-        id={id}
-        data-type={element.type}
-        style={{
-          position: 'absolute',
-          left: `${left}px`,
-          top: `${top}px`,
-          opacity: isDragging ? (isDuplicating ? 0.3 : 0.5) : 1,
-          // When duplicating, don't apply the transform to the original element
-          transform: isDragging && isDuplicating ? 'none' : (transform ? `translate3d(${transform.x / scale}px, ${transform.y / scale}px, 0)` : undefined),
-          width: `${elementWidth}px`,
-          height: `${elementHeight}px`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#fff',
-          border: isSelected ? '2px solid rgb(59, 130, 246)' : '1px solid #ccc',
-          borderRadius: '8px',
-          cursor: isEditing ? 'text' : isResizing ? 'nwse-resize' : (isAltPressed ? 'copy' : 'move'),
-          userSelect: 'none',
-          boxShadow: isSelected ? '0 0 0 2px rgba(59, 130, 246, 0.3)' : '0 2px 4px rgba(0,0,0,0.05)',
-          backgroundImage: isSelected && text.includes('book') ? `url(${text})` : 'none',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          zIndex: isSelected ? 20 : 10,
-        }}
-        className={`map-element ${isSelected ? 'selected' : ''}`}
-        onMouseDown={handleMouseDown}
-        onMouseUp={handleMouseUp}
-        onDragStart={handleDragStart}
-        onDoubleClick={handleDoubleClick}
-        {...(isEditing || isResizing ? {} : { ...attributes, ...listeners })}
-      >
-        {isEditing ? (
-          <input
-            ref={inputRef}
-            type="text"
-            name={`element-text-${id}`}
-            value={text}
-            onChange={(e) => onTextChange(id, e.target.value)}
-            onBlur={handleInputBlur}
-            onKeyDown={handleInputKeyDown}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              textAlign: 'center',
-              width: '90%',
-              padding: '4px',
-              fontSize: '16px',
-              outline: 'none',
-              cursor: 'text',
-              color: '#000',
-              userSelect: 'text',
-            }}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          />
-        ) : (
-          <>
-            {children ? children : (
-              <span 
-                className="text-gray-800 px-2" 
-                style={{ fontSize: '16px', pointerEvents: 'none' }}
-              >
-                <ReactMarkdown components={{
-                  p: ({ children }) => <span style={{ pointerEvents: 'none' }}>{children}</span>,
-                  strong: ({ children }) => <strong style={{ pointerEvents: 'none' }}>{children}</strong>,
-                  em: ({ children }) => <em style={{ pointerEvents: 'none' }}>{children}</em>
-                }}>
-                  {text}
-                </ReactMarkdown>
-              </span>
-            )}
-            
-            {/* Reference element for author bottom connection */}
-            {element.type === 'book' && (
-              <div
-                id={`${id}-author-bottom`}
-                ref={authorBottomRef}
-                style={{
-                  position: 'absolute',
-                  bottom: '-8px',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  width: '1px',
-                  height: '1px'
-                }}
-              />
-            )}
-          </>
-        )}
-      </div>
-      
-      {/* Add a ghost element when duplicating */}
-      {isDragging && isDuplicating && transform && (
-        <div
-          style={{
-            position: 'absolute',
-            left: `${left}px`,
-            top: `${top}px`,
-            transform: `translate3d(${transform.x / scale}px, ${transform.y / scale}px, 0)`,
-            width: `${elementWidth}px`,
-            height: `${elementHeight}px`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: '#fff',
-            border: '2px dashed rgb(59, 130, 246)',
-            borderRadius: '8px',
-            opacity: 0.8,
-            pointerEvents: 'none',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-            zIndex: 30,
-          }}
-          className="element-duplicate-ghost"
-        >
-          <div style={{ opacity: 0.7 }}>
-            {element.type === 'book' && element.bookData ? (
-              <div className="w-full h-full" style={{ opacity: 0.85 }}>
-                {/* Simple book preview */}
-                <div className="text-center px-2 py-1 text-sm truncate">
-                  {element.bookData.title}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center px-2 py-1 text-sm truncate" style={{ pointerEvents: 'none' }}>
-                <ReactMarkdown components={{
-                  p: ({ children }) => <span style={{ pointerEvents: 'none' }}>{children}</span>,
-                  strong: ({ children }) => <strong style={{ pointerEvents: 'none' }}>{children}</strong>,
-                  em: ({ children }) => <em style={{ pointerEvents: 'none' }}>{children}</em>
-                }}>
-                  {text}
-                </ReactMarkdown>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-      
-      {/* Resize handles in a separate container outside the draggable element */}
-      {isSelected && !isBook && (
-        <div 
-          className="resize-handles-container"
-          style={{
-            position: 'absolute',
-            left: `${left}px`,
-            top: `${top}px`,
-            width: `${elementWidth}px`,
-            height: `${elementHeight}px`,
-            pointerEvents: 'none',
-            zIndex: 30,
-            transform: transform ? `translate3d(${transform.x / scale}px, ${transform.y / scale}px, 0)` : undefined,
-          }}
-        >
-          {/* Corner resize handles - KEEPING THESE but hiding when resizing */}
-          <div 
-  className="absolute w-4 h-4 bg-blue-500 rounded-full cursor-nwse-resize" 
-  style={{ top: '-8px', left: '-8px', pointerEvents: 'auto', opacity: isResizing ? 0 : 1 }}
-  onMouseDown={(e) => handleResizeMouseDown(e, 'top-left')}
-  onTouchStart={(e) => {
-    e.preventDefault();
-    const mouseEvent = new MouseEvent('mousedown', {
-      clientX: e.touches[0].clientX,
-      clientY: e.touches[0].clientY,
-    });
-    handleResizeMouseDown(mouseEvent as unknown as React.MouseEvent<Element, MouseEvent>, 'top-left');
-  }}
-/>
-<div 
-  className="absolute w-4 h-4 bg-blue-500 rounded-full cursor-nesw-resize" 
-  style={{ top: '-8px', right: '-8px', pointerEvents: 'auto', opacity: isResizing ? 0 : 1 }}
-  onMouseDown={(e) => handleResizeMouseDown(e, 'top-right')}
-  onTouchStart={(e) => {
-    e.preventDefault();
-    const mouseEvent = new MouseEvent('mousedown', {
-      clientX: e.touches[0].clientX,
-      clientY: e.touches[0].clientY,
-    });
-    handleResizeMouseDown(mouseEvent as unknown as React.MouseEvent<Element, MouseEvent>, 'top-right');
-  }}
-/>
-<div 
-  className="absolute w-4 h-4 bg-blue-500 rounded-full cursor-nesw-resize" 
-  style={{ bottom: '-8px', left: '-8px', pointerEvents: 'auto', opacity: isResizing ? 0 : 1 }}
-  onMouseDown={(e) => handleResizeMouseDown(e, 'bottom-left')}
-/>
-<div 
-  className="absolute w-4 h-4 bg-blue-500 rounded-full cursor-nwse-resize" 
-  style={{ bottom: '-8px', right: '-8px', pointerEvents: 'auto', opacity: isResizing ? 0 : 1 }}
-  onMouseDown={(e) => handleResizeMouseDown(e, 'bottom-right')}
-  onTouchStart={(e) => {
-    e.preventDefault();
-    const mouseEvent = new MouseEvent('mousedown', {
-      clientX: e.touches[0].clientX,
-      clientY: e.touches[0].clientY,
-    });
-    handleResizeMouseDown(mouseEvent as unknown as React.MouseEvent<Element, MouseEvent>, 'bottom-right');
-  }}
-/>
-          
-          {/* Edge resize areas - replacing small dots with full edge areas */}
-          <div 
-            className="absolute h-2 cursor-ns-resize" 
-            style={{ top: '-4px', left: '8px', right: '8px', pointerEvents: 'auto' }}
-            onMouseDown={(e) => handleResizeMouseDown(e, 'top')}
-          />
-          <div 
-            className="absolute w-2 cursor-ew-resize" 
-            style={{ top: '8px', right: '-4px', bottom: '8px', pointerEvents: 'auto' }}
-            onMouseDown={(e) => handleResizeMouseDown(e, 'right')}
-          />
-          <div 
-            className="absolute h-2 cursor-ns-resize" 
-            style={{ bottom: '-4px', left: '8px', right: '8px', pointerEvents: 'auto' }}
-            onMouseDown={(e) => handleResizeMouseDown(e, 'bottom')}
-          />
-          <div 
-            className="absolute w-2 cursor-ew-resize" 
-            style={{ top: '8px', left: '-4px', bottom: '8px', pointerEvents: 'auto' }}
-            onMouseDown={(e) => handleResizeMouseDown(e, 'left')}
-          />
-        </div>
-      )}
-    </>
-  );
-};
 
 const ElementWithConnections = ({
   element,
@@ -1766,19 +1214,19 @@ const LinkModal = ({ onClose, onLinkSubmit }: {
     <div className="fixed inset-0 flex items-center justify-center z-50" onWheel={(e) => e.stopPropagation()}>
       <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose}></div>
       <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md relative z-10">
-        <h2 className="text-2xl font-bold mb-4">Add Link</h2>
+        {/* Removed "Add Link" title */}
         
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
             <label className="block text-gray-700 font-medium mb-2" htmlFor="url">
-              URL (required)
+              URL
             </label>
             <input
               id="url"
               type="text"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-900"
               placeholder="https://example.com"
               required
             />
@@ -1793,7 +1241,7 @@ const LinkModal = ({ onClose, onLinkSubmit }: {
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-900"
               placeholder="Custom title for the link"
             />
             <p className="text-xs text-gray-500 mt-1">
@@ -1805,13 +1253,13 @@ const LinkModal = ({ onClose, onLinkSubmit }: {
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors"
+              className="border border-gray-400/50 text-gray-700 hover:bg-gray-200 px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center"
+              className="border border-gray-400/50 text-white bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center"
               disabled={isLoading || !url}
             >
               {isLoading ? (
@@ -1887,6 +1335,10 @@ function MapsContent() {
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [isRefreshingToken, setIsRefreshingToken] = useState(false);
   
+  // Add missing refs needed for saveMapToDatabase
+  const saving = useRef<boolean>(false);
+  const autoSaving = useRef<boolean>(false);
+  
   // Add a ref to store the last data for comparison
   const lastDataRef = useRef<string>('');
   
@@ -1896,6 +1348,10 @@ function MapsContent() {
   // Add a ref to track if autosave is in progress
   const autosaveInProgressRef = useRef<boolean>(false);
   
+  // Add missing state variables
+  const [mapNameError, setMapNameError] = useState<string>('');
+  const [showMapNameDialog, setShowMapNameDialog] = useState<boolean>(false);
+  
   // Add save map related state
   const [savedMapId, setSavedMapId] = useState<string | null>(null);
   const [mapName, setMapName] = useState('Untitled Map');
@@ -1903,6 +1359,7 @@ function MapsContent() {
   const hiddenTextRef = useRef<HTMLSpanElement>(null);
   // Change autosave to false by default
   const [isAutosaveEnabled, setIsAutosaveEnabled] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(false); // Add state for private/public toggle
   const autosaveRef = useRef<() => void>();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -3552,12 +3009,22 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     }
   }, []);
 
+  // Update document title when map name changes
+  useEffect(() => {
+    // Only update the title if we're not in the initial loading phase
+    if (savedMapId) {
+      document.title = mapName ? `${mapName} - Alphy` : 'Alphy';
+    }
+  }, [mapName, savedMapId]);
+
   // Function to load map data from server
   const loadMapData = async (mapId: string) => {
     try {
       const mapData = await loadMap(mapId);
       
       if (mapData) {
+        console.log('[DEBUG loadMapData] Loaded map data isPrivate:', mapData.isPrivate);
+        
         // Debug: Log any book elements with completed status
         const booksWithCompletedStatus = mapData.elements.filter(
           el => el.type === 'book' && el.bookData && el.bookData.completed === true
@@ -3570,30 +3037,15 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
         }
         
         setElements(mapData.elements);
-        
-        // Always regenerate unique connection IDs to avoid React key conflicts
-        // Use a Map to track old-to-new ID mapping
-        const idMap = new Map();
-        
-        const updatedConnections = mapData.connections.map(conn => {
-          // Generate a truly unique ID with both timestamp and random component
-          const newId = `connection-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          idMap.set(conn.id, newId);
-          
-          return {
-            ...conn,
-            id: newId
-          };
-        });
-        
-        setConnections(updatedConnections);
+        setConnections(mapData.connections);
         setCanvasPosition(mapData.canvasPosition);
-        setScaleState(mapData.scale || 1);
+        setScaleState(mapData.scale);
         setMapName(mapData.name);
+        setIsPrivate(mapData.isPrivate === true); // Explicitly convert to boolean
         setSavedMapId(mapData._id);
         
         // Store current state for comparison
-        lastDataRef.current = JSON.stringify({ elements: mapData.elements, connections: updatedConnections });
+        lastDataRef.current = JSON.stringify({ elements: mapData.elements, connections: mapData.connections });
       }
     } catch (error) {
       console.error('Error loading map:', error);
@@ -3601,161 +3053,91 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     }
   };
 
-  const saveMapToDatabase = async () => {
-    console.log('[DEBUG] saveMapToDatabase called, current autosave state:', isAutoSaving);
-    
-    // Check if token is expiring and refresh if needed
-    if (isTokenExpiring() && !isRefreshingToken) {
-      console.log("Token needs refresh before saving map");
-      setIsRefreshingToken(true);
-      try {
-        await refreshToken();
-      } catch (error) {
-        console.error("Error refreshing token before map save:", error);
-      } finally {
-        setIsRefreshingToken(false);
+  const saveMapToDatabase = async (overrideIsPrivate?: boolean) => {
+    if (saving.current) {
+      console.log('[DEBUG] Already saving, skipping this save operation');
+      return;
+    }
+
+    console.log('[DEBUG] saveMapToDatabase called, current autosave state:', autoSaving.current);
+    saving.current = true;
+
+    try {
+      // Check for required data
+      if (!mapName) {
+        setMapNameError('Map name is required');
+        setShowMapNameDialog(true);
+        saving.current = false;
+        return;
       }
-    }
-    
-    if (autosaveInProgressRef.current) {
-      console.log('[DEBUG] Skipping save due to existing autosave in progress');
-      return false;
-    }
-    
-    // Track save state with existing autoSaving state
-    setIsAutoSaving(true);
-    
-    // Find books with completed status
-    const booksWithCompletedStatus = elements.filter(
-      el => el.type === 'book' && el.bookData && el.bookData.completed === true
-    );
-    
-    if (booksWithCompletedStatus.length > 0) {
-      console.log('[DEBUG] Saving map with books marked as completed:', 
-        booksWithCompletedStatus.map(book => ({
-          id: book.id,
-          title: book.bookData?.title,
-          completed: book.bookData?.completed
-        }))
+      
+      // Clear any previous error
+      setMapNameError('');
+
+      // Check for books in the map for debugging
+      const booksInMap = elements.filter(e => e.type === 'book');
+      console.log('[DEBUG] All books in the map:', booksInMap);
+
+      // Count completed books for debugging
+      const completedBooks = elements.filter(
+        e => e.type === 'book' && e.bookData && e.bookData.completed === true
       );
-    }
-    
-    // Check all books for debugging
-    const allBooks = elements.filter(el => el.type === 'book' && el.bookData);
-    console.log('[DEBUG] All books in the map:', allBooks);
-    
-    // Create mapData structure
-    const mapData = {
-      name: mapName,
-      elements: elements.map(element => {
-        // Ensure completed property is explicitly set for book elements
-        if (element.type === 'book' && element.bookData) {
-          if (element.bookData.completed) {
-            console.log(`[DEBUG] Ensuring 'completed' property is set to true for book ${element.id}`);
-            
-            // Create a new object with the completed property explicitly set
-            return {
-              ...element,
-              bookData: {
-                ...element.bookData,
-                completed: true
-              }
-            };
-          }
-        }
-        return element;
-      }),
-      connections,
-      canvasPosition,
-      scale,
-      canvasWidth: containerRef.current?.clientWidth || 1000,
-      canvasHeight: containerRef.current?.clientHeight || 800
-    };
-    
-    // Store local copy of books with completed status before save
-    const completedBooksBeforeSave = mapData.elements
-      .filter(el => el.type === 'book' && el.bookData && el.bookData.completed === true)
-      .map(book => ({ id: book.id, completed: true }));
-    
-    console.log('[DEBUG] Saving map to database...');
-    const searchParams = new URLSearchParams(window.location.search);
-    const mapId = searchParams.get('id');
-    
-    const savedMap = await saveMap(mapData, mapId);
-    
-    // Reset auto-saving state regardless of result
-    setIsAutoSaving(false);
-    
-    if (savedMap) {
+      if (completedBooks.length > 0) {
+        console.log('[DEBUG] Found', completedBooks.length, 'completed books');
+      }
+
+      // Prepare map data
+      const mapData = {
+        name: mapName,
+        elements,
+        connections,
+        canvasPosition,
+        scale,
+        // Add required properties for MapData interface
+        canvasWidth: containerRef.current?.clientWidth || 1000,
+        canvasHeight: containerRef.current?.clientHeight || 800,
+        // Use the override value if provided, otherwise use the current state
+        isPrivate: typeof overrideIsPrivate === 'boolean' ? overrideIsPrivate : isPrivate
+      };
+
+      console.log('[DEBUG saveMapToDatabase] Saving map with isPrivate:', mapData.isPrivate);
+
+      // Save map data using the map service
+      console.log('[DEBUG] Saving map to database...');
+      const savedMap = await saveMap(mapData, savedMapId);
       console.log('[DEBUG] Map saved successfully');
       
-      // Check if the saved map contains book elements
-      console.log('[DEBUG] Raw savedMap response elements:', savedMap.elements);
-      
-      // Check for completed status in returned books
-      const bookElements = savedMap.elements.filter(el => el.type === 'book' && el.bookData);
-      
-      console.log('[DEBUG] Server returned book elements:');
-      bookElements.forEach((book, index) => {
-        console.log(`[DEBUG] Book ${index} (${book.id}):`, {
-          hasBookData: !!book.bookData,
-          bookDataKeys: book.bookData ? Object.keys(book.bookData) : [],
-          completedValue: book.bookData?.completed,
-          completedType: typeof book.bookData?.completed
-        });
-      });
-      
-      // Check if any books lost their completed status
-      const lostCompletedStatus = completedBooksBeforeSave.filter(
-        originalBook => {
-          const savedBook = savedMap.elements.find(el => el.id === originalBook.id);
-          return !(savedBook?.bookData?.completed === true);
+      // Check for null before accessing properties
+      if (savedMap) {
+        console.log('[DEBUG] Saved map has isPrivate:', savedMap.isPrivate);
+        console.log('[DEBUG] Saved map properties:', Object.keys(savedMap));
+
+        // Update our state with the returned isPrivate value
+        if ('isPrivate' in savedMap) {
+          // Use Boolean() to convert undefined to false if needed
+          setIsPrivate(Boolean(savedMap.isPrivate));
+          console.log('[DEBUG] Updated isPrivate state to:', Boolean(savedMap.isPrivate));
+        } else {
+          console.log('[DEBUG] Warning: isPrivate not found in saved map response');
         }
-      );
-      
-      if (lostCompletedStatus.length > 0) {
-        console.log('[DEBUG] Warning: Books marked as completed were lost during save!');
         
-        // Restore completed status in our local state for books that lost it
-        const updatedElements = elements.map(element => {
-          const shouldBeCompleted = lostCompletedStatus.find(book => book.id === element.id);
-          
-          if (shouldBeCompleted && element.type === 'book' && element.bookData) {
-            console.log(`[DEBUG] Restoring completed status for book: ${element.id}`);
-            
-            // Create a new element with updated bookData
-            return {
-              ...element,
-              bookData: {
-                ...element.bookData,
-                completed: true
-              }
-            };
-          }
-          
-          return element;
-        });
-        
-        // Update local state with restored completed status
-        setElements(updatedElements);
-        
-        // Show a warning to the user about the issue
-        toast.error('Some book completion statuses were not saved properly. This has been fixed locally.', {
-          duration: 5000
-        });
-      }
-      
-      if (!savedMapId) {
-        setSavedMapId(savedMap._id);
-        // Update URL with map ID without reloading page
-        window.history.pushState({}, '', `/maps?id=${savedMap._id}`);
+        if (!savedMapId) {
+          setSavedMapId(savedMap._id);
+          // Update URL with map ID without reloading page
+          window.history.pushState({}, '', `/maps?id=${savedMap._id}`);
+        }
       }
       
       setLastSavedTime(new Date());
       
       return true;
-    } else {
+    } catch (error) {
+      console.error('Error saving map:', error);
+      toast.error('Failed to save map');
+      saving.current = false;
       return false;
+    } finally {
+      saving.current = false;
     }
   };
   
@@ -3787,6 +3169,7 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
         scale: number;
         canvasWidth: number;
         canvasHeight: number;
+        isPrivate?: boolean;
       } | null | undefined, 
       previous: {
         name: string;
@@ -3796,6 +3179,7 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
         scale: number;
         canvasWidth: number;
         canvasHeight: number;
+        isPrivate?: boolean;
       } | null | undefined
     ) => {
       // If previous data doesn't exist, treat as changed
@@ -3806,6 +3190,12 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
       
       // Compare connections count
       if (!current.connections || !previous.connections || current.connections.length !== previous.connections.length) return false;
+      
+      // Compare isPrivate
+      if (current.isPrivate !== previous.isPrivate) {
+        console.log('[DEBUG] areDataEquivalent detected isPrivate change:', previous.isPrivate, '->', current.isPrivate);
+        return false;
+      }
       
       // Compare elements deeply but ignore IDs
       for (let i = 0; i < current.elements.length; i++) {
@@ -3864,7 +3254,8 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
       canvasPosition,
       scale,
       canvasWidth: containerRef.current?.clientWidth || 1000,
-      canvasHeight: containerRef.current?.clientHeight || 800
+      canvasHeight: containerRef.current?.clientHeight || 800,
+      isPrivate // Include isPrivate in the comparison data
     };
     
     // Get previous data
@@ -3922,7 +3313,7 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
         console.log('Autosave already in progress, skipping timer creation');
       }
     }
-  }, [elements, connections, mapName, canvasPosition, scale, isAutosaveEnabled, savedMapId]);
+  }, [elements, connections, mapName, canvasPosition, scale, isAutosaveEnabled, savedMapId, isPrivate]);
   
   // Cleanup timer on unmount
   useEffect(() => {
@@ -3936,19 +3327,16 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
 
   // Handle save map
   const handleSaveMap = async () => {
-    // Check if user is logged in
-    const token = localStorage.getItem('token');
-    if (!token) {
-      toast.error('You must be logged in to save maps');
-      return;
+    const result = await saveMapToDatabase();
+    
+    // If this is a new map that was just saved for the first time,
+    // update the isPrivate state to match what the user selected
+    if (result && !savedMapId) {
+      console.log('[DEBUG] New map saved, ensuring isPrivate state is preserved');
+      // No need to update state here, we'll use the returned savedMap.isPrivate value
     }
     
-    // Make sure we have a name (use default if none provided)
-    if (!mapName.trim()) {
-      setMapName('Untitled Map');
-    }
-    
-    await saveMapToDatabase();
+    return result;
   };
 
   // Function to save and navigate to saved maps page
@@ -4313,6 +3701,22 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     };
   }, [handleSaveMap]);  // Include handleSaveMap in dependencies
 
+  // Add a special useEffect to track isPrivate changes
+  useEffect(() => {
+    console.log('[DEBUG] isPrivate state changed to:', isPrivate);
+    
+    // If the map has already been saved, show notification when privacy changes
+    if (savedMapId) {
+      if (isPrivate) {
+        toast.success('Map is now private. Only you can view and edit it.', { duration: 3000 });
+      } else {
+        toast.success('Map is now public. Anyone with the link can view it.', { duration: 3000 });
+      }
+      
+      // Note: We don't trigger saveMapToDatabase here anymore since we do it directly in the click handlers
+    }
+  }, [isPrivate, savedMapId]);
+
   return (
     <DndContext 
       onDragStart={handleDragStart}
@@ -4422,6 +3826,44 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
             
             {showDropdown && (
               <div ref={dropdownRef} className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
+                {/* Public/Private toggle */}
+                <div className="px-4 py-2">
+                  <div className="inline-flex border border-gray-400/50 rounded-md overflow-hidden w-full">
+                    <button
+                      onClick={() => {
+                        console.log('[DEBUG] Setting isPrivate to false');
+                        setIsPrivate(false);
+                        if (savedMapId) {
+                          saveMapToDatabase(false);
+                        }
+                      }}
+                      className={`px-3 py-1.5 text-xs font-medium transition-colors duration-200 flex-1 ${
+                        !isPrivate 
+                          ? 'bg-gray-100 text-gray-800' 
+                          : 'bg-white text-black hover:bg-gray-50'
+                      }`}
+                    >
+                      Public
+                    </button>
+                    <button
+                      onClick={() => {
+                        console.log('[DEBUG] Setting isPrivate to true');
+                        setIsPrivate(true);
+                        if (savedMapId) {
+                          saveMapToDatabase(true);
+                        }
+                      }}
+                      className={`px-3 py-1.5 text-xs font-medium transition-colors duration-200 flex-1 ${
+                        isPrivate 
+                          ? 'bg-gray-100 text-gray-800' 
+                          : 'bg-white text-black hover:bg-gray-50'
+                      }`}
+                    >
+                      Private
+                    </button>
+                  </div>
+                </div>
+
                 <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center">
                   <input
                     type="checkbox"
@@ -5042,7 +4484,7 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
           <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setTextEditModal(null)}></div>
           <div className="bg-white rounded-lg p-6 shadow-xl relative max-w-md w-full">
             <textarea
-              className="w-full px-3 py-2 border border-gray-300 rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-900"
               rows={4}
               value={textEditModal.text}
               onChange={(e) => setTextEditModal({ ...textEditModal, text: e.target.value })}
@@ -5066,16 +4508,16 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
               isVisible={showFormatToolbar}
               onClose={() => setShowFormatToolbar(false)}
             />
-            <div className="flex justify-end space-x-2">
+            <div className="flex justify-end gap-3">
               <button
                 onClick={() => setTextEditModal(null)}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                className="border border-gray-400/50 text-gray-700 hover:bg-gray-200 px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveText}
-                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                className="border border-gray-400/50 text-white bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200"
               >
                 Save
               </button>
