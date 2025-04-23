@@ -121,7 +121,7 @@ export default function UserRecentMaps({ maxMaps = 3 }: { maxMaps?: number }) {
   }
   
   // Add empty invisible placeholders to maintain grid layout
-  const totalItemsNeeded = maxMaps + 1; // maxMaps plus create new button
+  const totalItemsNeeded = maxMaps + 1; // maxMaps plus the "Create New" button
   const emptySpacesNeeded = totalItemsNeeded - displayItems.length;
   
   for (let i = 0; i < emptySpacesNeeded; i++) {
@@ -132,9 +132,10 @@ export default function UserRecentMaps({ maxMaps = 3 }: { maxMaps?: number }) {
     );
   }
 
+  // Use a fixed grid class that can accommodate up to maxMaps + 1 items
   return (
     <div className="w-full px-0 mb-4">
-      <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: `repeat(${maxMaps + 1}, 1fr)` }}>
+      <div className="grid grid-cols-4 gap-3 mb-5">
         {displayItems}
       </div>
     </div>
