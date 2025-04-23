@@ -17,11 +17,7 @@ interface MapData {
   createdAt: string;
 }
 
-interface UserRecentMapsProps {
-  maxMaps?: number;
-}
-
-export default function UserRecentMaps({ maxMaps = 3 }: UserRecentMapsProps) {
+export default function UserRecentMaps({ maxMaps = 3 }: { maxMaps?: number }) {
   const { isAuthenticated, user } = useAuth();
   const [maps, setMaps] = useState<MapData[]>([]);
   const [hasAttemptedLoad, setHasAttemptedLoad] = useState(false);
@@ -88,7 +84,7 @@ export default function UserRecentMaps({ maxMaps = 3 }: UserRecentMapsProps) {
     return () => {
       window.removeEventListener('map-deleted', handleMapDeleted as EventListener);
     };
-  }, [isAuthenticated, user, maxMaps]);
+  }, [isAuthenticated, user]);
 
   // Don't render anything if not authenticated or if we've attempted to load but have no maps
   if (!isAuthenticated || !user || (hasAttemptedLoad && maps.length === 0)) {
@@ -125,7 +121,7 @@ export default function UserRecentMaps({ maxMaps = 3 }: UserRecentMapsProps) {
   }
   
   // Add empty invisible placeholders to maintain grid layout
-  const totalItemsNeeded = 4; // Always 4 columns
+  const totalItemsNeeded = maxMaps + 1; // maxMaps plus create new button
   const emptySpacesNeeded = totalItemsNeeded - displayItems.length;
   
   for (let i = 0; i < emptySpacesNeeded; i++) {
@@ -138,7 +134,7 @@ export default function UserRecentMaps({ maxMaps = 3 }: UserRecentMapsProps) {
 
   return (
     <div className="w-full px-0 mb-4">
-      <div className="grid grid-cols-4 gap-3 mb-5">
+      <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: `repeat(${maxMaps + 1}, 1fr)` }}>
         {displayItems}
       </div>
     </div>

@@ -20,7 +20,7 @@ import { useAuth } from '@/context/AuthContext';
 import { SearchModal } from '@/components/Search/SearchModal';
 import { isTokenExpiring, refreshToken } from '@/services/auth';
 import { API_BASE_URL } from '@/config/api';
-import DraggableElement from '@/components/Map/DraggableElement'; // Fixed casing
+import DraggableElement from '@/components/Map/DraggableElement'; // Added import
 
 
 
