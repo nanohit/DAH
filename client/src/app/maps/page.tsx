@@ -3023,7 +3023,7 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
       const mapData = await loadMap(mapId);
       
       if (mapData) {
-        console.log('[DEBUG loadMapData] Loaded map data isPrivate:', mapData.isPrivate);
+        console.log('[DEBUG loadMapData] Loaded map data isPrivate:', mapData?.isPrivate);
         
         // Debug: Log any book elements with completed status
         const booksWithCompletedStatus = mapData.elements.filter(
@@ -3041,7 +3041,7 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
         setCanvasPosition(mapData.canvasPosition);
         setScaleState(mapData.scale);
         setMapName(mapData.name);
-        setIsPrivate(mapData.isPrivate === true); // Explicitly convert to boolean
+        setIsPrivate(mapData?.isPrivate === true); // Explicitly convert to boolean
         setSavedMapId(mapData._id);
         
         // Store current state for comparison
@@ -3109,7 +3109,7 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
       
       // Check for null before accessing properties
       if (savedMap) {
-        console.log('[DEBUG] Saved map has isPrivate:', savedMap.isPrivate);
+        console.log('[DEBUG] Saved map has isPrivate:', savedMap?.isPrivate);
         console.log('[DEBUG] Saved map properties:', Object.keys(savedMap));
 
         // Update our state with the returned isPrivate value

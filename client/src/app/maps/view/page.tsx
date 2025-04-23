@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect, useMemo, Suspense, useLayoutE
 import Xarrow, { Xwrapper } from 'react-xarrows';
 import { toast } from 'react-hot-toast';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { loadMapViewOnly, MapElement, Connection, SavedMap } from '@/utils/mapUtils';
+import { loadMapViewOnly, MapElement, Connection } from '@/utils/mapUtils';
 import ReactMarkdown from 'react-markdown';
 import { useAuth } from '@/context/AuthContext';
 import { BsBookmark, BsBookmarkFill } from 'react-icons/bs';
@@ -222,7 +222,7 @@ function MapViewContent() {
       setMapName(mapData.name);
       setElements(mapData.elements);
       setConnections(mapData.connections);
-      setMapIsPrivate(!!mapData.isPrivate);
+      setMapIsPrivate(!!mapData?.isPrivate);
       
       // Check if there is a saved canvas position first
       if (mapData.canvasPosition) {
@@ -462,7 +462,7 @@ function MapViewContent() {
     const handleDOMChanges = () => {
       if (positionInitializedRef.current && !isPanning) {
         // Block any automatic repositioning attempts
-        // Removed console.log to prevent spam
+        console.log('Blocking automatic repositioning');
       }
     };
 
