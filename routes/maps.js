@@ -8,7 +8,7 @@ const { protect } = require('../middleware/auth');
 // @access  Private
 router.post('/', protect, async (req, res) => {
   try {
-    const { name, elements, connections, canvasPosition, scale } = req.body;
+    const { name, elements, connections, canvasPosition, scale, isPrivate } = req.body;
 
     // Clean line elements before processing
     const cleanedElements = elements?.map(element => {
@@ -167,6 +167,7 @@ router.post('/', protect, async (req, res) => {
         connections,
         canvasPosition,
         scale,
+        isPrivate
       });
 
       const savedMap = await map.save();
@@ -255,9 +256,14 @@ router.get('/', protect, async (req, res) => {
     const currentUserId = req.user._id;
     console.log(`Current user ID: ${currentUserId}`);
     
-    // Base query
-    let query = Map.find({})
-      .select('name elements connections canvasPosition scale lastSaved createdAt updatedAt user comments bookmarks')
+    // Base query - filter for public maps OR maps owned by current user
+    let query = Map.find({
+      $or: [
+        { isPrivate: { $ne: true } },  // Public maps
+        { user: currentUserId }        // User's own maps (including private ones)
+      ]
+    })
+      .select('name elements connections canvasPosition scale lastSaved createdAt updatedAt user comments bookmarks isPrivate')
       .populate({
         path: 'user',
         select: 'username badge',
@@ -317,7 +323,11 @@ router.get('/', protect, async (req, res) => {
         createdAt: map.createdAt,
         updatedAt: map.updatedAt,
         elementCount,
-        connectionCount
+        connectionCount,
+        elements: map.elements,
+        connections: map.connections,
+        isPrivate: map.isPrivate || false,
+        isOwner: map.user && currentUserId && map.user._id.toString() === currentUserId.toString()
       };
       
       // Include comments if they were populated
@@ -330,10 +340,14 @@ router.get('/', protect, async (req, res) => {
         response.bookmarks = map.bookmarks;
         
         // Check if the current user has bookmarked this map
-        const isBookmarked = map.bookmarks.some(bookmark => 
-          bookmark.user && bookmark.user.toString() === currentUserId.toString()
-        );
-        response.isBookmarked = isBookmarked;
+        if (currentUserId) {
+          const isBookmarked = map.bookmarks.some(bookmark => 
+            bookmark.user && bookmark.user.toString() === currentUserId.toString()
+          );
+          response.isBookmarked = isBookmarked;
+        } else {
+          response.isBookmarked = false;
+        }
       }
       
       return response;
@@ -358,6 +372,119 @@ router.get('/', protect, async (req, res) => {
     res.json(processedMaps);
   } catch (error) {
     console.error('Error in GET /api/maps:', error);
+    res.status(500).json({ 
+      message: 'Server Error fetching maps', 
+      error: error.message 
+    });
+  }
+});
+
+// @desc    Get all maps (public access)
+// @route   GET /api/maps/public
+// @access  Public
+router.get('/public', async (req, res) => {
+  try {
+    console.log('GET /api/maps/public - Fetching public maps');
+    const { include } = req.query;
+    const includeComments = include && include.includes('comments');
+    
+    // Base query - only fetch maps that are not private
+    let query = Map.find({ isPrivate: { $ne: true } })
+      .select('name elements connections canvasPosition scale lastSaved createdAt updatedAt user comments')
+      .populate({
+        path: 'user',
+        select: 'username badge',
+        model: 'User'
+      });
+    
+    // Conditionally populate comments if requested
+    if (includeComments) {
+      console.log('Including comments in the response');
+      query = query.populate({
+        path: 'comments',
+        options: { sort: { createdAt: -1 } },
+        populate: {
+          path: 'user',
+          select: 'username badge'
+        }
+      });
+    }
+    
+    // Sort and execute the query
+    const allMaps = await query.sort({ updatedAt: -1 });
+    
+    console.log(`Found ${allMaps.length} total maps before processing`);
+    
+    // Process maps for the response
+    const processedMaps = allMaps.map(map => {
+      // Handle user data
+      let userData;
+      if (map.user && map.user.username) {
+        // User data properly populated
+        userData = {
+          _id: map.user._id,
+          username: map.user.username,
+          badge: map.user.badge || ''
+        };
+      } else {
+        // User not found or not populated
+        userData = {
+          _id: map.user || 'unknown',
+          username: 'Unknown User',
+          badge: ''
+        };
+      }
+      
+      // Calculate counts
+      const elementCount = map.elements ? map.elements.length : 0;
+      const connectionCount = map.connections ? map.connections.length : 0;
+      
+      // Create a clean object to return
+      const response = {
+        _id: map._id,
+        name: map.name || 'Untitled Map',
+        user: userData,
+        canvasPosition: map.canvasPosition,
+        scale: map.scale,
+        lastSaved: map.lastSaved,
+        createdAt: map.createdAt,
+        updatedAt: map.updatedAt,
+        elementCount,
+        connectionCount,
+        elements: map.elements,
+        connections: map.connections,
+        isPrivate: false,
+        isOwner: false
+      };
+      
+      // Include comments if they were populated
+      if (includeComments && map.comments) {
+        response.comments = map.comments;
+      }
+      
+      // For public endpoint, there's no authentication, so isBookmarked is always false
+      response.isBookmarked = false;
+      
+      return response;
+    });
+    
+    // Log the first processed map for debugging
+    if (processedMaps.length > 0) {
+      console.log('First processed map example:', {
+        _id: processedMaps[0]._id,
+        name: processedMaps[0].name,
+        user: processedMaps[0].user,
+        created: processedMaps[0].createdAt,
+        commentsCount: processedMaps[0].comments ? processedMaps[0].comments.length : 0
+      });
+    } else {
+      console.log('No maps found in the database');
+    }
+    
+    console.log(`Returning ${processedMaps.length} maps to client`);
+    res.json(processedMaps);
+  } catch (error) {
+    console.error('Error in GET /api/maps/public:', error);
     res.status(500).json({ 
       message: 'Server Error fetching maps', 
       error: error.message 
@@ -524,8 +651,8 @@ router.get('/:id', protect, async (req, res) => {
 
 // @desc    Get a single map by ID in view-only mode (for non-owner users)
 // @route   GET /api/maps/:id/view
-// @access  Private
-router.get('/:id/view', protect, async (req, res) => {
+// @access  Public
+router.get('/:id/view', async (req, res) => {
   try {
     const { include } = req.query;
     const includeComments = include && include.includes('comments');
@@ -552,9 +679,30 @@ router.get('/:id/view', protect, async (req, res) => {
       return res.status(404).json({ message: 'Map not found' });
     }
 
+    // Check if map is private
+    if (map.isPrivate) {
+      // Get the user id from the token if available
+      const isAuthenticated = req.user && req.user._id;
+      
+      // If map is private and user is not authenticated or not the owner
+      if (!isAuthenticated || map.user.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ 
+          message: 'This map is private and can only be accessed by the owner',
+          isPrivate: true
+        });
+      }
+    }
+
     // Add an isOwner flag to indicate if the user is the map owner
     const response = map.toObject();
-    response.isOwner = map.user.toString() === req.user._id.toString();
+    
+    // Check if user is authenticated and is the owner
+    if (req.user) {
+      response.isOwner = map.user.toString() === req.user._id.toString();
+    } else {
+      // For unauthenticated users, they are never the owner
+      response.isOwner = false;
+    }
 
     res.json(response);
   } catch (error) {
@@ -612,10 +760,16 @@ router.put('/:id', protect, async (req, res) => {
       return res.status(401).json({ message: 'Not authorized to update this map' });
     }
 
-    const { name, elements, connections, canvasPosition, scale } = req.body;
+    const { name, elements, connections, canvasPosition, scale, isPrivate } = req.body;
 
     // Update map fields
     map.name = name || map.name;
+    
+    // Update isPrivate flag if provided
+    if (typeof isPrivate === 'boolean') {
+      map.isPrivate = isPrivate;
+      console.log(`[SERVER] Map privacy updated: isPrivate=${isPrivate}`);
+    }
 
     // Clean line elements before processing
     const cleanedElements = elements?.map(element => {
@@ -1003,6 +1157,51 @@ router.delete('/:id', protect, async (req, res) => {
       return res.status(404).json({ message: 'Map not found' });
     }
     res.status(500).json({ message: 'Server Error', error: error.message });
+  }
+});
+
+// @desc    Get user's recent maps
+// @route   GET /api/maps/recent
+// @access  Private
+router.get('/recent', protect, async (req, res) => {
+  try {
+    console.log('GET /api/maps/recent - Fetching recent maps for current user');
+    const limit = parseInt(req.query.limit) || 3;
+    const currentUserId = req.user._id;
+    
+    // Only fetch maps owned by the current user (including private ones)
+    const maps = await Map.find({ user: currentUserId })
+      .select('name updatedAt createdAt lastSaved user')
+      .populate({
+        path: 'user',
+        select: 'username badge',
+        model: 'User'
+      })
+      .sort({ updatedAt: -1 }) // Sort by most recently updated
+      .limit(limit);
+    
+    console.log(`Found ${maps.length} recent maps for user ${currentUserId}`);
+    
+    // Process maps for the response
+    const processedMaps = maps.map(map => {
+      return {
+        _id: map._id,
+        name: map.name || 'Untitled Map',
+        user: {
+          _id: map.user._id,
+          username: map.user.username,
+          badge: map.user.badge || ''
+        },
+        lastSaved: map.lastSaved,
+        createdAt: map.createdAt,
+        updatedAt: map.updatedAt
+      };
+    });
+    
+    res.json(processedMaps);
+  } catch (error) {
+    console.error('Error fetching recent maps:', error);
+    res.status(500).json({ message: 'Failed to fetch recent maps', error: error.message });
   }
 });
 

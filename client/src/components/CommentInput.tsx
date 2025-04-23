@@ -151,9 +151,10 @@ export default function CommentInput({
             onSubmit(e as any);
             setIsFocused(false);
           }}
-          className={`absolute right-0 top-0 bottom-0 px-6 bg-gray-600 text-white hover:bg-gray-700 transition-all duration-200 ${
-            isFocused ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          } ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
+          className={`absolute right-0 top-0 bottom-0 px-6 bg-gray-600 text-white hover:bg-gray-700
+            ${!isFocused ? 'opacity-0 pointer-events-none transition-opacity duration-0' : 
+              isLoading ? 'opacity-50 transition-opacity duration-200' : 'opacity-100 transition-opacity duration-200'
+            }`}
           disabled={disabled || isLoading}
         >
           {isLoading ? 'Posting...' : buttonText}

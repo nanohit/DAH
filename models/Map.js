@@ -120,6 +120,10 @@ const MapSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  isPrivate: {
+    type: Boolean,
+    default: false
+  },
   elements: [MapElementSchema],
   connections: [ConnectionSchema],
   canvasPosition: {

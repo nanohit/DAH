@@ -17,7 +17,14 @@ export const useParticles = () => {
         script.async = true;
         
         script.onload = () => {
-          window.particlesJS('particles-js', particlesConfig);
+          // Check if the particles-js element exists before initializing
+          const particlesContainer = document.getElementById('particles-js');
+          if (particlesContainer && window.particlesJS) {
+            window.particlesJS('particles-js', particlesConfig);
+          } else {
+            // Skip initialization if the element doesn't exist
+            console.debug('Particles.js container not found, skipping initialization');
+          }
         };
         
         document.body.appendChild(script);

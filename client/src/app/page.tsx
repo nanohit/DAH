@@ -9,6 +9,7 @@ import SocketStatus from '@/components/SocketStatus';
 import { getUserMaps, SavedMap } from '@/utils/mapUtils';
 import api from '@/services/api';
 import { Post } from '@/components/PostList';
+import UserRecentMaps from '@/components/UserRecentMaps';
 
 // Define a combined item type for both posts and maps
 interface CombinedItem extends Omit<Post, 'isMap' | 'mapData'> {
@@ -107,6 +108,9 @@ export default function HomePage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-4xl mx-auto">
+        {/* Display recent maps for logged-in users */}
+        <UserRecentMaps maxMaps={4} />
+        
         <PostList 
           onPostUpdated={handleItemUpdate}
           posts={combinedItems}

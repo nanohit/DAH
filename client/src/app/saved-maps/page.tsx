@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
-import { getUserMaps, deleteMap, SavedMap, bookmarkMap } from '@/utils/mapUtils';
+import { getUserMaps, deleteMap, SavedMap, bookmarkMap, notifyMapDeleted } from '@/utils/mapUtils';
 import Link from 'next/link';
 import MapCommentSection from '@/components/MapCommentSection';
 import { useAuth } from '@/context/AuthContext';
@@ -183,7 +183,9 @@ export default function SavedMapsPage() {
       if (success) {
         setMaps(maps.filter(map => map._id !== mapId));
         setDeleteConfirm(null);
-        toast.success('Map deleted successfully');
+        
+        // Explicitly call notifyMapDeleted here as well for redundancy
+        notifyMapDeleted(mapId);
       }
     } catch (error) {
       console.error('Error deleting map:', error);
@@ -209,7 +211,7 @@ export default function SavedMapsPage() {
       console.log('Opening map in edit mode');
       router.push(`/maps?id=${mapId}`);
     } else {
-      // If the map doesn't belong to the current user, open in view-only mode
+      // For non-owners and unregistered users, open in view-only mode
       console.log('Opening map in view-only mode');
       router.push(`/maps/view?id=${mapId}`);
     }
@@ -359,12 +361,14 @@ export default function SavedMapsPage() {
               Last Updated
             </button>
           </div>
-          <Link 
-            href="/maps" 
-            className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
-          >
-            + New Map
-          </Link>
+          {user && (
+            <Link 
+              href="/maps" 
+              className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
+            >
+              + New Map
+            </Link>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -461,6 +465,9 @@ export default function SavedMapsPage() {
                   {/* Map stats with comments on right */}
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center text-sm text-gray-500">
+                      {map.isPrivate && (
+                        <span className="bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 text-xs px-2 py-0.5 rounded-md mr-2 shadow-sm border border-blue-100/50 whitespace-nowrap">Visible only to you</span>
+                      )}
                       <span>{map.elementCount || 0} elements</span>
                       <span className="mx-1">•</span>
                       <span>{map.connectionCount || 0} connections</span>

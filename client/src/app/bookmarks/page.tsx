@@ -342,6 +342,9 @@ export default function BookmarksPage() {
                       
                       {/* Map stats - styled like post text */}
                       <div className="prose prose-sm max-w-none !text-black mb-4">
+                        {map.isPrivate && (
+                          <p className="bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 text-xs px-2 py-0.5 rounded-md inline-block mb-1 shadow-sm border border-blue-100/50 whitespace-nowrap">Visible only to you</p>
+                        )}
                         <p className="text-black">{map.elementCount || 0} elements</p>
                         <p className="text-black">{map.connectionCount || 0} connections</p>
                       </div>

@@ -112,7 +112,14 @@ export default function UserProfile() {
         author: map.user,
         likes: [],
         dislikes: [],
-        comments: map.comments || []
+        comments: map.comments || [],
+        mapData: {
+          ...map,
+          elementCount: map.elementCount,
+          connectionCount: map.connectionCount,
+          user: map.user,
+          isPrivate: map.isPrivate || false
+        }
       }));
       
       setMaps(processedMaps);
@@ -156,7 +163,14 @@ export default function UserProfile() {
         author: map.user,
         likes: [],
         dislikes: [],
-        comments: map.comments || []
+        comments: map.comments || [],
+        mapData: {
+          ...map,
+          elementCount: map.elementCount,
+          connectionCount: map.connectionCount,
+          user: map.user,
+          isPrivate: map.isPrivate || false
+        }
       }));
       
       setMaps(prev => [...prev, ...processedMaps]);

@@ -986,7 +986,7 @@ export default function PostList({
   }, [posts]);
 
   const handleOpenMap = (mapId: string, mapData: any) => {
-    if (mapData.user._id === user?._id) {
+    if (user && mapData.user._id === user._id) {
       router.push(`/maps?id=${mapId}`);
     } else {
       router.push(`/maps/view?id=${mapId}`);
@@ -1131,6 +1131,7 @@ export default function PostList({
                   src={imageUrl} 
                   alt="Preview" 
                   fill
+                  sizes="(max-width: 768px) 100vw, 300px"
                   style={{ objectFit: 'cover' }}
                   className="rounded-lg"
                 />
@@ -1308,6 +1309,9 @@ export default function PostList({
                       {/* Map stats with comments on right */}
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center text-sm text-gray-500">
+                          {post.mapData?.isPrivate && (
+                            <span className="bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 text-xs px-2 py-0.5 rounded-md mr-2 shadow-sm border border-blue-100/50 whitespace-nowrap">Visible only to you</span>
+                          )}
                           <span>{(post.mapData?.elementCount || 0)} elements</span>
                           <span className="mx-1">•</span>
                           <span>{(post.mapData?.connectionCount || 0)} connections</span>

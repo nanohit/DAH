@@ -17,7 +17,7 @@ interface MapData {
   createdAt: string;
 }
 
-export default function UserRecentMaps({ maxMaps = 3 }: { maxMaps?: number }) {
+export default function UserRecentMaps() {
   const { isAuthenticated, user } = useAuth();
   const [maps, setMaps] = useState<MapData[]>([]);
   const [hasAttemptedLoad, setHasAttemptedLoad] = useState(false);
@@ -51,7 +51,7 @@ export default function UserRecentMaps({ maxMaps = 3 }: { maxMaps?: number }) {
           });
           
           // Take only the 3 most recent
-          setMaps(sortedMaps.slice(0, maxMaps));
+          setMaps(sortedMaps.slice(0, 3));
         }
         setHasAttemptedLoad(true);
       } catch (error) {
@@ -121,7 +121,7 @@ export default function UserRecentMaps({ maxMaps = 3 }: { maxMaps?: number }) {
   }
   
   // Add empty invisible placeholders to maintain grid layout
-  const totalItemsNeeded = maxMaps + 1; // maxMaps plus the "Create New" button
+  const totalItemsNeeded = 4; // Always 4 columns
   const emptySpacesNeeded = totalItemsNeeded - displayItems.length;
   
   for (let i = 0; i < emptySpacesNeeded; i++) {
@@ -132,7 +132,6 @@ export default function UserRecentMaps({ maxMaps = 3 }: { maxMaps?: number }) {
     );
   }
 
-  // Use a fixed grid class that can accommodate up to maxMaps + 1 items
   return (
     <div className="w-full px-0 mb-4">
       <div className="grid grid-cols-4 gap-3 mb-5">

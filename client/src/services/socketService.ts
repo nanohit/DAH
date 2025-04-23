@@ -300,76 +300,54 @@ class SocketService {
    * Register an event handler
    */
   public on(event: string, callback: Function): void {
+    // If real-time updates are disabled, don't even try to register handlers
+    if (!this._isRealTimeEnabled) {
+      if (this.shouldLog(1)) {
+        console.log(`[SOCKET] Not registering ${event} handler - real-time updates are disabled`);
+      }
+      return;
+    }
+    
+    // Connect if needed
     if (!this.socket) {
-      if (this.shouldLog(5)) { // Reduce logging frequency
+      if (this.shouldLog(5)) {
         console.log(`[SOCKET] No socket when registering ${event}, connecting first`);
       }
       this.connect();
     }
-    
-    // First-time initialization for this event type
+
+    // Create a Map for this event type if it doesn't exist
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, new Map());
-      
-      // Create a master handler for this event type
-      if (this.socket) {
-        // Show less logging to reduce noise - log only certain events
-        if (['comment-created', 'comment-updated', 'comment-deleted'].includes(event) && Math.random() < 0.10) {
-          console.log(`[SOCKET] Setting up master handler for event: ${event}`);
-        }
-        
-        this.socket.on(event, (data: any) => {
-          // Only log important events to reduce noise
-          if (['comment-created', 'comment-updated', 'comment-deleted'].includes(event) && Math.random() < 0.05) {
-            console.log(`[SOCKET][${event}] Event received`);
-          }
-          
-          // Get all handlers for this event
-          const handlers = this.eventHandlers.get(event);
-          if (!handlers) {
-            if (['comment-created', 'comment-updated', 'comment-deleted'].includes(event) && Math.random() < 0.05) {
-              console.log(`[SOCKET] No handlers found for important event: ${event}`);
-            }
-            return;
-          }
-          
-          // Skip most events if real-time updates are disabled
-          if (!this._isRealTimeEnabled && 
-              event !== 'connect' && 
-              event !== 'disconnect' && 
-              event !== 'connect_error') {
-            if (['comment-created', 'comment-updated', 'comment-deleted'].includes(event) && Math.random() < 0.05) {
-              console.log(`[SOCKET] Ignoring ${event} event (real-time disabled)`);
-            }
-            return;
-          }
-          
-          // Call each handler with the data
-          if (['comment-created', 'comment-updated', 'comment-deleted'].includes(event) && Math.random() < 0.05) {
-            console.log(`[SOCKET] Calling handlers for ${event}`);
-          }
-          
-          handlers.forEach((_, originalCallback) => {
-            try {
-              originalCallback(data);
-            } catch (err) {
-              console.error(`[SOCKET] Error in event handler for ${event}:`, err);
-            }
-          });
-        });
-      }
     }
+
+    // Store reference to the callback
+    const handlers = this.eventHandlers.get(event);
     
-    // Add this callback to our map for this event
-    const handlersMap = this.eventHandlers.get(event);
-    if (handlersMap) {
-      // Only log for important events and limit frequency
-      if (['comment-created', 'comment-updated', 'comment-deleted'].includes(event) && Math.random() < 0.05) {
-        console.log(`[SOCKET] Adding handler for ${event}, total handlers: ${handlersMap.size + 1}`);
+    if (handlers && !handlers.has(callback)) {
+      // Create a wrapper that will be called by socket.io
+      const wrappedCallback = (...args: any[]) => {
+        try {
+          callback(...args);
+        } catch (error) {
+          console.error(`[SOCKET] Error in ${event} handler:`, error);
+        }
+      };
+      
+      // Store the wrapper with the original callback as key
+      handlers.set(callback, wrappedCallback);
+      
+      // Add the actual event listener to the socket
+      if (this.shouldLog(5)) {
+        console.log(`[SOCKET] Setting up master handler for event: ${event}`);
       }
-      // Store the original callback as both key and value
-      // This makes it easier to look up when removing
-      handlersMap.set(callback, callback);
+      
+      this.socket?.on(event, (...args: any[]) => {
+        if (this.shouldLog(10)) {
+          console.log(`[SOCKET][${event}] Event received`);
+        }
+        wrappedCallback(...args);
+      });
     }
   }
   

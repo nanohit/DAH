@@ -11,6 +11,16 @@ import UserBadge from './UserBadge';
 import api from '@/services/api';
 import socketService from '@/services/socketService';
 
+// Debug flag - set to false to disable all debug logging
+const DEBUG_ENABLED = false;
+
+// Debug logger that only logs when DEBUG_ENABLED is true
+const debugLog = (...args: any[]) => {
+  if (DEBUG_ENABLED) {
+    console.log(...args);
+  }
+};
+
 export interface User {
   _id: string;
   username: string;
@@ -163,25 +173,10 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       ).map(sortCommentRepliesRecursively);
       
-      // Debug log to inspect comment structure
-      console.log('Debug - Initial comments structure:', JSON.stringify(initialComments.slice(0, 2), null, 2));
-      
-      // Check if replies are properly structured
-      const hasNestedReplies = initialComments.some(comment => 
-        comment.replies && 
-        comment.replies.length > 0 && 
-        comment.replies.some(reply => reply.replies && reply.replies.length > 0)
-      );
-      
-      console.log('Debug - Has nested replies in initialComments:', hasNestedReplies);
-      
       setComments(sortedInitialComments);
     } else {
       // Otherwise fetch comments (if not an optimistic post)
       fetchComments().then(comments => {
-        console.log('Debug - Fetched comments structure:', 
-          JSON.stringify(comments.slice(0, 2), null, 2)
-        );
         setComments(comments);
       });
     }
@@ -247,9 +242,9 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
 
     try {
       // Only log ~10% of comment submissions to reduce noise
-      const shouldLogCommentSubmission = Math.random() < 0.1;
+      const shouldLogCommentSubmission = Math.random() < 0.1 && DEBUG_ENABLED;
       if (shouldLogCommentSubmission) {
-        console.log(`[CommentSection] Submitting ${parentId ? 'reply' : 'new comment'} for post ${postId}`);
+        debugLog(`[CommentSection] Submitting ${parentId ? 'reply' : 'new comment'} for post ${postId}`);
       }
       
       // Create optimistic comment for instant UI update
@@ -271,11 +266,6 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
         post: postId
       };
       
-      console.log(`Debug - Creating ${parentId ? 'reply' : 'new comment'} for post ${postId}`);
-      if (parentId) {
-        console.log(`Debug - This is a reply to comment ID: ${parentId}`);
-      }
-      
       // Update UI immediately
       if (parentId) {
         // Add reply optimistically
@@ -290,7 +280,6 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
           const parentComment = prevComments.find(c => c._id === parentId);
           
           if (parentComment) {
-            console.log(`Debug - Found parent comment (top-level) with ID: ${parentId}`);
             // It's a direct reply to a top-level comment
             return prevComments.map(comment => {
               if (comment._id === parentId) {
@@ -303,7 +292,6 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
             });
           } else {
             // It might be a reply to a nested comment
-            console.log(`Debug - Looking for nested parent comment with ID: ${parentId}`);
             const updatedComments = prevComments.map(comment => {
               if (comment.replies && comment.replies.length > 0) {
                 return {
@@ -326,7 +314,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
         setComments(prevComments => {
           const updatedComments = [optimisticComment, ...prevComments];
           if (shouldLogCommentSubmission) {
-            console.log(`[CommentSection] Updated comments with optimistic top-level comment`);
+            debugLog(`[CommentSection] Updated comments with optimistic top-level comment`);
           }
           return updatedComments;
         });
@@ -335,7 +323,6 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
       }
       
       // Make the actual API request
-      console.log(`Debug - Sending API request to create comment`);
       const response = await api.post(`/api/comments/post/${postId}`, {
         content,
         parentCommentId: parentId
@@ -343,13 +330,11 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
       
       // Replace the optimistic comment with the real one
       const serverComment = response.data;
-      console.log(`Debug - Received server response:`, serverComment);
       
       // After successful server response, refresh comments to ensure
       // we have the correct structure especially for nested replies
       if (parentId) {
         // Fetch fresh comments to ensure proper structure for nested replies
-        console.log(`Debug - Fetching fresh comments after adding a reply`);
         const freshComments = await fetchComments();
         setComments(freshComments);
       } else {
@@ -611,18 +596,6 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     const isCollapsed = branchCollapsed[comment._id];
     const totalReplies = countRepliesRecursively(comment);
 
-    // Debug nested replies
-    if (hasReplies && depth === 0) {
-      console.log(`Debug - Comment ${comment._id} has ${replies.length} direct replies`);
-      const nestedReplies = replies.filter(reply => reply.replies && reply.replies.length > 0);
-      if (nestedReplies.length > 0) {
-        console.log(`Debug - Comment ${comment._id} has ${nestedReplies.length} replies with nested replies`);
-        nestedReplies.forEach(reply => {
-          console.log(`Debug - Reply ${reply._id} has ${reply.replies?.length || 0} nested replies`);
-        });
-      }
-    }
-
     // Skip rendering if the comment data is invalid
     if (!comment.user || !comment.createdAt) {
       console.error('Invalid comment data:', comment);
@@ -795,7 +768,6 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
         {hasReplies && !isCollapsed && (
           <div className="mt-3">
             {replies.map(reply => {
-              console.log(`Debug - Rendering reply ${reply._id}, has nested replies: ${(reply.replies && reply.replies.length > 0) ? 'Yes' : 'No'}`);
               return renderComment(reply, depth + 1);
             })}
           </div>
@@ -816,7 +788,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     // Skip socket registration if real-time updates are disabled
     if (!socketService.isRealTimeEnabled()) {
       if (Math.random() < 0.05) { // Only log 5% of the time
-        console.log('[CommentSection] Real-time updates are disabled, skipping socket setup');
+        debugLog('[CommentSection] Real-time updates are disabled, skipping socket setup');
       }
       return;
     }
@@ -824,7 +796,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     // Only log 5% of setup operations to reduce noise
     const shouldLogSetup = Math.random() < 0.05;
     if (shouldLogSetup) {
-      console.log(`[CommentSection] Setting up socket listeners for post ${postId}`);
+      debugLog(`[CommentSection] Setting up socket listeners for post ${postId}`);
     }
     
     // Make sure socket is connected and join the post room
@@ -836,11 +808,11 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
         socketService.joinPostRoom(postId);
         // Extremely low log frequency (1%)
         if (Math.random() < 0.01) {
-          console.log(`[CommentSection] Room join command sent for post ${postId}`);
+          debugLog(`[CommentSection] Room join command sent for post ${postId}`);
         }
       } else {
         if (shouldLogSetup) {
-          console.log(`[CommentSection] Socket not connected, will try again soon`);
+          debugLog(`[CommentSection] Socket not connected, will try again soon`);
         }
         socketService.connect();
       }
@@ -859,13 +831,13 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     const pingTimer = setTimeout(() => {
       socketService.ping().then(isConnected => {
         if (shouldLogSetup) {
-          console.log(`[CommentSection] Ping test: ${isConnected ? 'Connected' : 'Not connected'}`);
+          debugLog(`[CommentSection] Ping test: ${isConnected ? 'Connected' : 'Not connected'}`);
         }
         
         // If not connected, try to reconnect
         if (!isConnected) {
           if (shouldLogSetup) {
-            console.log(`[CommentSection] Reconnecting after failed ping test`);
+            debugLog(`[CommentSection] Reconnecting after failed ping test`);
           }
           socketService.reconnect();
           setTimeout(ensureRoomJoined, 1000);
@@ -875,7 +847,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     
     // Only log debug info 1% of the time
     if (Math.random() < 0.01 && comments.length > 0) {
-      console.log(`[CommentSection] Tracking ${comments.length} comments (first ID: ${comments[0]._id})`);
+      debugLog(`[CommentSection] Tracking ${comments.length} comments (first ID: ${comments[0]._id})`);
     }
 
     // Register event handlers DIRECTLY without saving references
@@ -883,21 +855,21 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     socketService.on('comment-created', (data: CommentCreatedEvent) => {
       // Only log critical comment events 
       if (Math.random() < 0.05) {
-        console.log('[CommentSection] Received comment-created event for post:', postId);
+        debugLog('[CommentSection] Received comment-created event for post:', postId);
       }
       
       const { comment, parentCommentId } = data;
       
       // Add debugging for comment structure
       if (!comment || typeof comment !== 'object') {
-        console.error('[CommentSection] Invalid comment data received:', data);
+        debugLog('[CommentSection] Invalid comment data received:', data);
         return;
       }
       
       // Only process if this comment belongs to our post
       if (comment.post !== postId) {
         if (Math.random() < 0.1) {
-          console.log(`[CommentSection] Comment is for different post, skipping`);
+          debugLog(`[CommentSection] Comment is for different post, skipping`);
         }
         return;
       }
@@ -952,7 +924,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
       
       if (isDuplicate) {
         if (Math.random() < 0.05) {
-          console.log('[CommentSection] Duplicate comment or optimistic version detected, skipping');
+          debugLog('[CommentSection] Duplicate comment or optimistic version detected, skipping');
         }
         return;
       }
@@ -960,7 +932,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
       // Skip if this comment is flagged as already handled by this client
       if (comment.clientHandled) {
         if (Math.random() < 0.05) {
-          console.log('[CommentSection] Comment was already handled by this client, skipping');
+          debugLog('[CommentSection] Comment was already handled by this client, skipping');
         }
         return;
       }
@@ -969,7 +941,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
       if (parentCommentId) {
         // It's a reply to another comment
         if (Math.random() < 0.1) {
-          console.log(`[CommentSection] Adding reply to parent comment: ${parentCommentId}`);
+          debugLog(`[CommentSection] Adding reply to parent comment: ${parentCommentId}`);
         }
         setComments(prevComments => {
           return prevComments.map(c => {
@@ -994,7 +966,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
       } else {
         // It's a top-level comment
         if (Math.random() < 0.1) {
-          console.log('[CommentSection] Adding top-level comment');
+          debugLog('[CommentSection] Adding top-level comment');
         }
         setComments(prev => {
           const newComments = [comment, ...prev];
@@ -1009,7 +981,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
       // based on matching the current user's ID
       const shouldAutoExpand = isOwnComment && !showAllComments;
       if (shouldAutoExpand) {
-        console.log('[CommentSection] Auto-expanding comments for comment author');
+        debugLog('[CommentSection] Auto-expanding comments for comment author');
         setShowAllComments(true);
       }
     });
@@ -1017,7 +989,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     socketService.on('comment-updated', (updatedComment: CommentUpdatedEvent) => {
       // Only log 5% of comment update events
       if (Math.random() < 0.05) {
-        console.log('[CommentSection] Comment updated:', updatedComment._id);
+        debugLog('[CommentSection] Comment updated:', updatedComment._id);
       }
       
       // Only process if this comment belongs to our post
@@ -1033,7 +1005,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     socketService.on('comment-deleted', (data: CommentDeletedEvent) => {
       // Only log 5% of comment deletion events
       if (Math.random() < 0.05) {
-        console.log('[CommentSection] Comment deleted:', data.commentId);
+        debugLog('[CommentSection] Comment deleted:', data.commentId);
       }
       
       const { commentId, parentCommentId } = data;
@@ -1054,7 +1026,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
     socketService.on('connect', () => {
       // Log reconnections only 10% of the time
       if (Math.random() < 0.1) {
-        console.log('[CommentSection] Socket reconnected, rejoining room:', postId);
+        debugLog('[CommentSection] Socket reconnected, rejoining room:', postId);
       }
       socketService.joinPostRoom(postId);
     });
@@ -1064,7 +1036,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
       const shouldLogCleanup = Math.random() < 0.1;
       
       if (shouldLogCleanup) {
-        console.log(`[CommentSection] Cleaning up listeners for post ${postId}`);
+        debugLog(`[CommentSection] Cleaning up listeners for post ${postId}`);
       }
       
       socketService.leavePostRoom(postId);

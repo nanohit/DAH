@@ -77,7 +77,7 @@ interface MapData {
   scale: number;
   canvasWidth: number;
   canvasHeight: number;
-  isPrivate: boolean;
+  isPrivate?: boolean;
 }
 
 export interface SavedMap extends MapData {
@@ -99,7 +99,7 @@ export interface SavedMap extends MapData {
   }>;
   isBookmarked?: boolean;
   isOwner?: boolean;
-  isPrivate: boolean;
+  isPrivate?: boolean;
 }
 
 // Create a debounce function for autosave that returns a promise
