@@ -129,6 +129,7 @@ function MapViewContent() {
   const [mapName, setMapName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [scale, setScale] = useState(1);
+  const [mapIsPrivate, setMapIsPrivate] = useState(false);
   
   // Canvas position and panning state
   const [canvasPosition, setCanvasPosition] = useState({ x: 0, y: 0 });
@@ -194,6 +195,16 @@ function MapViewContent() {
     console.log('Connections updated:', connections.length, connections);
   }, [elements, connections]);
 
+  // Update document title when map name changes
+  useEffect(() => {
+    // Only update the title if we're not in the initial loading phase
+    if (!isLoading && mapName) {
+      document.title = `${mapName} - Alphy`;
+    } else if (!isLoading) {
+      document.title = 'Alphy';
+    }
+  }, [mapName, isLoading]);
+
   // Function to load map data
   const loadMapData = async (mapId: string) => {
     try {
@@ -202,7 +213,8 @@ function MapViewContent() {
       
       if (!mapData) {
         toast.error('Failed to load map data');
-        router.push('/saved-maps');
+        // Redirect to home page for all users instead of saved-maps
+        router.push('/');
         return;
       }
       
@@ -210,6 +222,7 @@ function MapViewContent() {
       setMapName(mapData.name);
       setElements(mapData.elements);
       setConnections(mapData.connections);
+      setMapIsPrivate(!!mapData.isPrivate);
       
       // Check if there is a saved canvas position first
       if (mapData.canvasPosition) {
@@ -403,7 +416,7 @@ function MapViewContent() {
 
   // Exit view-only mode
   const handleExit = () => {
-    router.push('/saved-maps');
+    router.push('/');
   };
 
   // Add useLayoutEffect to set initial position only once
@@ -449,7 +462,7 @@ function MapViewContent() {
     const handleDOMChanges = () => {
       if (positionInitializedRef.current && !isPanning) {
         // Block any automatic repositioning attempts
-        console.log('Blocking automatic repositioning');
+        // Removed console.log to prevent spam
       }
     };
 
@@ -868,7 +881,11 @@ function MapViewContent() {
               <path d="M19 12H5M12 19l-7-7 7-7"/>
             </svg>
             <span className="text-gray-800 font-medium text-base">{mapName}</span>
-            <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">View only</span>
+            {mapIsPrivate ? (
+              <span className="ml-2 text-xs bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 px-2 py-0.5 rounded-md shadow-sm border border-blue-100/50 whitespace-nowrap">Visible only to you</span>
+            ) : (
+              <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">View only</span>
+            )}
           </div>
         </div>
 
