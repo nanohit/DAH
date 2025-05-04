@@ -1,6 +1,6 @@
 # Alphy (code name DAH)
 
-A social forum for dark academia enthusiasts to share content, discuss literature, and connect.
+A social forum, mimd-mapping tool and book download source.
 
 ## Getting Started
 
