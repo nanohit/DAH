@@ -1365,6 +1365,29 @@ function MapsContent() {
   const router = useRouter();
   const { user } = useAuth();
 
+  // Add state for text editing modal
+  // Include a flag to indicate if default text should be auto-selected
+  const [textEditModal, setTextEditModal] = useState<{ id: string; text: string; selectDefault?: boolean } | null>(null);
+  // Add state for image uploading
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  // Add state for link modal
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [isLoadingLinkPreview, setIsLoadingLinkPreview] = useState(false);
+  const [linkPreviewData, setLinkPreviewData] = useState<{
+    url: string;
+    title?: string;
+    description?: string;
+    image?: string;
+    siteName?: string;
+    favicon?: string;
+    displayUrl?: string;
+    youtubeVideoId?: string; // Add property for YouTube video embedding
+  } | null>(null);
+  // Add state for fullscreen image view
+  const [fullscreenImage, setFullscreenImage] = useState<{ url: string; alt?: string } | null>(null);
+
   const { setNodeRef } = useDroppable({
     id: 'droppable',
   });
@@ -1708,6 +1731,7 @@ function MapsContent() {
     };
 
     setElements(prev => [...prev, newElement]);
+    setSelectedElement(newElement.id); // Select the newly added element
   }, [elements.length, getViewportCenterInCanvas]);
 
   useEffect(() => {
@@ -2005,9 +2029,12 @@ function MapsContent() {
       window.open(element.linkData.url, '_blank');
     } else {
       // For regular text elements
+      // Check if the text is the default placeholder and set flag accordingly
+      const isDefaultText = element.text === 'double click to edit';
       setTextEditModal({
         id: element.id,
-        text: element.text
+        text: element.text,
+        selectDefault: isDefaultText
       });
     }
   };
@@ -2484,19 +2511,29 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     // Check if any modal is open by checking the state variables at runtime
     // This avoids the temporal dead zone error from dependency array
     const modalCheck = () => {
+      // Check if the focus is on an input/textarea element first, treat as modal
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        // Allow space within inputs/textareas
+        if (e.key === ' ') return false; 
+        // Treat other keys as if a modal is open if focused on input/textarea
+        return true; 
+      }
+      
+      // Check other modal states
       return isSearchModalOpen || 
              !!bookDetailsModal || 
-             // Access textEditModal via function call to avoid circular reference
-             !!document.querySelector('#textEditModal') || 
+             !!textEditModal || // Updated check for textEditModal state
              isImageModalOpen ||
              isLinkModalOpen ||
              !!fullscreenImage;
     };
     
-    // Don't capture key events when text modal is open to allow for text navigation
-    if (document.querySelector('#textEditModal')) {
-      // Still capture Ctrl+= and Ctrl+- for zoom, but nothing else
-      if (e.ctrlKey && (e.key === '=' || e.key === '+' || e.key === '-')) {
+    // If any modal is open, don't process other shortcuts
+    // (except for zoom in text modal)
+    if (modalCheck()) {
+      // Allow zoom even within text modal
+      if (!!textEditModal && e.ctrlKey && (e.key === '=' || e.key === '+' || e.key === '-')) {
         e.preventDefault();
         if (e.key === '=' || e.key === '+') {
           setScaleState(prevScale => Math.min(prevScale + 0.25, 2));
@@ -2504,14 +2541,14 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
           setScaleState(prevScale => Math.max(prevScale - 0.1, 0.1));
         }
       }
-      return;
+      return; // Exit if any modal is open (and not handling zoom in text modal)
     }
     
     // Don't interfere with Alt+Arrow key combinations as they're used for text editing
     if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       return;
     }
-    
+
     if (e.ctrlKey) {
       if (e.key === '=' || e.key === '+') {
         e.preventDefault();
@@ -2520,10 +2557,7 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
         e.preventDefault();
         setScaleState(prevScale => Math.max(prevScale - 0.1, 0.1));
       }
-    }
-    
-    // Track Alt key for element duplication (handle both key formats)
-    if (e.key === 'Alt' || e.key === 'Meta' || e.altKey) {
+    } else if (e.key === 'Alt' || e.key === 'Meta' || e.altKey) {
       // Don't prevent default behavior for Alt+Arrow key combinations
       if (!(e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault(); // Prevent browser's default behavior for other Alt combinations
@@ -2540,20 +2574,43 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
           containerRef.current.className = containerRef.current.className.replace('cursor-grab', 'cursor-copy');
         }
       }
+    } else if (e.key === ' ') { // Spacebar pressed
+      e.preventDefault(); // Prevent page scroll or adding space if an input was focused
+      
+      // Check if a text element is selected
+      if (selectedElement) {
+        const element = elements.find(el => el.id === selectedElement);
+        if (element && element.type === 'element') {
+          // Open the text edit modal for the selected text element
+          // Check if the text is the default placeholder and set flag accordingly
+          const isDefaultText = element.text === 'double click to edit';
+          setTextEditModal({ 
+            id: element.id, 
+            text: element.text, 
+            selectDefault: isDefaultText 
+          });
+        } else {
+          // If a non-text element is selected, create a new text element
+          handleAddElement('horizontal');
+        }
+      } else {
+        // If no element is selected, create a new text element
+        handleAddElement('horizontal');
+      }
     }
-  }, [isPanning]); // Remove textEditModal from dependency array
+  }, [isPanning, isSearchModalOpen, bookDetailsModal, textEditModal, isImageModalOpen, isLinkModalOpen, fullscreenImage, handleAddElement, selectedElement, elements, setTextEditModal]); // Add dependencies
 
   // Handle key up for Alt key
   const handleKeyUp = useCallback((e: KeyboardEvent) => {
-    // Skip Alt key handling when text edit modal is open
-    if (document.querySelector('#textEditModal')) {
+    // Check if the text edit modal is open by checking the state
+    if (textEditModal) { // Updated check for textEditModal state
       return;
     }
     
-    if (e.key === 'Alt' || e.key === 'Meta' || e.altKey) {
+    if (e.key === 'Alt' || e.key === 'Meta' || !e.altKey) { // Check !e.altKey for when meta key is released
       // Don't prevent default behavior for Alt+Arrow key combinations
       if (!(e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-        e.preventDefault(); // Prevent browser's default behavior for other Alt combinations
+        // No need to prevent default on key up typically
       }
       
       setIsAltKeyPressed(false);
@@ -2564,7 +2621,7 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
         containerRef.current.className = `map-container with-grid absolute ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`;
       }
     }
-  }, [isPanning]); // Remove textEditModal from dependency array
+  }, [isPanning, textEditModal]); // Updated check for textEditModal state
 
   // Add event listeners
   useEffect(() => {
@@ -2596,7 +2653,7 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     }, 100);
   }, [connections, scale]);
 
-  const [textEditModal, setTextEditModal] = useState<{ id: string; text: string } | null>(null);
+  // const [textEditModal, setTextEditModal] = useState<{ id: string; text: string } | null>(null);
   const bookCoverRef = useRef<HTMLDivElement>(null);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const [isHovering, setIsHovering] = useState(false);
@@ -2636,25 +2693,6 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     };
   }, []);
 
-  // Add state for image uploading
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
-  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
-  
-  // Add state for link modal
-  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
-  const [isLoadingLinkPreview, setIsLoadingLinkPreview] = useState(false);
-  const [linkPreviewData, setLinkPreviewData] = useState<{
-    url: string;
-    title?: string;
-    description?: string;
-    image?: string;
-    siteName?: string;
-    favicon?: string;
-    displayUrl?: string;
-    youtubeVideoId?: string; // Add property for YouTube video embedding
-  } | null>(null);
-  
   // Function to fetch link preview data
   const fetchLinkPreview = async (url: string) => {
     setIsLoadingLinkPreview(true);
@@ -2994,9 +3032,6 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     };
     input.click();
   }, []);
-
-  // Add state for fullscreen image view
-  const [fullscreenImage, setFullscreenImage] = useState<{ url: string; alt?: string } | null>(null);
 
   // Load map from URL if id is present
   useEffect(() => {
@@ -3716,6 +3751,49 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
       // Note: We don't trigger saveMapToDatabase here anymore since we do it directly in the click handlers
     }
   }, [isPrivate, savedMapId]);
+
+  // Add keyboard shortcut for delete element
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if 'Delete' or 'Backspace' key is pressed
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Check if an element is selected
+        if (selectedElement) {
+          // Check if the focus is not on an input or textarea element
+          const activeElement = document.activeElement;
+          if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+            return; // Don't delete if user is typing in an input/textarea
+          }
+          
+          // Prevent default browser behavior (e.g., navigating back on Backspace)
+          e.preventDefault(); 
+          handleDeleteElement();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    // Cleanup the event listener on component unmount
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedElement, handleDeleteElement]); // Depend on selectedElement and the delete handler
+
+  // useEffect hook to handle auto-selecting text in the modal
+  useEffect(() => {
+    if (textEditModal && textEditModal.selectDefault && textEditRef.current) {
+      // Use setTimeout to ensure the element is ready in the DOM
+      setTimeout(() => {
+        if (textEditRef.current) {
+          textEditRef.current.focus();
+          textEditRef.current.select();
+          // Reset the flag so it doesn't re-select on subsequent renders
+          setTextEditModal(prev => prev ? { ...prev, selectDefault: false } : null);
+        }
+      }, 0);
+    }
+  }, [textEditModal]); // Dependency array includes textEditModal
 
   return (
     <DndContext 

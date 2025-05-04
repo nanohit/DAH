@@ -109,7 +109,7 @@ export default function HomePage() {
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-4xl mx-auto">
         {/* Display recent maps for logged-in users */}
-        <UserRecentMaps maxMaps={4} />
+        <UserRecentMaps maxMaps={5} />
         
         <PostList 
           onPostUpdated={handleItemUpdate}
