@@ -149,17 +149,17 @@ export default function UserRecentMaps({ maxMaps = 5 }: UserRecentMapsProps) {
     
     displayItems.push(
       <Link href={`/maps?id=${map._id}`} key={map._id || idx} className="block w-full">
-        <div className="border border-gray-200 rounded-lg h-[112px] flex flex-col justify-between bg-white p-4 transition-all duration-300 ease-in-out hover:translate-y-[-3px] hover:shadow-[0_2px_0_rgba(0,0,0,0.1)]">
+        <div className="border border-gray-200 rounded-lg h-[90px] sm:h-[112px] flex flex-col justify-between bg-white p-2 sm:p-4 transition-all duration-300 ease-in-out hover:translate-y-[-3px] hover:shadow-[0_2px_0_rgba(0,0,0,0.1)]">
           <div className="flex-grow">
-            <span className="text-gray-900 font-medium text-sm line-clamp-2 text-left overflow-hidden break-words">
+            <span className="text-gray-900 font-medium text-[11px] sm:text-sm line-clamp-1 sm:line-clamp-2 text-left overflow-hidden break-words">
               {map.name || "New page"}
             </span>
           </div>
-          <div className="flex-shrink-0 mt-2">
-            <span className="text-gray-600 text-xs text-left block">
+          <div className="flex-shrink-0 mt-1 sm:mt-2">
+            <span className="text-gray-600 text-[10px] sm:text-xs text-left block">
               {map.user.username}
             </span>
-            <span className="text-gray-400 text-xs text-left block">
+            <span className="text-gray-400 text-[10px] sm:text-xs text-left block">
               {formattedDate}
             </span>
           </div>
@@ -172,7 +172,7 @@ export default function UserRecentMaps({ maxMaps = 5 }: UserRecentMapsProps) {
   if (showCreateButton && displayItems.length < maxMaps) {
     displayItems.push(
       <Link href="/maps" key="create-new-map" className="block w-full">
-        <div className="border border-gray-200 rounded-lg h-[112px] flex items-center justify-center bg-white transition-all duration-300 ease-in-out hover:translate-y-[-5px] hover:shadow-[0_2px_0_rgba(0,0,0,0.1)]">
+        <div className="border border-gray-200 rounded-lg h-[90px] sm:h-[112px] flex items-center justify-center bg-white transition-all duration-300 ease-in-out hover:translate-y-[-5px] hover:shadow-[0_2px_0_rgba(0,0,0,0.1)]">
           <svg className="w-8 h-8 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
           </svg>
@@ -188,7 +188,7 @@ export default function UserRecentMaps({ maxMaps = 5 }: UserRecentMapsProps) {
     for (let i = 0; i < emptySlots; i++) {
       displayItems.push(
         <div key={`empty-${i}`} className="w-full opacity-0" aria-hidden="true">
-          <div className="pointer-events-none h-[112px]"></div>
+          <div className="pointer-events-none h-[90px] sm:h-[112px]"></div>
         </div>
       );
     }

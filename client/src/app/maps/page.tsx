@@ -2574,7 +2574,7 @@ const handleTouchEnd = useCallback((e: React.TouchEvent) => {
           containerRef.current.className = containerRef.current.className.replace('cursor-grab', 'cursor-copy');
         }
       }
-    } else if (e.key === ' ') { // Spacebar pressed
+    } else if (e.key === ' ' && !textEditModal) { // Spacebar pressed, and text edit modal is NOT open
       e.preventDefault(); // Prevent page scroll or adding space if an input was focused
       
       // Check if a text element is selected
