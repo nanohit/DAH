@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect, useMemo, useContext } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo, Suspense } from 'react';
 import { DndContext, useDraggable, useDroppable, DragEndEvent, DragStartEvent, DragMoveEvent, Modifier, DragOverlay, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { restrictToParentElement } from '@dnd-kit/modifiers';
 import Xarrow, { Xwrapper } from 'react-xarrows';
@@ -14,6 +14,9 @@ import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import FormatToolbar from '@/components/FormatToolbar';
 import ReactMarkdown from 'react-markdown';
+import { BsBookmark, BsBookmarkFill } from 'react-icons/bs';
+import { bookmarkBook } from '@/utils/bookUtils';
+import { useAuth } from '@/context/AuthContext';
 
 interface MapElement {
   id: string;
@@ -34,7 +37,7 @@ interface MapElement {
     description?: string;
     source: 'openlib' | 'google' | 'alphy';
     flibustaStatus?: 'not_checked' | 'checking' | 'found' | 'not_found' | 'uploaded';
-    completed: boolean; // Make completed a required property
+    completed?: boolean; // Add completed status property
     flibustaVariants?: Array<{
       title: string;
       author: string;
@@ -43,6 +46,10 @@ interface MapElement {
         format: string;
         url: string;
       }>;
+    }>;
+    bookmarks?: Array<{
+      user: string | { _id: string };
+      timestamp: string;
     }>;
   };
   // Add line-specific properties
@@ -886,14 +893,6 @@ const ElementWithConnections = ({
             {(isSelected || element.bookData.completed) && (
               <div 
                 className="book-completed-badge cursor-pointer"
-                style={{
-                  position: 'absolute',
-                  top: '0',
-                  right: '0',
-                  zIndex: 1000,
-                  // Make sure clicks on this element are processed before parent elements
-                  pointerEvents: 'all'
-                }}
                 onPointerDown={(e) => {
                   // Stop propagation at the earliest possible event
                   e.stopPropagation();
@@ -908,7 +907,7 @@ const ElementWithConnections = ({
                 }}
               >
                 <div 
-                  className={`flex items-center justify-center w-full h-full text-xs font-semibold py-1 px-2 
+                  className={`flex items-center justify-center text-xs font-semibold py-1 px-2 
                     ${element.bookData.completed ? 'active' : ''}`}
                 >
                   Completed
@@ -1459,13 +1458,18 @@ const SearchModal = ({ onClose, onBookSubmit }: {
           // Get the base image URL without zoom parameter
           const baseImageUrl = item.volumeInfo.imageLinks?.thumbnail?.replace('http:', 'https:')?.split('&zoom=')[0];
           
+          // Try to get the highest quality image available
+          const highResImage = item.volumeInfo.imageLinks?.highResImage || 
+                             item.volumeInfo.imageLinks?.largeImage || 
+                             item.volumeInfo.imageLinks?.mediumImage;
+          
           return {
             key: item.id,
             title: item.volumeInfo.title,
             author_name: item.volumeInfo.authors,
             first_publish_year: item.volumeInfo.publishedDate ? parseInt(item.volumeInfo.publishedDate) : undefined,
             thumbnail: baseImageUrl ? `${baseImageUrl}&zoom=1` : undefined, // zoom=1 for small thumbnail
-            highResThumbnail: baseImageUrl ? `${baseImageUrl}&zoom=2` : undefined, // zoom=2 for higher resolution
+            highResThumbnail: highResImage || (baseImageUrl ? `${baseImageUrl}&zoom=3` : undefined), // Try highest quality available
             source: 'google' as const
           };
         }) || [],
@@ -2763,7 +2767,7 @@ const LinkModal = ({ onClose, onLinkSubmit }: {
   );
 };
 
-export default function MapsPage() {
+function MapsContent() {
   const [elements, setElements] = useState<MapElement[]>([]);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -2833,6 +2837,7 @@ export default function MapsPage() {
   const autosaveRef = useRef<() => void>();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { user } = useAuth();
 
   const { setNodeRef } = useDroppable({
     id: 'droppable',
@@ -3401,11 +3406,10 @@ export default function MapsPage() {
         source: bookData.source,
         flibustaStatus: bookData.flibustaStatus,
         flibustaVariants: bookData.flibustaVariants,
-        completed: false, // Explicitly set completed to false for new books
+        completed: false, // Set initial completed status to false
       }
     };
-    
-    console.log('[DEBUG] Creating new book element:', JSON.stringify(newElement));
+
     setElements(prev => [...prev, newElement]);
   };
 
@@ -4221,7 +4225,7 @@ export default function MapsPage() {
       formData.append('image', file);
       
       console.log('Making request to ImgBB API');
-      const response = await fetch(`https://api.imgbb.com/1/upload?key=dea282c8a3ed6b4d82eed4ea65ab3826`, {
+      const response = await fetch(`https://api.imgbb.com/1/upload?key=${process.env.NEXT_PUBLIC_IMGBB_API_KEY}`, {
         method: 'POST',
         body: formData
       });
@@ -4320,216 +4324,192 @@ export default function MapsPage() {
   // Function to load map data from server
   const loadMapData = async (mapId: string) => {
     try {
-      // Remove setLoading(true) since it's not defined
-      const token = localStorage.getItem('token');
+      const mapData = await loadMap(mapId);
       
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-      
-      const response = await axios.get(`/api/maps/${mapId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      
-      const mapData = response.data;
-      console.log('[DEBUG] Loaded map data:', mapData);
-      
-      // Ensure book completed status is preserved when loading
-      if (mapData.elements && Array.isArray(mapData.elements)) {
-        // Count books with completed status before processing
-        const booksWithCompletedBeforeProcess = mapData.elements.filter(
-          (el: any) => el.type === 'book' && el.bookData && el.bookData.completed === true
+      if (mapData) {
+        // Debug: Log any book elements with completed status
+        const booksWithCompletedStatus = mapData.elements.filter(
+          el => el.type === 'book' && el.bookData && el.bookData.completed === true
         );
         
-        console.log(`[DEBUG] Found ${booksWithCompletedBeforeProcess.length} books with completed=true in loaded data`);
+        if (booksWithCompletedStatus.length > 0) {
+          console.log('Loaded map has books with completed status:', booksWithCompletedStatus);
+        } else {
+          console.log('No books with completed status found in loaded map');
+        }
         
-        // Process the elements to ensure completed status is correctly set
-        const processedElements = mapData.elements.map((element: any) => {
-          if (element.type === 'book' && element.bookData) {
-            // Ensure the completed property is properly set as a boolean
-            const isCompleted = element.bookData.completed === true;
-            
-            if (isCompleted) {
-              console.log(`[DEBUG] Book "${element.text}" (${element.id}) is marked as completed`);
-            }
-            
-            // Create a new bookData object with the completed property explicitly set
-            return {
-              ...element,
-              bookData: {
-                ...element.bookData,
-                completed: isCompleted
-              }
-            };
-          }
-          return element;
+        setElements(mapData.elements);
+        
+        // Always regenerate unique connection IDs to avoid React key conflicts
+        // Use a Map to track old-to-new ID mapping
+        const idMap = new Map();
+        
+        const updatedConnections = mapData.connections.map(conn => {
+          // Generate a truly unique ID with both timestamp and random component
+          const newId = `connection-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          idMap.set(conn.id, newId);
+          
+          return {
+            ...conn,
+            id: newId
+          };
         });
         
-        // Update the map data with the processed elements
-        mapData.elements = processedElements;
+        setConnections(updatedConnections);
+        setCanvasPosition(mapData.canvasPosition);
+        setScaleState(mapData.scale || 1);
+        setMapName(mapData.name);
+        setSavedMapId(mapData._id);
         
-        // Count books with completed status after processing
-        const booksWithCompletedAfterProcess = mapData.elements.filter(
-          (el: any) => el.type === 'book' && el.bookData && el.bookData.completed === true
-        );
-        
-        console.log(`[DEBUG] After processing: ${booksWithCompletedAfterProcess.length} books with completed=true`);
+        // Store current state for comparison
+        lastDataRef.current = JSON.stringify({ elements: mapData.elements, connections: updatedConnections });
       }
-      
-      setElements(mapData.elements || []);
-      setConnections(mapData.connections || []);
-      setCanvasPosition(mapData.canvasPosition || { x: 0, y: 0 });
-      setScaleState(mapData.scale || 1); // Changed from setScale to setScaleState
-      setMapName(mapData.name || 'Untitled Map');
-      setSavedMapId(mapData._id); // Changed from setMapId to setSavedMapId
-
-      // Remove setLoaded(true) since it's not defined
-      // Remove setLoading(false) since it's not defined
     } catch (error) {
       console.error('Error loading map:', error);
-      toast.error('Failed to load map');
-      // Remove setLoading(false) since it's not defined
+      toast.error('Error loading map');
     }
   };
 
   const saveMapToDatabase = async () => {
-    try {
-      console.log('[DEBUG] saveMapToDatabase called, current autosave state:', isAutosaveEnabled);
-      
-      // Find books with completed status
-      const booksWithCompletedStatus = elements.filter(
-        el => el.type === 'book' && el.bookData && el.bookData.completed === true
-      );
-      
-      // Store a reference to the completed book IDs for later verification
-      const completedBookIds = booksWithCompletedStatus.map(book => book.id);
-      
-      if (completedBookIds.length > 0) {
-        console.log(`[DEBUG] Found books marked as completed: ${completedBookIds.join(', ')}`);
-      }
-      
-      // Deep copy the elements array to avoid reference issues
-      const processedElements = JSON.parse(JSON.stringify(elements)) as MapElement[];
-      
-      // EXTREMELY IMPORTANT: Ensure completed status is preserved correctly
-      for (const element of processedElements) {
-        if (element.type === 'book' && element.bookData) {
-          // Get the actual completed status from the original elements array
-          const originalElement = elements.find(e => e.id === element.id);
-          if (originalElement && originalElement.type === 'book' && originalElement.bookData) {
-            // Use the original completed status, not a hardcoded value
-            const isCompleted = originalElement.bookData.completed;
-            element.bookData.completed = isCompleted;
-            console.log(`[DEBUG] Pre-processing book ${element.id}, setting completed=${isCompleted}`);
-          }
-        }
-      }
-      
-      if (booksWithCompletedStatus.length > 0) {
-        console.log('[DEBUG] Saving with books marked as completed:', 
-          booksWithCompletedStatus.map(book => ({
-            id: book.id,
-            title: book.bookData?.title,
-            completed: book.bookData?.completed
-          }))
-        );
-      } else {
-        console.log('[DEBUG] No books with completed status found before saving');
-      }
-      
-      // Log all book elements to make sure their completed status is set correctly
-      const allBooks = processedElements.filter((el: MapElement) => el.type === 'book' && el.bookData);
-      console.log('[DEBUG] All books before saving:', 
-        allBooks.map((book: MapElement) => ({
+    console.log('[DEBUG] saveMapToDatabase called, current autosave state:', isAutoSaving);
+    
+    if (autosaveInProgressRef.current) {
+      console.log('[DEBUG] Skipping save due to existing autosave in progress');
+      return false;
+    }
+    
+    // Track save state with existing autoSaving state
+    setIsAutoSaving(true);
+    
+    // Find books with completed status
+    const booksWithCompletedStatus = elements.filter(
+      el => el.type === 'book' && el.bookData && el.bookData.completed === true
+    );
+    
+    if (booksWithCompletedStatus.length > 0) {
+      console.log('[DEBUG] Saving map with books marked as completed:', 
+        booksWithCompletedStatus.map(book => ({
           id: book.id,
           title: book.bookData?.title,
           completed: book.bookData?.completed
         }))
       );
-
-      // Create the map data using the processed elements
-      const mapData = {
-        id: savedMapId || undefined,
-        name: mapName,
-        elements: processedElements,
-        connections,
-        canvasPosition,
-        scale: scale
-      };
-
-      console.log('[DEBUG] Saving map to database...');
-      const savedMap = await saveMap(mapData, savedMapId);
-      
-      if (!savedMap) {
-        throw new Error('Failed to save map');
-      }
+    }
+    
+    // Check all books for debugging
+    const allBooks = elements.filter(el => el.type === 'book' && el.bookData);
+    console.log('[DEBUG] All books in the map:', allBooks);
+    
+    // Create mapData structure
+    const mapData = {
+      name: mapName,
+      elements: elements.map(element => {
+        // Ensure completed property is explicitly set for book elements
+        if (element.type === 'book' && element.bookData) {
+          if (element.bookData.completed) {
+            console.log(`[DEBUG] Ensuring 'completed' property is set to true for book ${element.id}`);
+            
+            // Create a new object with the completed property explicitly set
+            return {
+              ...element,
+              bookData: {
+                ...element.bookData,
+                completed: true
+              }
+            };
+          }
+        }
+        return element;
+      }),
+      connections,
+      canvasPosition,
+      scale
+    };
+    
+    // Store local copy of books with completed status before save
+    const completedBooksBeforeSave = mapData.elements
+      .filter(el => el.type === 'book' && el.bookData && el.bookData.completed === true)
+      .map(book => ({ id: book.id, completed: true }));
+    
+    console.log('[DEBUG] Saving map to database...');
+    const searchParams = new URLSearchParams(window.location.search);
+    const mapId = searchParams.get('id');
+    
+    const savedMap = await saveMap(mapData, mapId);
+    
+    // Reset auto-saving state regardless of result
+    setIsAutoSaving(false);
+    
+    if (savedMap) {
       console.log('[DEBUG] Map saved successfully');
       
-      // Check if the completed status is present in the saved map
-      if (savedMap.elements) {
-        const savedBooks = savedMap.elements.filter(
-          (el: any) => el.type === 'book' && el.bookData && el.bookData.completed === true
-        );
-        
-        if (savedBooks.length > 0) {
-          console.log('[DEBUG] Books with completed=true in saved map:', 
-            savedBooks.map((book: any) => ({
-              id: book.id,
-              title: book.bookData?.title,
-              completed: book.bookData?.completed
-            }))
-          );
-        } else if (booksWithCompletedStatus.length > 0) {
-          console.warn('[DEBUG] Warning: Books marked as completed were lost during save!');
-          
-          // If the saved map doesn't have the completed status, apply it manually
-          const fixedElements = savedMap.elements.map((element: any) => {
-            if (element.type === 'book' && completedBookIds.includes(element.id)) {
-              console.log(`[DEBUG] Manually restoring completed status for book: ${element.id}`);
-              return {
-                ...element,
-                bookData: {
-                  ...element.bookData,
-                  completed: true
-                }
-              };
-            }
-            return element;
-          });
-          
-          // Update the elements array with the fixed data
-          savedMap.elements = fixedElements;
-          setElements(fixedElements);
-          
-          // For debugging, check if our fix worked
-          const fixedBooks = fixedElements.filter(
-            (el: any) => el.type === 'book' && el.bookData && el.bookData.completed === true
-          );
-          
-          console.log('[DEBUG] After manual fix:', fixedBooks.length, 'books with completed=true');
+      // Check if the saved map contains book elements
+      console.log('[DEBUG] Raw savedMap response elements:', savedMap.elements);
+      
+      // Check for completed status in returned books
+      const bookElements = savedMap.elements.filter(el => el.type === 'book' && el.bookData);
+      
+      console.log('[DEBUG] Server returned book elements:');
+      bookElements.forEach((book, index) => {
+        console.log(`[DEBUG] Book ${index} (${book.id}):`, {
+          hasBookData: !!book.bookData,
+          bookDataKeys: book.bookData ? Object.keys(book.bookData) : [],
+          completedValue: book.bookData?.completed,
+          completedType: typeof book.bookData?.completed
+        });
+      });
+      
+      // Check if any books lost their completed status
+      const lostCompletedStatus = completedBooksBeforeSave.filter(
+        originalBook => {
+          const savedBook = savedMap.elements.find(el => el.id === originalBook.id);
+          return !(savedBook?.bookData?.completed === true);
         }
+      );
+      
+      if (lostCompletedStatus.length > 0) {
+        console.log('[DEBUG] Warning: Books marked as completed were lost during save!');
+        
+        // Restore completed status in our local state for books that lost it
+        const updatedElements = elements.map(element => {
+          const shouldBeCompleted = lostCompletedStatus.find(book => book.id === element.id);
+          
+          if (shouldBeCompleted && element.type === 'book' && element.bookData) {
+            console.log(`[DEBUG] Restoring completed status for book: ${element.id}`);
+            
+            // Create a new element with updated bookData
+            return {
+              ...element,
+              bookData: {
+                ...element.bookData,
+                completed: true
+              }
+            };
+          }
+          
+          return element;
+        });
+        
+        // Update local state with restored completed status
+        setElements(updatedElements);
+        
+        // Show a warning to the user about the issue
+        toast.error('Some book completion statuses were not saved properly. This has been fixed locally.', {
+          duration: 5000
+        });
       }
       
-      // Update map ID if not already set
       if (!savedMapId) {
-        console.log('Setting savedMapId to:', savedMap._id);
         setSavedMapId(savedMap._id);
         // Update URL with map ID without reloading page
         window.history.pushState({}, '', `/maps?id=${savedMap._id}`);
       }
       
-      // Update last saved time
       setLastSavedTime(new Date());
       
-      toast.success(savedMapId ? 'Map updated successfully' : 'Map saved successfully');
-      return true; // Indicate success
-    } catch (error) {
-      console.error('Error saving map:', error);
-      toast.error('Failed to save map');
-      return false; // Indicate failure
+      return true;
+    } else {
+      return false;
     }
   };
   
@@ -4741,54 +4721,51 @@ export default function MapsPage() {
     console.log(`Toggling book completed status for ${elementId}: ${element?.bookData?.completed || false} -> ${newCompletedState}`);
     console.log('[DEBUG] Original bookData structure:', JSON.stringify(element.bookData));
     
-    // DIRECT UPDATE APPROACH: Create a new elements array with the changed element
-    const updatedElements = elements.map(el => {
-      if (el.id === elementId && el.type === 'book' && el.bookData) {
-        // Create a completely new object to avoid reference issues
-        return {
-          ...el,
-          bookData: {
-            ...el.bookData,
-            completed: newCompletedState // Explicitly set as boolean
-          }
-        };
-      }
-      return el;
-    });
-    
-    // Update the state with the new array
-    setElements(updatedElements);
-    
-    // Log for debugging
-    const updatedElement = updatedElements.find(el => el.id === elementId);
-    console.log('[DEBUG] Updated element:', JSON.stringify(updatedElement));
-    
-    // Count books marked as completed
-    const completedCount = updatedElements.filter(
-      el => el.type === 'book' && el.bookData && el.bookData.completed === true
-    ).length;
-    
-    console.log(`[DEBUG] After update: ${completedCount} books marked as completed`);
-    
-    // Set a visible toast notification
-    toast.success(newCompletedState ? 'Marked as completed' : 'Marked as not completed', {
-      duration: 2000,
-      style: {
-        background: newCompletedState ? '#1a1a1a' : '#ffffff',
-        color: newCompletedState ? '#ffffff' : '#000000',
-        border: '1px solid #333333'
-      }
-    });
-    
-    // IMPORTANT: Force an immediate save to ensure the completed status is persisted
-    // This is a direct approach to fix the issue
-    setTimeout(() => {
-      console.log('[DEBUG] Force saving map to persist completed status...');
-      saveMapToDatabase().then(() => {
-        console.log('[DEBUG] Map saved after toggling completed status');
+    // Update element state with a deep clone to ensure React detects the change
+    setElements(prev => {
+      // Create a deep copy of the elements array
+      const updatedElements = prev.map(element => {
+        if (element.id === elementId && element.type === 'book' && element.bookData) {
+          // Create a new object with the updated completed property
+          const newBookData = { 
+            ...element.bookData, 
+            completed: newCompletedState 
+          };
+          
+          console.log('[DEBUG] New bookData structure:', JSON.stringify(newBookData));
+          
+          return { 
+            ...element, 
+            bookData: newBookData
+          };
+        }
+        return element;
       });
-    }, 100);
-  }, [elements, saveMapToDatabase]);
+      
+      // For debugging: count books marked as completed in the updated array
+      const completedCount = updatedElements.filter(
+        (el: any) => el.type === 'book' && el.bookData && el.bookData.completed === true
+      ).length;
+      
+      console.log(`[DEBUG] After update: ${completedCount} books marked as completed`);
+      
+      return updatedElements;
+    });
+    
+    // Show toast notification
+    toast.success(newCompletedState ? 'Marked as completed' : 'Marked as not completed', {
+      duration: 1500,
+      position: 'bottom-center',
+      style: {
+        backgroundColor: newCompletedState ? '#000' : '#fff',
+        color: newCompletedState ? '#fff' : '#000',
+        border: newCompletedState ? 'none' : '1px solid #e5e7eb'
+      }
+    });
+    
+    // Let the autosave mechanism handle saving 
+    // The useEffect watching elements will trigger an autosave after a delay
+  }, [elements]);
 
   const handleCopyShareLink = () => {
     const shareUrl = window.location.href;
@@ -4913,6 +4890,79 @@ export default function MapsPage() {
       textarea.setSelectionRange(start, end);
     }, 0);
   };
+  
+  // Bookmark states
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isBookmarkHovered, setIsBookmarkHovered] = useState(false);
+  
+  // Add useEffect to check bookmark status when a book is opened
+  useEffect(() => {
+    if (bookDetailsModal && bookDetailsModal.bookData && bookDetailsModal.bookData._id && user) {
+      // Check if the book is already bookmarked by this user
+      const isMarked = bookDetailsModal.bookData.bookmarks?.some(bookmark => 
+        (typeof bookmark.user === 'string' ? bookmark.user : bookmark.user.toString()) === 
+        (typeof user._id === 'string' ? user._id : user._id.toString())
+      );
+      setIsBookmarked(!!isMarked);
+    } else {
+      setIsBookmarked(false);
+    }
+  }, [bookDetailsModal, user]);
+  
+  // ... existing code
+  
+  // Handle bookmarking/unbookmarking a book
+  const handleBookmarkToggle = async () => {
+    if (!bookDetailsModal || !bookDetailsModal.bookData || !bookDetailsModal.bookData._id || !user) {
+      toast.error('You must be logged in to bookmark books');
+      return;
+    }
+
+    try {
+      const result = await bookmarkBook(bookDetailsModal.bookData._id);
+      
+      if (result.success) {
+        setIsBookmarked(result.isBookmarked);
+        toast.success(result.isBookmarked ? 'Book bookmarked successfully' : 'Book removed from bookmarks');
+        
+        // Update the book data with the new bookmark status
+        setBookDetailsModal(prev => {
+          if (!prev) return null;
+          
+          const updatedElement = {...prev};
+          const updatedBookData = {...updatedElement.bookData};
+          
+          if (!updatedBookData.bookmarks) {
+            updatedBookData.bookmarks = [];
+          }
+          
+          if (result.isBookmarked) {
+            // Add the bookmark if it doesn't exist
+            if (!updatedBookData.bookmarks.some(b => 
+              (typeof b.user === 'string' ? b.user : b.user.toString()) === 
+              (typeof user._id === 'string' ? user._id : user._id.toString())
+            )) {
+              updatedBookData.bookmarks.push({ user: user._id, timestamp: new Date().toISOString() });
+            }
+          } else {
+            // Remove the bookmark
+            updatedBookData.bookmarks = updatedBookData.bookmarks.filter(b => 
+              (typeof b.user === 'string' ? b.user : b.user.toString()) !== 
+              (typeof user._id === 'string' ? user._id : user._id.toString())
+            );
+          }
+          
+          updatedElement.bookData = updatedBookData;
+          return updatedElement;
+        });
+      }
+    } catch (error) {
+      console.error('Error bookmarking book:', error);
+      toast.error('Failed to update bookmark status');
+    }
+  };
+  
+  // ... existing code
   
   return (
     <DndContext 
@@ -5095,9 +5145,8 @@ export default function MapsPage() {
           </div>
         </div>
 
-        {/* Floating Toolbar */}
-        <div className="absolute top-5 left-1/2 transform -translate-x-1/2 bg-white rounded-lg shadow-lg p-2 flex items-center gap-2 z-50 h-14">
-          <button
+       {/* Floating Toolbar */}
+       <div className="absolute md:top-5 md:left-1/2 md:-translate-x-1/2 top-60 left-2 bg-white rounded-lg shadow-lg p-2 md:flex md:items-center md:flex-row flex-col items-start gap-2 z-50 md:h-14">          <button
             onClick={() => handleAddElement('horizontal')}
             className="p-2 hover:bg-gray-100 rounded-lg text-gray-700 flex items-center gap-2 transition-colors"
             title="Add Text"
@@ -5323,6 +5372,22 @@ export default function MapsPage() {
                   </svg>
                   <span>Back to map</span>
                 </button>
+                
+                {/* Bookmark button in top right */}
+                {user && bookDetailsModal.bookData?._id && (
+                  <button 
+                    onClick={handleBookmarkToggle}
+                    onMouseEnter={() => setIsBookmarkHovered(true)}
+                    onMouseLeave={() => setIsBookmarkHovered(false)}
+                    className="text-white"
+                  >
+                    {isBookmarked || isBookmarkHovered ? (
+                      <BsBookmarkFill size={24} />
+                    ) : (
+                      <BsBookmark size={24} />
+                    )}
+                  </button>
+                )}
               </div>
               
               <div className="flex flex-col md:flex-row gap-12">
@@ -5481,12 +5546,15 @@ export default function MapsPage() {
                                   }
 
                                   // Direct access to Cloudflare worker URL
-                                  if (bookDetailsModal?.bookData?.flibustaVariants?.[0]?.sourceId) {
-                                    window.location.href = `${process.env.NEXT_PUBLIC_FLIBUSTA_PROXY_URL}/${bookDetailsModal.bookData.flibustaVariants[0].sourceId}/${format.format}`;
-                                  } else {
-                                    console.error('Missing source ID for download link');
-                                    toast.error('Unable to generate download link: missing source data');
+                                  if (!bookDetailsModal || !bookDetailsModal.bookData || !bookDetailsModal.bookData.flibustaVariants || 
+                                      !bookDetailsModal.bookData.flibustaVariants[0] || !bookDetailsModal.bookData.flibustaVariants[0].sourceId) {
+                                    console.error('Source ID not found in book data');
+                                    toast.error('Download link not available');
+                                    return;
                                   }
+                                  
+                                  const sourceId = bookDetailsModal.bookData.flibustaVariants[0].sourceId;
+                                  window.location.href = `${process.env.NEXT_PUBLIC_FLIBUSTA_PROXY_URL}/${selectedVariant.id}/${format.format}`;
                                 } catch (err) {
                                   console.error('Error getting download link:', err);
                                   toast.error('Failed to get download link. Please try again.');
@@ -5533,13 +5601,7 @@ export default function MapsPage() {
                                   }
                                   
                                   // Direct access to Cloudflare worker URL
-                                  // Direct access to Cloudflare worker URL
-                                  if (bookDetailsModal?.bookData?.flibustaVariants?.[0]?.sourceId) {
-                                    window.location.href = `${process.env.NEXT_PUBLIC_FLIBUSTA_PROXY_URL}/${bookDetailsModal.bookData.flibustaVariants[0].sourceId}/${format.format}`;
-                                  } else {
-                                    console.error("Missing source ID for download link");
-                                    toast.error("Unable to generate download link: missing source data");
-                                  }
+                                  window.location.href = `${process.env.NEXT_PUBLIC_FLIBUSTA_PROXY_URL}/${bookDetailsModal?.bookData?.flibustaVariants?.[0]?.sourceId}/${format.format}`;
                                 } catch (err) {
                                   console.error('Error getting download link:', err);
                                   toast.error('Failed to get download link. Please try again.');
@@ -5730,5 +5792,16 @@ export default function MapsPage() {
         </div>
       )}
     </DndContext>
+  );
+}
+
+// Wrapper with suspense boundary
+export default function MapsPage() {
+  return (
+    <Suspense fallback={<div className="w-full min-h-screen flex items-center justify-center">
+      <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+    </div>}>
+      <MapsContent />
+    </Suspense>
   );
 }

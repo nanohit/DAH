@@ -310,6 +310,7 @@ const bookRoutes = require('./routes/booksRouter');
 const uploadRoutes = require('./routes/upload');
 const userRoutes = require('./routes/users');
 const mapRoutes = require('./routes/maps');
+const linkPreviewRoutes = require('./routes/linkPreview');
 
 // Debug route registration
 console.log('\n=== Route Registration ===');
@@ -323,6 +324,7 @@ app.use('/api/books', bookRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/maps', mapRoutes);
+app.use('/api/link-preview', linkPreviewRoutes);
 
 // Log registered routes
 console.log('\n=== Registered Routes ===');

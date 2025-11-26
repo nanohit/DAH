@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { formatDate } from '@/utils/date';
-import FormatToolbar from './FormatToolbar';
-import ReactMarkdown from 'react-markdown';
+import { sanitizeHtml, markdownToHtml } from '@/utils/html';
 import CommentInput from './CommentInput';
 import Link from 'next/link';
 import UserBadge from './UserBadge';
@@ -75,55 +74,15 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
   const [branchCollapsed, setBranchCollapsed] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showMainFormatToolbar, setShowMainFormatToolbar] = useState(false);
-  const [showReplyFormatToolbar, setShowReplyFormatToolbar] = useState(false);
-  const [showEditFormatToolbar, setShowEditFormatToolbar] = useState(false);
   const [commentsCount, setCommentsCount] = useState(0);
   const { user } = useAuth();
-  const mainCommentInputRef = useRef<HTMLTextAreaElement>(null);
-  const replyInputRef = useRef<HTMLTextAreaElement>(null);
-  const editInputRef = useRef<HTMLTextAreaElement>(null);
-
-  const handleFormat = (type: string, selection: { start: number; end: number }, inputRef: React.RefObject<HTMLTextAreaElement>, setText: (text: string) => void) => {
-    if (!inputRef.current) return;
-
-    const input = inputRef.current;
-    const currentText = input.value;
-    let newText = currentText;
-    let newCursorPos = selection.end;
-
-    switch (type) {
-      case 'bold':
-        newText = currentText.slice(0, selection.start) + `**${currentText.slice(selection.start, selection.end)}**` + currentText.slice(selection.end);
-        newCursorPos += 2;
-        break;
-      case 'italic':
-        newText = currentText.slice(0, selection.start) + `*${currentText.slice(selection.start, selection.end)}*` + currentText.slice(selection.end);
-        newCursorPos += 1;
-        break;
-      case 'link':
-        const url = prompt('Enter URL:');
-        if (url) {
-          const selectedText = currentText.slice(selection.start, selection.end);
-          const linkText = selectedText || 'link';
-          newText = currentText.slice(0, selection.start) + `[${linkText}](${url})` + currentText.slice(selection.end);
-          newCursorPos = selection.start + newText.length;
-        }
-        break;
-      case 'clear':
-        newText = currentText.slice(selection.start, selection.end)
-          .replace(/\*\*/g, '')  // Remove bold
-          .replace(/\*/g, '')    // Remove italic
-          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1'); // Remove links
-        newText = currentText.slice(0, selection.start) + newText + currentText.slice(selection.end);
-        break;
-    }
-
-    setText(newText);
-    input.value = newText;
-    input.focus();
-    input.setSelectionRange(newCursorPos, newCursorPos);
-  };
+  const convertContentToHtml = useCallback((content: string): string => {
+    const trimmed = (content || '').trim();
+    if (!trimmed) return '';
+    const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(trimmed);
+    const baseHtml = looksLikeHtml ? trimmed : markdownToHtml(trimmed);
+    return sanitizeHtml(baseHtml);
+  }, []);
 
   const fetchComments = async () => {
     // Skip fetching comments for optimistic posts (they don't exist in DB yet)
@@ -645,7 +604,7 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
                     <button
                       onClick={() => {
                         setEditingComment(comment._id);
-                        setEditContent(comment.content);
+                        setEditContent(convertContentToHtml(comment.content));
                       }}
                       className="text-gray-600 hover:text-gray-800"
                     >
@@ -673,31 +632,10 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
                 </div>
               ) : (
                 <>
-                  <div className="prose prose-sm max-w-none [&>*]:text-black [&_p]:!text-black [&_strong]:!text-black [&_em]:!text-black">
-                    <ReactMarkdown
-                      components={{
-                        p: ({children}) => <p className="!text-black">{children}</p>,
-                        strong: ({children}) => <strong className="!text-black">{children}</strong>,
-                        em: ({children}) => <em className="!text-black">{children}</em>,
-                        a: ({ href, children }) => {
-                          const isExternal = href?.startsWith('http') || href?.startsWith('www');
-                          const finalHref = isExternal ? href : `https://${href}`;
-                          return (
-                            <a 
-                              href={finalHref}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="!text-blue-600 hover:!text-blue-800"
-                            >
-                              {children}
-                            </a>
-                          );
-                        }
-                      }}
-                    >
-                      {comment.content}
-                    </ReactMarkdown>
-                  </div>
+                  <div
+                    className="prose prose-sm max-w-none [&>*]:text-black"
+                    dangerouslySetInnerHTML={{ __html: convertContentToHtml(comment.content) }}
+                  />
                   <div className="flex items-center space-x-4 mt-2">
                     <div className="flex items-center space-x-2">
                       <button
@@ -1135,6 +1073,8 @@ export default function CommentSection({ postId, initialComments = [] }: Comment
                   onChange={setNewComment}
                   onSubmit={handleSubmitComment}
                   placeholder="Write a comment... (Tab for formatting)"
+                  showFormatToolbar={false} // Removed format toolbar for main comment
+                  setShowFormatToolbar={() => {}}
                 />
               </div>
 

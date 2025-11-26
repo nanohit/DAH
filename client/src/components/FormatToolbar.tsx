@@ -1,37 +1,204 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+type FormatType = 'bold' | 'italic' | 'clear';
+
+type SelectionRange = { start: number; end: number } | undefined;
 
 interface FormatToolbarProps {
-  onFormat: (type: string, selection: { start: number; end: number }) => void;
-  inputRef: React.RefObject<HTMLTextAreaElement | null>;
+  onFormat: (type: FormatType, selection?: SelectionRange) => void;
+  inputRef: React.RefObject<HTMLElement | null>;
   isVisible: boolean;
   onClose: () => void;
 }
 
+const STYLE_PROPERTIES: Array<keyof CSSStyleDeclaration> = [
+  'boxSizing',
+  'fontFamily',
+  'fontSize',
+  'fontWeight',
+  'fontStyle',
+  'letterSpacing',
+  'textTransform',
+  'textAlign',
+  'textIndent',
+  'lineHeight',
+  'paddingTop',
+  'paddingRight',
+  'paddingBottom',
+  'paddingLeft',
+  'borderTopWidth',
+  'borderRightWidth',
+  'borderBottomWidth',
+  'borderLeftWidth',
+];
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br/>')
+    .replace(/ /g, '&nbsp;');
+
+const computeTextareaSelectionMetrics = (input: HTMLTextAreaElement, start: number, end: number) => {
+  const style = window.getComputedStyle(input);
+  const mirror = document.createElement('div');
+  mirror.style.position = 'absolute';
+  mirror.style.visibility = 'hidden';
+  mirror.style.whiteSpace = 'pre-wrap';
+  mirror.style.wordWrap = 'break-word';
+  mirror.style.overflow = 'hidden';
+  mirror.style.width = `${input.clientWidth}px`;
+
+  STYLE_PROPERTIES.forEach((prop) => {
+    const value = style[prop];
+    if (value) {
+      mirror.style[prop] = value;
+    }
+  });
+
+  const normalizedStart = Math.max(0, Math.min(start, input.value.length));
+  const normalizedEnd = Math.max(0, Math.min(end, input.value.length));
+  const before = input.value.substring(0, normalizedStart);
+  const selected = input.value.substring(normalizedStart, Math.max(normalizedEnd, normalizedStart));
+  const after = input.value.substring(Math.max(normalizedEnd, normalizedStart));
+
+  mirror.innerHTML = `${escapeHtml(before)}<span data-selection>${escapeHtml(selected || ' ')}</span>${escapeHtml(after)}`;
+  document.body.appendChild(mirror);
+
+  const selectionSpan = mirror.querySelector('span[data-selection]');
+  const spanRect = selectionSpan?.getBoundingClientRect();
+  const mirrorRect = mirror.getBoundingClientRect();
+  const inputRect = input.getBoundingClientRect();
+
+  let metrics = {
+    top: inputRect.top - input.scrollTop + window.scrollY,
+    left: inputRect.left - input.scrollLeft + window.scrollX,
+    width: 0,
+  };
+
+  if (spanRect) {
+    metrics = {
+      top: inputRect.top + (spanRect.top - mirrorRect.top) - input.scrollTop + window.scrollY,
+      left: inputRect.left + (spanRect.left - mirrorRect.left) - input.scrollLeft + window.scrollX,
+      width: spanRect.width,
+    };
+  }
+
+  document.body.removeChild(mirror);
+  return metrics;
+};
+
+const getSelectionMetrics = (input: HTMLElement) => {
+  if (input instanceof HTMLTextAreaElement) {
+    const start = input.selectionStart ?? 0;
+    const end = input.selectionEnd ?? start;
+    return computeTextareaSelectionMetrics(input, start, end);
+  }
+
+  const selection = window.getSelection();
+  const fallbackRect = input.getBoundingClientRect();
+
+  if (!selection || selection.rangeCount === 0) {
+    return fallbackRect;
+  }
+
+  const range = selection.getRangeAt(0);
+  const { startContainer, endContainer } = range;
+
+  if (!input.contains(startContainer) || !input.contains(endContainer)) {
+    return fallbackRect;
+  }
+
+  const rect = range.getBoundingClientRect();
+
+  if (rect && rect.width === 0 && rect.height === 0) {
+    const cloned = range.cloneRange();
+    const marker = document.createElement('span');
+    marker.appendChild(document.createTextNode('\u200b'));
+    cloned.collapse(false);
+    cloned.insertNode(marker);
+    const markerRect = marker.getBoundingClientRect();
+    marker.parentNode?.removeChild(marker);
+
+    if (markerRect) {
+      return markerRect;
+    }
+  }
+
+  return rect || fallbackRect;
+};
+
+const getSelectionRange = (input: HTMLElement): SelectionRange => {
+  if (input instanceof HTMLTextAreaElement) {
+    return {
+      start: input.selectionStart ?? 0,
+      end: input.selectionEnd ?? input.selectionStart ?? 0,
+    };
+  }
+  return undefined;
+};
+
 export default function FormatToolbar({ onFormat, inputRef, isVisible, onClose }: FormatToolbarProps) {
   const [position, setPosition] = useState({ top: 0, left: 0 });
-  const [selection, setSelection] = useState({ start: 0, end: 0 });
   const toolbarRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!isVisible || !inputRef.current) return;
-
+  const updatePosition = useCallback(() => {
     const input = inputRef.current;
-    const start = input.selectionStart ?? 0;
-    const end = input.selectionEnd ?? 0;
-    setSelection({ start, end });
+    if (!input) {
+      return;
+    }
 
-    // Calculate position above the selection
-    const inputRect = input.getBoundingClientRect();
-    const selectionCoords = getSelectionCoordinates(input);
+    const rect = getSelectionMetrics(input);
+    const selectionWidth = Math.max(rect.width, 1);
+    const centerX = rect.left + selectionWidth / 2;
+    const clampedLeft = Math.min(Math.max(centerX, 24), window.innerWidth - 24);
+    const clampedTop = Math.max(rect.top - 12, 24);
 
-    setPosition({
-      top: selectionCoords.top - 40, // 40px above selection
-      left: selectionCoords.left
-    });
+    setPosition({ top: clampedTop + window.scrollY, left: clampedLeft + window.scrollX });
+  }, [inputRef]);
 
-    // Add event listeners for Tab key and click outside
+  const handleToolbarMouseDown = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      const input = inputRef.current;
+      if (!input) return;
+
+      if (input instanceof HTMLTextAreaElement) {
+        const selection = getSelectionRange(input);
+        input.focus({ preventScroll: true });
+        if (selection) {
+          requestAnimationFrame(() => {
+            input.setSelectionRange(selection.start, selection.end);
+          });
+        }
+      } else {
+        input.focus({ preventScroll: true });
+      }
+      updatePosition();
+    },
+    [inputRef, updatePosition],
+  );
+
+  const handleFormat = useCallback(
+    (type: FormatType) => {
+      const input = inputRef.current;
+      const selection = input ? getSelectionRange(input) : undefined;
+      onFormat(type, selection);
+      requestAnimationFrame(() => updatePosition());
+    },
+    [onFormat, updatePosition, inputRef],
+  );
+
+  useEffect(() => {
+    if (!isVisible) {
+      return;
+    }
+
+    updatePosition();
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Tab') {
         e.preventDefault();
@@ -45,52 +212,41 @@ export default function FormatToolbar({ onFormat, inputRef, isVisible, onClose }
       }
     };
 
+    const handleScroll = () => updatePosition();
+
+    const handleSelectionChange = () => updatePosition();
+
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('resize', updatePosition);
+    document.addEventListener('scroll', handleScroll, true);
+    document.addEventListener('selectionchange', handleSelectionChange);
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('resize', updatePosition);
+      document.removeEventListener('scroll', handleScroll, true);
+      document.removeEventListener('selectionchange', handleSelectionChange);
     };
-  }, [isVisible, inputRef, onClose]);
-
-  const getSelectionCoordinates = (input: HTMLTextAreaElement) => {
-    const start = input.selectionStart ?? 0;
-    const value = input.value;
-    const textBeforeSelection = value.substring(0, start);
-    
-    // Create a temporary element to measure text dimensions
-    const temp = document.createElement('div');
-    temp.style.position = 'absolute';
-    temp.style.visibility = 'hidden';
-    temp.style.whiteSpace = 'pre-wrap';
-    temp.style.font = window.getComputedStyle(input).font;
-    temp.textContent = textBeforeSelection;
-    document.body.appendChild(temp);
-
-    const inputRect = input.getBoundingClientRect();
-    const { width } = temp.getBoundingClientRect();
-    document.body.removeChild(temp);
-
-    return {
-      top: inputRect.top + window.scrollY,
-      left: inputRect.left + Math.min(width, inputRect.width - 150) // Ensure toolbar doesn't go off-screen
-    };
-  };
+  }, [isVisible, onClose, updatePosition]);
 
   if (!isVisible) return null;
 
   return (
-    <div 
+    <div
       ref={toolbarRef}
       className="fixed z-50 bg-white shadow-lg rounded-lg border border-gray-200 p-2 flex space-x-2"
-      style={{ 
-        top: `${position.top}px`, 
+      style={{
+        top: `${position.top}px`,
         left: `${position.left}px`,
+        transform: 'translate(-50%, -120%)',
       }}
     >
       <button
-        onClick={() => onFormat('bold', selection)}
+        type="button"
+        onMouseDown={handleToolbarMouseDown}
+        onClick={() => handleFormat('bold')}
         className="p-1 hover:bg-gray-100 rounded text-black"
         title="Bold"
       >
@@ -100,7 +256,9 @@ export default function FormatToolbar({ onFormat, inputRef, isVisible, onClose }
         </svg>
       </button>
       <button
-        onClick={() => onFormat('italic', selection)}
+        type="button"
+        onMouseDown={handleToolbarMouseDown}
+        onClick={() => handleFormat('italic')}
         className="p-1 hover:bg-gray-100 rounded text-black"
         title="Italic"
       >
@@ -111,17 +269,9 @@ export default function FormatToolbar({ onFormat, inputRef, isVisible, onClose }
         </svg>
       </button>
       <button
-        onClick={() => onFormat('link', selection)}
-        className="p-1 hover:bg-gray-100 rounded text-black"
-        title="Add Link"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-        </svg>
-      </button>
-      <button
-        onClick={() => onFormat('clear', selection)}
+        type="button"
+        onMouseDown={handleToolbarMouseDown}
+        onClick={() => handleFormat('clear')}
         className="p-1 hover:bg-gray-100 rounded text-black"
         title="Clear Formatting"
       >

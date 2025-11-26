@@ -102,6 +102,26 @@ export interface SavedMap extends MapData {
   isPrivate?: boolean;
 }
 
+export interface MapSummary {
+  _id: string;
+  name: string;
+  user: {
+    _id: string;
+    username: string;
+    badge?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+  lastSaved?: string;
+  elementCount: number;
+  connectionCount: number;
+  commentsCount: number;
+  bookmarksCount?: number;
+  isBookmarked?: boolean;
+  isPrivate?: boolean;
+  isOwner?: boolean;
+}
+
 // Create a debounce function for autosave that returns a promise
 const debouncePromise = <F extends (...args: any[]) => Promise<any>>(func: F, waitFor: number) => {
   let timeout: ReturnType<typeof setTimeout> | null = null;
@@ -343,6 +363,63 @@ let mapsCache: {
 
 // Cache lifetime in milliseconds (5 seconds)
 const CACHE_LIFETIME = 5000;
+
+interface MapSummaryRequestOptions {
+  limit?: number;
+  skip?: number;
+  signal?: AbortSignal;
+}
+
+interface MapSummaryResponse {
+  maps: MapSummary[];
+  total: number;
+  hasMore: boolean;
+}
+
+export const getMapSummaries = async (
+  options: MapSummaryRequestOptions = {}
+): Promise<MapSummaryResponse> => {
+  const { limit = 10, skip = 0, signal } = options;
+
+  try {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+
+    const params = new URLSearchParams();
+    params.set('fields', 'summary');
+    params.set('limit', limit.toString());
+    if (skip > 0) {
+      params.set('skip', skip.toString());
+    }
+
+    const endpointBase = token ? '/api/maps' : '/api/maps/public';
+    const endpoint = `${endpointBase}?${params.toString()}`;
+
+    const response = await axios.get(endpoint, {
+      headers: token
+        ? {
+            Authorization: `Bearer ${token}`
+          }
+        : undefined,
+      signal
+    });
+
+    if (!response.data) {
+      return { maps: [], total: 0, hasMore: false };
+    }
+
+    const { maps = [], total = 0, hasMore = false } = response.data;
+
+    return {
+      maps,
+      total,
+      hasMore
+    };
+  } catch (error) {
+    console.error('Error fetching map summaries:', error);
+    toast.error('Failed to fetch maps');
+    return { maps: [], total: 0, hasMore: false };
+  }
+};
 
 // Get all maps
 export const getUserMaps = async (): Promise<SavedMap[]> => {

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import FormatToolbar from './FormatToolbar';
+import { sanitizeHtml } from '@/utils/html';
 
 interface CommentInputProps {
   value: string;
@@ -15,13 +16,8 @@ interface CommentInputProps {
   isLoading?: boolean;
   showFormatToolbar?: boolean;
   setShowFormatToolbar?: (show: boolean) => void;
-  inputRef?: React.RefObject<HTMLTextAreaElement>;
-  handleFormat?: (
-    type: string, 
-    selection: { start: number; end: number }, 
-    inputRef: React.RefObject<HTMLTextAreaElement>, 
-    setText: (text: string) => void
-  ) => void;
+  inputRef?: React.RefObject<HTMLDivElement>;
+  showSubmitButton?: boolean;
 }
 
 export default function CommentInput({
@@ -37,133 +33,148 @@ export default function CommentInput({
   showFormatToolbar: propShowFormatToolbar,
   setShowFormatToolbar: propSetShowFormatToolbar,
   inputRef: propInputRef,
-  handleFormat: propHandleFormat
+  showSubmitButton = true,
 }: CommentInputProps) {
   const [localShowFormatToolbar, setLocalShowFormatToolbar] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const localInputRef = useRef<HTMLTextAreaElement>(null);
+  const localInputRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  
-  // Use provided or local state for format toolbar visibility
+
   const showFormatToolbar = propShowFormatToolbar !== undefined ? propShowFormatToolbar : localShowFormatToolbar;
   const setShowFormatToolbar = propSetShowFormatToolbar || setLocalShowFormatToolbar;
-  
-  // Use provided or local ref
   const inputRef = propInputRef || localInputRef;
 
-  const adjustTextareaHeight = () => {
-    const textarea = inputRef.current;
-    if (textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height = `${textarea.scrollHeight}px`;
+  useEffect(() => {
+    if (inputRef.current && inputRef.current.innerHTML !== value) {
+      inputRef.current.innerHTML = value || '';
+    }
+  }, [value, inputRef]);
+
+  const handleInput = () => {
+    const rawHtml = inputRef.current?.innerHTML || '';
+    const sanitized = sanitizeHtml(rawHtml);
+    onChange(sanitized);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      onSubmit(e as any);
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      setShowFormatToolbar(true);
+    } else if (e.key === 'Escape') {
+      setShowFormatToolbar(false);
     }
   };
 
-  // Adjust height on value change
-  useEffect(() => {
-    adjustTextareaHeight();
-  }, [value]);
+  const handleToolbarAction = (action: 'bold' | 'italic' | 'link' | 'clear') => {
+    const el = inputRef.current;
+    if (!el || readOnly || disabled) return;
 
-  const handleLocalFormat = (type: string, selection: { start: number; end: number }) => {
-    if (propHandleFormat) {
-      propHandleFormat(type, selection, inputRef, onChange);
+    el.focus();
+
+    if (action === 'link') {
+      const selection = window.getSelection();
+      const selectedText = selection?.toString() || 'link';
+      const url = prompt('Enter URL:', selection?.toString() || 'https://');
+      if (!url) return;
+
+      document.execCommand('insertHTML', false, `<a href="${url}" target="_blank" rel="noopener noreferrer">${selectedText}</a>`);
+      handleInput();
       return;
     }
-    
-    if (!inputRef.current) return;
 
-    const input = inputRef.current;
-    const currentText = input.value;
-    let newText = currentText;
-    let newCursorPos = selection.end;
+    if (action === 'clear') {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) {
+        return;
+      }
 
-    switch (type) {
-      case 'bold':
-        newText = currentText.slice(0, selection.start) + `**${currentText.slice(selection.start, selection.end)}**` + currentText.slice(selection.end);
-        newCursorPos += 2;
-        break;
-      case 'italic':
-        newText = currentText.slice(0, selection.start) + `*${currentText.slice(selection.start, selection.end)}*` + currentText.slice(selection.end);
-        newCursorPos += 1;
-        break;
-      case 'link':
-        const url = prompt('Enter URL:');
-        if (url) {
-          const selectedText = currentText.slice(selection.start, selection.end);
-          const linkText = selectedText || 'link';
-          newText = currentText.slice(0, selection.start) + `[${linkText}](${url})` + currentText.slice(selection.end);
-          newCursorPos = selection.start + newText.length;
+      const range = selection.getRangeAt(0);
+      if (!el.contains(range.startContainer) || !el.contains(range.endContainer)) {
+        return;
+      }
+
+      const fragment = range.cloneContents();
+      const temp = document.createElement('div');
+      temp.appendChild(fragment);
+
+      temp.querySelectorAll('strong, b, em, i, a').forEach((node) => {
+        const parent = node.parentNode;
+        while (node.firstChild) {
+          parent?.insertBefore(node.firstChild, node);
         }
-        break;
-      case 'clear':
-        newText = currentText.slice(selection.start, selection.end)
-          .replace(/\*\*/g, '')  // Remove bold
-          .replace(/\*/g, '')    // Remove italic
-          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1'); // Remove links
-        newText = currentText.slice(0, selection.start) + newText + currentText.slice(selection.end);
-        break;
+        parent?.removeChild(node);
+      });
+
+      document.execCommand('insertHTML', false, temp.innerHTML);
+      handleInput();
+      return;
     }
 
-    onChange(newText);
-    input.value = newText;
-    input.focus();
-    input.setSelectionRange(newCursorPos, newCursorPos);
+    const command = action === 'bold' ? 'bold' : action === 'italic' ? 'italic' : undefined;
+    if (command) {
+      document.execCommand(command);
+      handleInput();
+    }
   };
+
+  const isContentEmpty = !value || value
+    .replace(/<p><br><\/p>/gi, '')
+    .replace(/<p>\s*<\/p>/gi, '')
+    .replace(/<br\s*\/?>(\s*)/gi, '')
+    .replace(/&nbsp;/gi, '')
+    .trim() === '';
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       <div className="flex items-stretch relative">
-        <textarea
+        <div
           ref={inputRef}
-          value={value}
-          onChange={(e) => {
-            onChange(e.target.value);
-            adjustTextareaHeight();
-          }}
+          contentEditable={!readOnly && !disabled}
+          suppressContentEditableWarning
+          onInput={handleInput}
           onFocus={() => setIsFocused(true)}
           onBlur={(e) => {
-            // Don't unfocus if clicking inside the component or the button
-            const relatedTarget = e.relatedTarget as Node;
-            if (!e.currentTarget.contains(relatedTarget) && !buttonRef.current?.contains(relatedTarget)) {
+            const relatedTarget = e.relatedTarget as Node | null;
+            if (!e.currentTarget.contains(relatedTarget) && (!showSubmitButton || !buttonRef.current?.contains(relatedTarget))) {
               setIsFocused(false);
             }
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              onSubmit(e as any);
-            } else if (e.key === 'Tab') {
-              e.preventDefault();
-              setShowFormatToolbar(true);
-            } else if (e.key === 'Escape') {
-              setShowFormatToolbar(false);
-            }
-          }}
-          placeholder={placeholder}
-          className="flex-grow p-2 pr-[100px] border-none focus:outline-none text-[#000000] placeholder:text-gray-400 resize-none min-h-[40px] overflow-hidden"
-          rows={1}
-          readOnly={readOnly}
+          onKeyDown={handleKeyDown}
           onClick={onClick}
+          className={`flex-grow p-2 ${showSubmitButton ? 'pr-[100px]' : 'pr-2'} border-none focus:outline-none text-[#000000] placeholder:text-gray-400 min-h-[40px] whitespace-pre-wrap break-words`}
+          data-placeholder={placeholder}
+          role="textbox"
+          aria-multiline="true"
         />
-        <button
-          ref={buttonRef}
-          onClick={(e) => {
-            onSubmit(e as any);
-            setIsFocused(false);
-          }}
-          className={`absolute right-0 top-0 bottom-0 px-6 bg-gray-600 text-white hover:bg-gray-700
-            ${!isFocused ? 'opacity-0 pointer-events-none transition-opacity duration-0' : 
-              isLoading ? 'opacity-50 transition-opacity duration-200' : 'opacity-100 transition-opacity duration-200'
-            }`}
-          disabled={disabled || isLoading}
-        >
-          {isLoading ? 'Posting...' : buttonText}
-        </button>
+        {isContentEmpty && !isFocused && !value && (
+          <span className="pointer-events-none absolute left-2 top-2 text-gray-400 select-none">
+            {placeholder}
+          </span>
+        )}
+        {showSubmitButton && (
+          <button
+            ref={buttonRef}
+            onClick={(e) => {
+              onSubmit(e as any);
+              setIsFocused(false);
+            }}
+            className={`absolute right-0 top-0 bottom-0 px-6 bg-gray-600 text-white hover:bg-gray-700
+              ${!isFocused ? 'opacity-0 pointer-events-none transition-opacity duration-0' : 
+                isLoading ? 'opacity-50 transition-opacity duration-200' : 'opacity-100 transition-opacity duration-200'
+              }`}
+            disabled={disabled || isLoading}
+          >
+            {isLoading ? 'Posting...' : buttonText}
+          </button>
+        )}
         <FormatToolbar
           inputRef={inputRef}
           isVisible={showFormatToolbar}
           onClose={() => setShowFormatToolbar(false)}
-          onFormat={handleLocalFormat}
+          onFormat={(type) => handleToolbarAction(type)}
         />
       </div>
     </div>
