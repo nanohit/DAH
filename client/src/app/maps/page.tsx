@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useState, type MouseEvent as ReactMouseEvent } from 'react';
+export const dynamic = 'force-dynamic';
+
+import { useEffect, useRef, useCallback, useState, Suspense, type MouseEvent as ReactMouseEvent } from 'react';
 import type { FormatType, SelectionRange } from '@/components/FormatToolbar';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'react-hot-toast';
@@ -1325,4 +1327,16 @@ function MapsContent() {
   );
 }
 
-export default MapsContent;
+export default function MapsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="w-full min-h-screen flex items-center justify-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500" />
+        </div>
+      }
+    >
+      <MapsContent />
+    </Suspense>
+  );
+}

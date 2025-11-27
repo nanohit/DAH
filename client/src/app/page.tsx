@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import PostList, { Post } from '@/components/PostList';
 import useSocketConnection from '@/hooks/useSocketConnection';
@@ -7,6 +9,7 @@ import SocketStatus from '@/components/SocketStatus';
 import { getMapSummaries, MapSummary } from '@/utils/mapUtils';
 import api from '@/services/api';
 import UserRecentMaps from '@/components/UserRecentMaps';
+import { HeroSearch } from '@/components/HeroSearch';
 
 const FEED_PAGE_SIZE = 10;
 const FETCH_BATCH_SIZE = 10;
@@ -268,6 +271,7 @@ export default function HomePage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      <HeroSearch />
       <div className="max-w-4xl mx-auto">
         <UserRecentMaps maxMaps={5} />
 
