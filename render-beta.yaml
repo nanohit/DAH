@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: dah-beta
+    env: node
+    plan: starter  # or 'free' if you prefer
+    branch: beta-zlib-search
+    buildCommand: npm install && cd client && npm install && npm run build
+    startCommand: node index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5001
+      - key: MONGODB_URI
+        sync: false  # Set this manually in Render dashboard
+      - key: JWT_SECRET
+        sync: false  # Set this manually in Render dashboard
+      - key: VK_TOKEN
+        sync: false  # Set this manually in Render dashboard
+      - key: VK_API_VERSION
+        value: 5.199
+      - key: IMGBB_API_KEY
+        sync: false  # Set this manually in Render dashboard
+      - key: FLIBUSTA_PROXY_URL
+        value: https://flibusta-proxy.alphy-flibusta.workers.dev
+      # Z-Library configuration
+      - key: ZLIBRARY_ACCOUNT_POOL
+        value: zlib.alphy@mail.ru,nanohit.docker@nutritionxtreme.com,nanohit.docker1@nutritionxtreme.com,nanohit.docker2@nutritionxtreme.com,nanohit.docker3@nutritionxtreme.com,nanohit.docker4@nutritionxtreme.com,nanohit.docker5@nutritionxtreme.com,nanohit.docker6@nutritionxtreme.com,nanohit.docker7@nutritionxtreme.com,nanohit.docker8@nutritionxtreme.com,nanohit.docker9@nutritionxtreme.com
+      - key: ZLIBRARY_PASSWORD
+        value: 123456789
+      - key: ZLIBRARY_PROXY_URL
+        value: https://zlibrary-proxy.alphy-flibusta.workers.dev
+      - key: ZLIBRARY_BASE_URL
+        value: https://z-library.sk
+      - key: ZLIBRARY_EMAIL
+        value: zlib.alphy@mail.ru
+      - key: PUPPETEER_HEADLESS
+        value: new
+    healthCheckPath: /api/auth/test
+
