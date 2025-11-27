@@ -3,7 +3,15 @@ const router = express.Router();
 const flibustaRouter = express.Router({ mergeParams: true }); // Create a Flibusta router that can access parent params
 const Book = require('../models/Book');
 const { protect, admin } = require('../middleware/auth');
-const { requestDownloadLinks, getDownloadVariants, selectVariant, searchBooks, getVariantDetails, getDownloadLink } = require('../controllers/flibustaController');
+const {
+  requestDownloadLinks,
+  getDownloadVariants,
+  selectVariant,
+  searchBooks,
+  getVariantDetails,
+  getDownloadLink,
+} = require('../controllers/flibustaController');
+const { searchZLibrary, getZLibraryDownloadLink, warmupZLibrary } = require('../controllers/zlibraryController');
 
 // At the top after imports
 console.log('\n=== BOOKS ROUTER INITIALIZATION ===');
@@ -107,6 +115,9 @@ console.log('\nRegistering confirm-download-links route with pattern: /:id/confi
 router.get('/flibusta/search', searchBooks);
 router.get('/flibusta/variant/:id', getVariantDetails);
 router.get('/flibusta/download/:id/:format', getDownloadLink);
+router.get('/zlibrary/search', searchZLibrary);
+router.get('/zlibrary/download/:bookId/:token', getZLibraryDownloadLink);
+router.get('/zlibrary/warmup', warmupZLibrary);
 
 // Book-specific Flibusta routes
 flibustaRouter.post('/request-download-links', protect, requestDownloadLinks);
