@@ -3,7 +3,7 @@ import Link from 'next/link';
 import api from '@/services/api';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
-import type { BookResult, SearchError, BookFormat } from '@/components/Search/FlibustaSearch';
+import type { BookResult, SearchError, BookFormat } from '@/types/books';
 
 const PLACEHOLDERS = [
   'Евгений Онегин...',

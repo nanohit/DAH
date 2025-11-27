@@ -2,24 +2,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/services/api';
 import { toast } from 'react-hot-toast';
-
-interface BookFormat {
-  id: string;
-  format: string;
-}
-
-interface BookResult {
-  id: string;
-  title: string;
-  author: string;
-  formats: BookFormat[];
-}
-
-interface SearchError {
-  message: string;
-  code?: string;
-  isWarning?: boolean;
-}
+import type { BookFormat, BookResult, SearchError } from '@/types/books';
+export type { BookFormat, BookResult, SearchError } from '@/types/books';
 
 export const FlibustaSearch = ({ trigger, showText = false }: { trigger?: () => void; showText?: boolean }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
