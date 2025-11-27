@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import type { FormatType, SelectionRange } from '@/components/FormatToolbar';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import MapToolbar from './components/Toolbar/MapToolbar';
@@ -1030,9 +1031,13 @@ function MapsContent() {
   const handleAddLink = useCallback(() => openLinkModal(), [openLinkModal]);
 
   const handleTextModalFormat = useCallback(
-    (type: string, selection: { start: number; end: number }) => {
+    (type: FormatType | 'link', selection?: SelectionRange) => {
       setTextEditModal((current) => {
         if (!current) {
+          return current;
+        }
+
+        if (!selection) {
           return current;
         }
 

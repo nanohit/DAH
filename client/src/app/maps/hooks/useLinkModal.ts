@@ -31,11 +31,11 @@ export const useLinkModal = ({ containerRef, getViewportCenterInCanvas, setEleme
     async (inputUrl: string, overrideTitle?: string): Promise<LinkPreviewResult | null> => {
       if (!inputUrl) return null;
       setIsLoadingLinkPreview(true);
+      let processedUrl = inputUrl.trim();
+      if (!/^https?:\/\//i.test(processedUrl)) {
+        processedUrl = `https://${processedUrl}`;
+      }
       try {
-        let processedUrl = inputUrl.trim();
-        if (!/^https?:\/\//i.test(processedUrl)) {
-          processedUrl = `https://${processedUrl}`;
-        }
         const params = new URLSearchParams({ url: processedUrl });
         if (overrideTitle) {
           params.set('title', overrideTitle);

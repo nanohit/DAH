@@ -201,7 +201,9 @@ export const useConnections = ({ elements, scale, containerRef }: UseConnections
     ): 'top' | 'right' | 'bottom' | 'left' | null => {
       const element = elements.find((el) => el.id === elementId);
       if (!element) return null;
-      return resolveClosestAnchor(element, x, y, previousAnchor ?? undefined);
+      const normalizedAnchor =
+        previousAnchor && previousAnchor !== 'none' ? (previousAnchor as 'top' | 'right' | 'bottom' | 'left') : undefined;
+      return resolveClosestAnchor(element, x, y, normalizedAnchor);
     },
     [elements],
   );
@@ -212,11 +214,10 @@ export const useConnections = ({ elements, scale, containerRef }: UseConnections
       anchor: 'top' | 'right' | 'bottom' | 'left',
       x: number,
       y: number,
-      previousAnchor?: 'top' | 'right' | 'bottom' | 'left' | null,
     ) => {
       const element = elements.find((el) => el.id === elementId);
       if (!element) return null;
-      return projectPointToAnchor(element, anchor, x, y, previousAnchor ?? undefined);
+      return projectPointToAnchor(element, anchor, x, y);
     },
     [elements],
   );

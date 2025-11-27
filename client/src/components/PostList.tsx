@@ -33,6 +33,7 @@ export interface Post {
   updatedAt: string;
   comments?: Comment[];
   commentsCount?: number;
+  bookmarksCount?: number;
   likes?: string[];
   dislikes?: string[];
   bookmarks?: Array<{

@@ -1,7 +1,16 @@
 'use client';
 
-import { ChangeEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
-import FormatToolbar from '@/components/FormatToolbar';
+import {
+  ChangeEvent,
+  Dispatch,
+  KeyboardEvent,
+  SetStateAction,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import FormatToolbar, { FormatType, SelectionRange } from '@/components/FormatToolbar';
 import ReactMarkdown from 'react-markdown';
 
 export interface TextEditModalState {
@@ -13,11 +22,11 @@ export interface TextEditModalState {
 
 interface TextEditModalProps {
   modalState: TextEditModalState | null;
-  setModalState: (modal: TextEditModalState | null) => void;
+  setModalState: Dispatch<SetStateAction<TextEditModalState | null>>;
   onSave: () => void;
   showFormatToolbar: boolean;
   setShowFormatToolbar: (value: boolean) => void;
-  onFormat: (type: string, selection: { start: number; end: number }) => void;
+  onFormat: (type: FormatType | 'link', selection?: SelectionRange) => void;
 }
 
 export const TextEditModal = ({
@@ -29,8 +38,6 @@ export const TextEditModal = ({
   onFormat,
 }: TextEditModalProps) => {
   const textEditRef = useRef<HTMLTextAreaElement>(null);
-  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
-
   const updateSelectionRange = useCallback(() => {
     const textarea = textEditRef.current;
     if (!textarea) {
@@ -39,7 +46,6 @@ export const TextEditModal = ({
 
     const start = textarea.selectionStart ?? 0;
     const end = textarea.selectionEnd ?? start;
-    setSelectionRange({ start, end });
     setShowFormatToolbar(end > start);
   }, [setShowFormatToolbar]);
 
@@ -163,7 +169,6 @@ export const TextEditModal = ({
           inputRef={textEditRef}
           isVisible={showFormatToolbar}
           onClose={() => setShowFormatToolbar(false)}
-          selection={selectionRange}
         />
         <div className="flex justify-end gap-3 mt-6">
           <button

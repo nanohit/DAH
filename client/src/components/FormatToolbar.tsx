@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-type FormatType = 'bold' | 'italic' | 'clear';
+export type FormatType = 'bold' | 'italic' | 'clear';
 
-type SelectionRange = { start: number; end: number } | undefined;
+export type SelectionRange = { start: number; end: number } | undefined;
 
 interface FormatToolbarProps {
   onFormat: (type: FormatType, selection?: SelectionRange) => void;
@@ -13,7 +13,7 @@ interface FormatToolbarProps {
   onClose: () => void;
 }
 
-const STYLE_PROPERTIES: Array<keyof CSSStyleDeclaration> = [
+const STYLE_PROPERTIES = [
   'boxSizing',
   'fontFamily',
   'fontSize',
@@ -32,7 +32,9 @@ const STYLE_PROPERTIES: Array<keyof CSSStyleDeclaration> = [
   'borderRightWidth',
   'borderBottomWidth',
   'borderLeftWidth',
-];
+] as const;
+
+type StyleProperty = (typeof STYLE_PROPERTIES)[number];
 
 const escapeHtml = (value: string) =>
   value

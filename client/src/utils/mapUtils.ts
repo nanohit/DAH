@@ -93,10 +93,12 @@ export interface SavedMap extends MapData {
   elementCount?: number;
   connectionCount?: number;
   comments?: any[];
+  commentsCount?: number;
   bookmarks?: Array<{
     user: string;
     timestamp: string;
   }>;
+  bookmarksCount?: number;
   isBookmarked?: boolean;
   isOwner?: boolean;
   isPrivate?: boolean;
