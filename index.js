@@ -160,9 +160,12 @@ const allowedOrigins = [
   'https://dah-git-main-nanohit.vercel.app',
   'https://alphy.tech',
   'https://www.alphy.tech',
+  'https://beta.alphy.tech',
   // Render deployments
   'https://dah-tyxc.onrender.com',
   'https://dah.onrender.com',
+  'https://dah-beta.onrender.com',
+  'https://dah-beta-xxxxxxxx.onrender.com', // replace with actual Render beta hostname if different
   // Local development
   'http://localhost:3000',
   'http://localhost:3001',
