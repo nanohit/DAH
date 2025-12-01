@@ -442,7 +442,7 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
       <div className="fixed inset-0 flex items-center justify-center z-50" onWheel={(e) => e.stopPropagation()}>
         <div className="absolute inset-0 bg-black bg-opacity-80 backdrop-blur-sm" onClick={onClose}></div>
         
-        <div className="bg-black border border-gray-800 rounded-xl w-[800px] h-[85vh] relative flex flex-col overflow-hidden"
+        <div className="bg-black border border-gray-800 rounded-xl w-[780px] h-[82vh] relative flex flex-col overflow-hidden"
           style={{
             boxShadow: '0 0 40px rgba(0, 0, 0, 0.5)',
             background: 'linear-gradient(to bottom right, #0a0a0a, #000000)',
@@ -609,7 +609,7 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
         <div className="absolute inset-0 bg-black bg-opacity-80 backdrop-blur-sm" onClick={onClose}></div>
         
         <div 
-          className="bg-black border border-gray-800 rounded-xl w-[800px] h-[85vh] relative flex flex-col overflow-hidden"
+          className="bg-black border border-gray-800 rounded-xl w-[780px] h-[82vh] relative flex flex-col overflow-hidden"
           style={{
             boxShadow: '0 0 40px rgba(0, 0, 0, 0.5)',
             background: 'linear-gradient(to bottom right, #0a0a0a, #000000)',
@@ -871,16 +871,16 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
   }
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-10 px-4">
       <div className="absolute inset-0 bg-black bg-opacity-80 backdrop-blur-sm" onClick={onClose}></div>
       
       <div 
-        className="bg-black rounded-lg w-[800px] h-[800px] relative flex flex-col border border-gray-800 overflow-hidden"
+        className="relative z-10 bg-black rounded-2xl w-[860px] max-w-[95vw] min-h-[1150px] lg:min-h-[1300px] flex flex-col border border-gray-800 overflow-hidden shadow-2xl"
         style={{
-          background: 'linear-gradient(to bottom right, #0a0a0a, #000000)',
+          background: 'linear-gradient(180deg, rgba(5,5,5,0.95), #020202 60%)',
         }}
       >
-        <div className="p-6">
+        <div className="p-8 pb-4">
           <div className="flex gap-4">
             <input
               type="text"
@@ -974,8 +974,8 @@ export const SearchModal = ({ onClose, onBookSubmit, error: externalError, shoul
           </div>
         </div>
 
-        {/* Content area with class for scroll position management */}
-        <div className="flex-1 px-6 overflow-y-auto search-results-container custom-scrollbar">
+        {/* Content area with extended height */}
+        <div className="flex-1 px-8 pb-8 search-results-container">
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>

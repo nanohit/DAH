@@ -275,34 +275,36 @@ export default function HomePage() {
       <div className="max-w-4xl mx-auto">
         <UserRecentMaps maxMaps={5} />
 
-        {showInitialLoader ? (
-          <div className="flex justify-center py-16">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-gray-700" />
-          </div>
-        ) : (
-          <>
-            <PostList
-              onPostUpdated={handleFeedRefresh}
-              posts={feedItems}
-              hasMorePosts={hasMoreFeed}
-              isLoading={isInitialLoading || isFetchingMore}
-              autoLoadOnScroll
-              onLoadMore={loadNextPage}
-            />
+        <div id="alphy-forum-feed" className="scroll-mt-24">
+          {showInitialLoader ? (
+            <div className="flex justify-center py-16">
+              <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-gray-700" />
+            </div>
+          ) : (
+            <>
+              <PostList
+                onPostUpdated={handleFeedRefresh}
+                posts={feedItems}
+                hasMorePosts={hasMoreFeed}
+                isLoading={isInitialLoading || isFetchingMore}
+                autoLoadOnScroll
+                onLoadMore={loadNextPage}
+              />
 
-            {isFetchingMore && feedItems.length > 0 && (
-              <div className="flex justify-center py-6">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200 border-t-gray-700" />
-              </div>
-            )}
+              {isFetchingMore && feedItems.length > 0 && (
+                <div className="flex justify-center py-6">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200 border-t-gray-700" />
+                </div>
+              )}
 
-            {!hasMoreFeed && feedItems.length > 0 && (
-              <div className="py-6 text-center text-sm text-gray-500">
-                You\'ve reached the end of the feed.
-              </div>
-            )}
-          </>
-        )}
+              {!hasMoreFeed && feedItems.length > 0 && (
+                <div className="py-6 text-center text-sm text-gray-500">
+                  You've ACTUALLY reached the end of the feed. Wow.
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
       <SocketStatus />
     </div>

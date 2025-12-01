@@ -1,4 +1,4 @@
-export const particlesConfig = {
+const baseParticlesConfig = {
   particles: {
     number: {
       value: 200,
@@ -78,3 +78,38 @@ export const particlesConfig = {
   },
   retina_detect: true
 }; 
+
+export const particlesConfig = baseParticlesConfig;
+
+export const heroParticlesConfig = {
+  ...baseParticlesConfig,
+  particles: {
+    ...baseParticlesConfig.particles,
+    number: {
+      ...baseParticlesConfig.particles.number,
+      value: 240
+    },
+    color: {
+      value: '#c2c8d1'
+    },
+    size: {
+      ...baseParticlesConfig.particles.size,
+      value: 1.8
+    },
+    opacity: {
+      ...baseParticlesConfig.particles.opacity,
+      value: 0.55,
+      opacity_min: 0.2
+    },
+    line_linked: {
+      ...baseParticlesConfig.particles.line_linked,
+      color: '#c2c8d1',
+      opacity: 0.45,
+      width: 0.9
+    },
+    move: {
+      ...baseParticlesConfig.particles.move,
+      speed: 0.65
+    }
+  }
+};

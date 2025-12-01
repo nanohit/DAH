@@ -28,3 +28,11 @@ export interface SearchError {
   isWarning?: boolean;
 }
 
+export interface SimilarRecommendation {
+  id: string | number | null;
+  title: string;
+  author: string;
+  workId?: number | null;
+  goodreadsUrl?: string | null;
+}
+

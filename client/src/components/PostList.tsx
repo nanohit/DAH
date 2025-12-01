@@ -72,7 +72,7 @@ export default function PostList({
   isLoading = false,
   autoLoadOnScroll = false
 }: PostListProps) {
-  useParticles(); // Initialize particles animation
+  useParticles('forum-particles'); // Initialize particles animation
   const pathname = usePathname();
   const isMainPage = pathname === '/';
   const router = useRouter();
@@ -1133,7 +1133,7 @@ export default function PostList({
         <div className="bg-black text-center py-8 px-4 rounded-lg relative overflow-hidden">
           {/* Particle animation container */}
           <div className="absolute inset-0">
-            <div id="particles-js" className="absolute inset-0"></div>
+            <div id="forum-particles" className="absolute inset-0"></div>
             <div className="absolute inset-0 bg-gradient-to-b from-black/50 to-black/20"></div>
           </div>
           

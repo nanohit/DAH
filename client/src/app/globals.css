@@ -1,5 +1,7 @@
 /* Import IBM Plex Mono font */
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&display=swap');
+/* Import Manrope as fallback for Geometria if not available locally */
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -206,6 +208,10 @@ body.maps-view-page {
 /* Font styles */
 .font-ibm-plex-mono {
   font-family: 'IBM Plex Mono', monospace;
+}
+
+.font-geometria {
+  font-family: 'Geometria', 'Manrope', sans-serif;
 }
 
 /* Book styles */

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const flibustaRouter = express.Router({ mergeParams: true }); // Create a Flibusta router that can access parent params
 const Book = require('../models/Book');
-const { protect, admin } = require('../middleware/auth');
+const { protect, admin, optionalAuth } = require('../middleware/auth');
 const {
   requestDownloadLinks,
   getDownloadVariants,
@@ -12,6 +12,8 @@ const {
   getDownloadLink,
 } = require('../controllers/flibustaController');
 const { searchZLibrary, getZLibraryDownloadLink, warmupZLibrary } = require('../controllers/zlibraryController');
+const { getBookSvSimilar, registerBookDownload, getPersonalBookFeed } = require('../controllers/booksvController');
+const { translateTitle } = require('../controllers/wikidataController');
 
 // At the top after imports
 console.log('\n=== BOOKS ROUTER INITIALIZATION ===');
@@ -118,6 +120,10 @@ router.get('/flibusta/download/:id/:format', getDownloadLink);
 router.get('/zlibrary/search', searchZLibrary);
 router.get('/zlibrary/download/:bookId/:token', getZLibraryDownloadLink);
 router.get('/zlibrary/warmup', warmupZLibrary);
+router.get('/booksv/similar', getBookSvSimilar);
+router.post('/booksv/downloads', optionalAuth, registerBookDownload);
+router.get('/booksv/personal-feed', optionalAuth, getPersonalBookFeed);
+router.get('/wikidata/translate', translateTitle);
 
 // Book-specific Flibusta routes
 flibustaRouter.post('/request-download-links', protect, requestDownloadLinks);

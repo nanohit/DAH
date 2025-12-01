@@ -18,6 +18,26 @@ const DEFAULT_ACCOUNT_POOL = [
   'nanohit.docker7@nutritionxtreme.com',
   'nanohit.docker8@nutritionxtreme.com',
   'nanohit.docker9@nutritionxtreme.com',
+  'nanohit.docker10@willeloof.com',
+  'nanohit.docker11@willeloof.com',
+  'nanohit.docker12@willeloof.com',
+  'nanohit.docker13@willeloof.com',
+  'nanohit.docker14@willeloof.com',
+  'nanohit.docker15@willeloof.com',
+  'nanohit.docker16@willeloof.com',
+  'nanohit.docker17@willeloof.com',
+  'nanohit.docker18@willeloof.com',
+  'nanohit.docker19@willeloof.com',
+  'nanohit.docker20@goldengary.store',
+  'nanohit.docker21@goldengary.store',
+  'nanohit.docker22@goldengary.store',
+  'nanohit.docker23@goldengary.store',
+  'nanohit.docker24@goldengary.store',
+  'nanohit.docker25@goldengary.store',
+  'nanohit.docker26@goldengary.store',
+  'nanohit.docker27@goldengary.store',
+  'nanohit.docker28@goldengary.store',
+  'nanohit.docker29@goldengary.store',
 ];
 
 const axios = wrapper(axiosBase);
@@ -167,46 +187,155 @@ class ZLibraryService {
     }
 
     return this.queue.add(async () => {
-      const page = await this.ensureLoggedIn();
-      const encoded = encodeURIComponent(query.trim());
-      const searchUrl = `${this.baseUrl}/s/${encoded}`;
+      const normalizedQuery = query.trim();
+      let results = await this.tryHttpSearch(normalizedQuery);
 
-      await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: this.timeout });
-      await page.waitForSelector('#searchResultBox z-bookcard', { timeout: this.timeout });
+      if (!results || results.length === 0) {
+        results = await this.performBrowserSearch(normalizedQuery);
+      }
 
-      const results = await page.$$eval('#searchResultBox z-bookcard', (cards) =>
-        cards.slice(0, 20).map((card) => {
-          const download = card.getAttribute('download') || '';
-          const match = download.match(/\/dl\/([^/]+)\/([^/]+)/);
-          const downloadId = match ? match[1] : card.getAttribute('id');
-          const downloadToken = match ? match[2] : '';
-
-          return {
-            id: card.getAttribute('id') || downloadId,
-            title: card.querySelector('div[slot="title"]')?.textContent?.trim() || '',
-            author: card.querySelector('div[slot="author"]')?.textContent?.trim() || '',
-            extension: (card.getAttribute('extension') || '').toLowerCase(),
-            filesize: card.getAttribute('filesize') || '',
-            language: card.getAttribute('language') || '',
-            year: card.getAttribute('year') || '',
-            cover: card.querySelector('img')?.getAttribute('data-src') || '',
-            downloadPath: download,
-            downloadId,
-            downloadToken,
-            href: card.getAttribute('href') || '',
-          };
-        })
-      );
-
-      const filtered = results.filter((result) => result.downloadId && result.downloadToken);
-      this.cache.set(cacheKey, filtered);
-      return filtered;
+      this.cache.set(cacheKey, results);
+      return results;
     });
+  }
+
+  parseDownloadMeta(downloadPath, fallbackId) {
+    const raw = downloadPath || '';
+    const match = raw.match(/\/dl\/([^/]+)\/([^/]+)/);
+    return {
+      downloadId: match ? match[1] : fallbackId || '',
+      downloadToken: match ? match[2] : '',
+    };
+  }
+
+  normalizeSearchResult(raw) {
+    if (!raw) {
+      return null;
+    }
+    const { downloadId, downloadToken } = this.parseDownloadMeta(raw.downloadPath, raw.downloadId || raw.id);
+    if (!downloadId || !downloadToken) {
+      return null;
+    }
+    return {
+      id: raw.id || downloadId,
+      title: raw.title || '',
+      author: raw.author || '',
+      extension: (raw.extension || '').toLowerCase(),
+      filesize: raw.filesize || '',
+      language: raw.language || '',
+      year: raw.year || '',
+      cover: raw.cover || '',
+      downloadPath: raw.downloadPath || '',
+      downloadId,
+      downloadToken,
+      href: raw.href || '',
+    };
+  }
+
+  async fetchSearchPageHtml(query) {
+    await this.ensureLoggedIn();
+    await this.syncCookiesFromPage();
+    const encoded = encodeURIComponent(query);
+    const searchUrl = `${this.baseUrl}/s/${encoded}`;
+    const response = await axios.get(searchUrl, {
+      headers: this.defaultHeaders,
+      jar: this.cookieJar,
+      withCredentials: true,
+      timeout: this.timeout,
+    });
+
+    if (response.status !== 200 || typeof response.data !== 'string') {
+      throw new Error(`Unexpected response status: ${response.status}`);
+    }
+
+    const html = response.data;
+    if (html.includes('Checking your browser before accessing') || html.includes('ddos-guard')) {
+      throw new Error('Encountered browser check while fetching search results');
+    }
+
+    return html;
+  }
+
+  parseSearchResultsFromHtml(html) {
+    const $ = cheerio.load(html);
+    const cards = $('#searchResultBox z-bookcard');
+
+    if (!cards.length) {
+      return [];
+    }
+
+    const rawResults = [];
+    cards.slice(0, 20).each((_, element) => {
+      const card = $(element);
+      rawResults.push({
+        id: card.attr('id') || '',
+        title: card.find('div[slot="title"]').text().trim(),
+        author: card.find('div[slot="author"]').text().trim(),
+        extension: card.attr('extension') || '',
+        filesize: card.attr('filesize') || '',
+        language: card.attr('language') || '',
+        year: card.attr('year') || '',
+        cover: card.find('img').attr('data-src') || card.find('img').attr('src') || '',
+        downloadPath: card.attr('download') || '',
+        href: card.attr('href') || '',
+      });
+    });
+
+    return rawResults.map((item) => this.normalizeSearchResult(item)).filter(Boolean);
+  }
+
+  async tryHttpSearch(query) {
+    try {
+      const html = await this.fetchSearchPageHtml(query);
+      const parsed = this.parseSearchResultsFromHtml(html);
+      if (!parsed.length) {
+        throw new Error('No results in HTTP response');
+      }
+      return parsed;
+    } catch (error) {
+      console.warn('Z-Library HTTP search fallback:', error.message);
+      return null;
+    }
+  }
+
+  async performBrowserSearch(query) {
+    const page = await this.ensureLoggedIn();
+    const encoded = encodeURIComponent(query);
+    const searchUrl = `${this.baseUrl}/s/${encoded}`;
+
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: this.timeout });
+    await page.waitForSelector('#searchResultBox z-bookcard', { timeout: this.timeout });
+
+    const rawResults = await page.$$eval('#searchResultBox z-bookcard', (cards) =>
+      cards.slice(0, 20).map((card) => ({
+        id: card.getAttribute('id') || '',
+        title: card.querySelector('div[slot="title"]')?.textContent?.trim() || '',
+        author: card.querySelector('div[slot="author"]')?.textContent?.trim() || '',
+        extension: card.getAttribute('extension') || '',
+        filesize: card.getAttribute('filesize') || '',
+        language: card.getAttribute('language') || '',
+        year: card.getAttribute('year') || '',
+        cover: card.querySelector('img')?.getAttribute('data-src') || '',
+        downloadPath: card.getAttribute('download') || '',
+        href: card.getAttribute('href') || '',
+      }))
+    );
+
+    return rawResults.map((item) => this.normalizeSearchResult(item)).filter(Boolean);
   }
 
   async resolveDownload(downloadPath) {
     if (!downloadPath) {
       throw new Error('Download path is required');
+    }
+
+    const cacheKey = `download:${downloadPath}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached) {
+      if (!cached.expiresAt || cached.expiresAt > Date.now()) {
+        return cached;
+      }
+      this.cache.del(cacheKey);
     }
 
     return this.queue.add(async () => {
@@ -238,11 +367,17 @@ class ZLibraryService {
           const filename = locationUrl.searchParams.get('filename');
           const expiresAt = locationUrl.searchParams.get('expires');
 
-          return {
+          const payload = {
             location,
             filename,
             expiresAt: expiresAt ? Number(expiresAt) * 1000 : null,
           };
+
+          const ttlMs = payload.expiresAt ? payload.expiresAt - Date.now() - 60 * 1000 : 5 * 60 * 1000;
+          const ttlSeconds = Math.max(30, Math.floor(ttlMs / 1000));
+          this.cache.set(cacheKey, payload, ttlSeconds);
+
+          return payload;
         } catch (error) {
           lastError = await this.processDownloadError(error, downloadPath, attempts);
           if (!lastError) {

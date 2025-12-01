@@ -127,6 +127,184 @@ class FlibustaService {
     return match ? match[1].trim() : '';
   }
 
+  shouldAttemptProxy(error) {
+    if (!error) {
+      return false;
+    }
+
+    const retryableCodes = new Set([
+      'ECONNABORTED',
+      'ECONNREFUSED',
+      'ENOTFOUND',
+      'EAI_AGAIN',
+      'ETIMEDOUT',
+      'EHOSTUNREACH',
+      'EPIPE'
+    ]);
+
+    if (error.code && retryableCodes.has(error.code)) {
+      return true;
+    }
+
+    const message = (error.message || '').toLowerCase();
+    if (message) {
+      const retryableIndicators = [
+        'timeout',
+        'econnrefused',
+        'socket hang up',
+        'proxy',
+        'network error',
+        'connect ehostunreach',
+        'connect etimedout'
+      ];
+
+      if (retryableIndicators.some(indicator => message.includes(indicator))) {
+        return true;
+      }
+    }
+
+    const status = error.response?.status;
+    if (!status) {
+      return false;
+    }
+
+    return status === 403 || status === 429 || status >= 500;
+  }
+
+  shouldAttemptProxyFromResponse(response) {
+    if (!response) {
+      return false;
+    }
+
+    const status = response.status;
+    return status === 403 || status === 429 || status >= 500;
+  }
+
+  buildRequestConfig(options = {}) {
+    const { skipProxy = false } = options;
+    const config = {
+      timeout: this.timeout,
+      headers: this.defaultHeaders,
+      validateStatus: function (status) {
+        return status >= 200 && status < 500;
+      }
+    };
+
+    if (!skipProxy && this.proxy) {
+      const agent = this.proxy.startsWith('socks')
+        ? new SocksProxyAgent(this.proxy)
+        : new HttpsProxyAgent(this.proxy);
+      config.httpsAgent = agent;
+      config.httpAgent = agent;
+      console.log(`Using proxy: ${this.proxy}`);
+    }
+
+    return config;
+  }
+
+  shouldBypassLocalProxy(error) {
+    if (!error) {
+      return false;
+    }
+
+    if (error.code === 'ECONNREFUSED') {
+      const address = (error.address || '').toLowerCase();
+      if (address === '127.0.0.1' || address === 'localhost' || address === '') {
+        return true;
+      }
+    }
+
+    const message = (error.message || '').toLowerCase();
+    if (message.includes('127.0.0.1') || message.includes('localhost')) {
+      return message.includes('econnrefused');
+    }
+
+    return false;
+  }
+
+  getSearchProxyCandidates(query) {
+    const trimmedQuery = query.trim();
+    const candidates = [];
+
+    const configuredSearchProxy = process.env.FLIBUSTA_SEARCH_PROXY_URL;
+    if (configuredSearchProxy) {
+      candidates.push({
+        label: 'custom_search_proxy',
+        url: configuredSearchProxy.replace(/\/$/, ''),
+        params: { ask: trimmedQuery }
+      });
+    } else {
+      const workerBase = process.env.FLIBUSTA_PROXY_URL;
+      if (workerBase) {
+        candidates.push({
+          label: 'cloudflare_worker',
+          url: `${workerBase.replace(/\/$/, '')}/search`,
+          params: { ask: trimmedQuery }
+        });
+      }
+    }
+
+    candidates.push({
+      label: 'flibusta_site_https',
+      url: 'https://flibusta.site/booksearch',
+      params: { ask: trimmedQuery }
+    });
+
+    candidates.push({
+      label: 'flibusta_site_http',
+      url: 'http://flibusta.site/booksearch',
+      params: { ask: trimmedQuery }
+    });
+
+    return candidates;
+  }
+
+  async fetchSearchViaProxy(query, previousError = null) {
+    const candidates = this.getSearchProxyCandidates(query);
+
+    if (!candidates.length) {
+      if (previousError) {
+        throw previousError;
+      }
+      throw new Error('No Flibusta search proxies are configured.');
+    }
+
+    console.warn('\nFalling back to alternate Flibusta search endpoints...');
+
+    let lastError = previousError;
+
+    for (const candidate of candidates) {
+      try {
+        console.log(`Trying proxy candidate "${candidate.label}" at ${candidate.url}`);
+
+        const response = await axios.get(candidate.url, {
+          params: candidate.params,
+          timeout: this.timeout,
+          responseType: 'text',
+          headers: this.defaultHeaders,
+          validateStatus: status => status >= 200 && status < 500
+        });
+
+        if (response.status === 200) {
+          console.log(`Proxy candidate "${candidate.label}" succeeded`);
+          return response;
+        }
+
+        console.warn(`Proxy candidate "${candidate.label}" returned status ${response.status}`);
+        lastError = new Error(`Proxy candidate "${candidate.label}" returned status ${response.status}`);
+      } catch (error) {
+        console.error(`Proxy candidate "${candidate.label}" failed:`, {
+          message: error.message,
+          code: error.code,
+          status: error.response?.status
+        });
+        lastError = error;
+      }
+    }
+
+    throw lastError || new Error('All Flibusta proxy attempts failed.');
+  }
+
   async makeRequest(url, options = {}) {
     const proxyUrl = process.env.FLIBUSTA_PROXY;
     let agent = null;
@@ -244,29 +422,57 @@ class FlibustaService {
 
       await this.rateLimiter.consume('search', 1);
 
-      const config = {
-        timeout: this.timeout,
-        headers: this.defaultHeaders,
-        validateStatus: function (status) {
-          return status >= 200 && status < 500; // Accept all responses to handle them manually
-        }
-      };
+    const baseConfig = this.buildRequestConfig({ skipProxy: true });
+    const proxiedConfig = this.buildRequestConfig();
 
-      if (this.proxy) {
-        if (this.proxy.startsWith('socks')) {
-          config.httpsAgent = new SocksProxyAgent(this.proxy);
-        } else {
-          config.httpsAgent = new HttpsProxyAgent(this.proxy);
+      const searchUrl = `${this.baseUrl}/booksearch?ask=${encodeURIComponent(query)}`;
+      console.log(`Making request to: ${searchUrl}`);
+
+      let response;
+      let usedProxy = false;
+
+    try {
+      response = await axios.get(searchUrl, proxiedConfig);
+    } catch (error) {
+      console.error('Direct search request failed:', {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status
+      });
+
+      let lastError = error;
+
+      if (this.proxy && this.shouldBypassLocalProxy(error)) {
+        console.warn('Local proxy unreachable. Retrying Flibusta request without proxy...');
+        try {
+          response = await axios.get(searchUrl, baseConfig);
+          lastError = null;
+          console.log('Flibusta request succeeded without proxy.');
+        } catch (directError) {
+          console.error('Retry without proxy failed:', {
+            message: directError.message,
+            code: directError.code,
+            status: directError.response?.status
+          });
+          lastError = directError;
         }
-        console.log(`Using proxy: ${this.proxy}`);
       }
 
-      console.log(`Making request to: ${this.baseUrl}/booksearch?ask=${encodeURIComponent(query)}`);
-      
-      const response = await axios.get(
-        `${this.baseUrl}/booksearch?ask=${encodeURIComponent(query)}`,
-        config
-      );
+      if (!response) {
+        if (lastError && this.shouldAttemptProxy(lastError)) {
+          response = await this.fetchSearchViaProxy(query, lastError);
+          usedProxy = true;
+        } else {
+          throw lastError || error;
+        }
+      }
+    }
+
+      if (!usedProxy && this.shouldAttemptProxyFromResponse(response)) {
+        console.warn(`Received status ${response.status} from Flibusta, attempting proxy fallback...`);
+        response = await this.fetchSearchViaProxy(query);
+        usedProxy = true;
+      }
 
       if (response.status === 404) {
         console.log('No results found');
@@ -274,7 +480,7 @@ class FlibustaService {
       }
 
       if (response.status !== 200) {
-        throw new Error(`Flibusta returned status ${response.status}: ${response.statusText}`);
+        throw new Error(`Flibusta returned status ${response.status}: ${response.statusText || 'Unknown status'}`);
       }
 
       const $ = cheerio.load(response.data);

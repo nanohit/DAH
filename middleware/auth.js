@@ -57,6 +57,30 @@ const protect = async (req, res, next) => {
   }
 };
 
+const optionalAuth = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer')) {
+    return next();
+  }
+
+  const token = authHeader.split(' ')[1];
+  if (!token) {
+    return next();
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id).select('-password');
+    if (user) {
+      req.user = user;
+    }
+  } catch (error) {
+    console.warn('Optional auth failed:', error.message);
+  }
+
+  return next();
+};
+
 // Admin middleware
 const admin = (req, res, next) => {
   if (req.user && req.user.isAdmin) {
@@ -66,4 +90,4 @@ const admin = (req, res, next) => {
   }
 };
 
-module.exports = { protect, admin }; 
+module.exports = { protect, optionalAuth, admin };
