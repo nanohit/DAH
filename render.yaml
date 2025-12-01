@@ -50,19 +50,6 @@ services:
           type: redis
           name: dah-redis
           property: connectionString
-    healthCheckPath: /health
-
-      - key: QUEUE_PREFIX
-        value: dah
-      - key: ZLIBRARY_QUEUE_NAME
-        value: zlibrary-jobs
-      - key: PUPPETEER_HEADLESS
-        value: new
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: dah-redis
-          property: connectionString
     healthCheckPath: /api/auth/test
 
   - type: web
