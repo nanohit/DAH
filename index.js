@@ -16,15 +16,10 @@ const io = new Server(server, {
   cors: {
     origin: function(origin, callback) {
       // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin || process.env.NODE_ENV === 'development') {
+      if (isOriginAllowed(origin)) {
         return callback(null, true);
       }
-  
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
+      callback(new Error('Not allowed by CORS'));
     },
     methods: ["GET", "POST"],
     credentials: true
@@ -153,7 +148,7 @@ if (enableRequestLogging) {
 }
 
 // CORS configuration
-const allowedOrigins = [
+const staticAllowedOrigins = [
   // Vercel deployments
   'https://dah-omega.vercel.app',
   'https://dah.vercel.app',
@@ -165,29 +160,49 @@ const allowedOrigins = [
   'https://dah-tyxc.onrender.com',
   'https://dah.onrender.com',
   'https://dah-beta.onrender.com',
-  'https://dah-beta-xxxxxxxx.onrender.com', // replace with actual Render beta hostname if different
   // Local development
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:5000',
-  'http://localhost:5001'
+  'http://localhost:5001',
 ];
+
+const envAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const wildcardOriginPatterns = [
+  /\.vercel\.app$/,
+  /\.onrender\.com$/,
+  /\.alphy\.tech$/,
+];
+
+const allowedOrigins = new Set([...staticAllowedOrigins, ...envAllowedOrigins]);
+
+const isOriginAllowed = (origin) => {
+  if (!origin || process.env.NODE_ENV === 'development') {
+    return true;
+  }
+  if (allowedOrigins.has(origin)) {
+    return true;
+  }
+  return wildcardOriginPatterns.some((pattern) => pattern.test(origin));
+};
 
 const corsOptions = {
   origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin || process.env.NODE_ENV === 'development') {
-      console.log('Allowing request with no origin or in development mode');
+    if (isOriginAllowed(origin)) {
+      if (origin) {
+        console.log(`Allowing origin: ${origin}`);
+      } else {
+        console.log('Allowing request with no origin or in development mode');
+      }
       return callback(null, true);
     }
 
-    if (allowedOrigins.includes(origin)) {
-      console.log(`Allowing origin: ${origin}`);
-      callback(null, true);
-    } else {
-      console.log(`Blocked origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
+    console.log(`Blocked origin: ${origin}`);
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
