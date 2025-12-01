@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const { Worker, QueueScheduler } = require('bullmq');
+const { Worker, QueueEvents } = require('bullmq');
 const { buildBullmqBaseOptions, queueNames } = require('../config/queue');
 const { JOB_NAMES } = require('../queues/zlibraryJobNames');
 const ZLibraryService = require('../services/zlibrary/ZLibraryService');
@@ -57,13 +57,12 @@ async function handleJob(job) {
 }
 
 async function startWorker() {
-  const scheduler = new QueueScheduler(queueNames.zlibrary, baseOptions);
-  scheduler.on('error', (err) => {
-    console.error(`[${SERVICE_NAME}] QueueScheduler error:`, err);
+  const queueEvents = new QueueEvents(queueNames.zlibrary, baseOptions);
+  queueEvents.on('error', (err) => {
+    console.error(`[${SERVICE_NAME}] QueueEvents error:`, err);
   });
-
-  await scheduler.waitUntilReady();
-  console.log(`[${SERVICE_NAME}] Queue scheduler ready for ${queueNames.zlibrary}`);
+  await queueEvents.waitUntilReady();
+  console.log(`[${SERVICE_NAME}] Queue events ready for ${queueNames.zlibrary}`);
 
   const worker = new Worker(queueNames.zlibrary, handleJob, {
     ...baseOptions,
@@ -89,7 +88,7 @@ async function startWorker() {
   const shutdown = async (signal) => {
     console.log(`[${SERVICE_NAME}] Shutting down due to ${signal}`);
     await worker.close();
-    await scheduler.close();
+    await queueEvents.close();
     process.exit(0);
   };
 
