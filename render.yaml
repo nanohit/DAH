@@ -2,6 +2,9 @@ services:
   - type: redis
     name: dah-redis
     plan: free
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: allow Render services to connect
 
   - type: web
     name: dah-api
