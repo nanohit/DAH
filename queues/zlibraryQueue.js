@@ -3,11 +3,11 @@ const { buildBullmqBaseOptions, queueNames } = require('../config/queue');
 const { JOB_NAMES } = require('./zlibraryJobNames');
 
 const DEFAULT_SEARCH_TIMEOUT =
-  Number(process.env.ZLIBRARY_SEARCH_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 90_000;
+  Number(process.env.ZLIBRARY_SEARCH_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 180_000;
 const DEFAULT_DOWNLOAD_TIMEOUT =
-  Number(process.env.ZLIBRARY_DOWNLOAD_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 120_000;
+  Number(process.env.ZLIBRARY_DOWNLOAD_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 180_000;
 const DEFAULT_WARMUP_TIMEOUT =
-  Number(process.env.ZLIBRARY_WARMUP_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 60_000;
+  Number(process.env.ZLIBRARY_WARMUP_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 90_000;
 
 let queueInstance = null;
 let queueEventsInstance = null;
@@ -88,7 +88,7 @@ async function enqueueSearchJob(query) {
     { query: typeof query === 'string' ? query.trim() : '' },
     {
       timeout: DEFAULT_SEARCH_TIMEOUT,
-      waitTimeout: DEFAULT_SEARCH_TIMEOUT + 10_000,
+      waitTimeout: DEFAULT_SEARCH_TIMEOUT + 60_000,
     }
   );
 }
@@ -99,7 +99,7 @@ async function enqueueDownloadJob(downloadPath) {
     { downloadPath },
     {
       timeout: DEFAULT_DOWNLOAD_TIMEOUT,
-      waitTimeout: DEFAULT_DOWNLOAD_TIMEOUT + 10_000,
+      waitTimeout: DEFAULT_DOWNLOAD_TIMEOUT + 60_000,
     }
   );
 }
@@ -110,7 +110,7 @@ async function enqueueWarmupJob() {
     {},
     {
       timeout: DEFAULT_WARMUP_TIMEOUT,
-      waitTimeout: DEFAULT_WARMUP_TIMEOUT + 5_000,
+      waitTimeout: DEFAULT_WARMUP_TIMEOUT + 30_000,
     }
   );
 }
