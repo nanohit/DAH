@@ -1,5 +1,9 @@
 const asyncHandler = require('../middleware/async');
-const ZLibraryService = require('../services/zlibrary/ZLibraryService');
+const {
+  enqueueSearchJob,
+  enqueueDownloadJob,
+  enqueueWarmupJob,
+} = require('../queues/zlibraryQueue');
 
 const ZLIBRARY_WORKER_URL =
   process.env.ZLIBRARY_PROXY_URL || 'https://zlibrary-proxy.alphy-flibusta.workers.dev';
@@ -7,6 +11,47 @@ const ZLIBRARY_WORKER_URL =
 const encodeForWorker = (url) => {
   if (!url) return null;
   return Buffer.from(url, 'utf8').toString('base64url');
+};
+
+const mapQueueError = (error) => {
+  if (!error) {
+    return { message: 'Unknown worker error' };
+  }
+
+  if (typeof error.message === 'string') {
+    try {
+      const parsed = JSON.parse(error.message);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          message: parsed.message || 'Worker error',
+          code: parsed.code,
+          details: parsed.details,
+        };
+      }
+    } catch {
+      // Message was not JSON – fall through.
+    }
+  }
+
+  return {
+    message: error.message || 'Worker error',
+    code: error.code,
+  };
+};
+
+const statusFromQueueError = (code) => {
+  switch (code) {
+    case 'ZLIB_DAILY_LIMIT':
+      return 429;
+    case 'QUEUE_WAIT_TIMEOUT':
+      return 504;
+    case 'ECONNREFUSED':
+    case 'EAI_AGAIN':
+    case 'ECONNRESET':
+      return 503;
+    default:
+      return 500;
+  }
 };
 
 exports.searchZLibrary = asyncHandler(async (req, res) => {
@@ -20,7 +65,7 @@ exports.searchZLibrary = asyncHandler(async (req, res) => {
   }
 
   try {
-    const results = await ZLibraryService.searchBooks(query);
+    const results = await enqueueSearchJob(query);
 
     const formatted = results.map((item) => ({
       id: item.id,
@@ -50,10 +95,16 @@ exports.searchZLibrary = asyncHandler(async (req, res) => {
       data: formatted,
     });
   } catch (error) {
-    console.error('Z-Library search error:', error);
-    res.status(500).json({
+    const mappedError = mapQueueError(error);
+    console.error('Z-Library search queue error:', error);
+
+    const status = statusFromQueueError(mappedError.code);
+
+    res.status(status).json({
       success: false,
-      error: error.message || 'Failed to search Z-Library',
+      error: mappedError.message || 'Failed to search Z-Library',
+      code: mappedError.code,
+      details: mappedError.details,
     });
   }
 });
@@ -73,7 +124,7 @@ exports.getZLibraryDownloadLink = asyncHandler(async (req, res) => {
   const downloadPath = `/dl/${sanitizedId}/${sanitizedToken}`;
 
   try {
-    const { location, filename, expiresAt } = await ZLibraryService.resolveDownload(downloadPath);
+    const { location, filename, expiresAt } = await enqueueDownloadJob(downloadPath);
     if (!location) {
       return res.status(500).json({
         success: false,
@@ -101,32 +152,40 @@ exports.getZLibraryDownloadLink = asyncHandler(async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Z-Library download link error:', error);
-    if (error.code === 'ZLIB_DAILY_LIMIT') {
+    const mappedError = mapQueueError(error);
+    console.error('Z-Library download link queue error:', error);
+    if (mappedError.code === 'ZLIB_DAILY_LIMIT') {
       return res.status(429).json({
         success: false,
-        error: error.message || 'Z-Library daily limit reached. Please try again later.',
+        error: mappedError.message || 'Z-Library daily limit reached. Please try again later.',
         code: 'ZLIB_DAILY_LIMIT',
-        details: error.details,
+        details: mappedError.details,
       });
     }
 
-    res.status(500).json({
+    const status = statusFromQueueError(mappedError.code);
+    res.status(status).json({
       success: false,
-      error: error.message || 'Failed to create download link',
+      error: mappedError.message || 'Failed to create download link',
+      code: mappedError.code,
+      details: mappedError.details,
     });
   }
 });
 
 exports.warmupZLibrary = asyncHandler(async (req, res) => {
   try {
-    await ZLibraryService.warmup();
-    res.json({ success: true, message: 'Z-Library session ready' });
+    const payload = await enqueueWarmupJob();
+    res.json({ success: true, message: 'Z-Library session ready', data: payload });
   } catch (error) {
-    console.error('Z-Library warmup error:', error);
-    res.status(500).json({
+    const mappedError = mapQueueError(error);
+    console.error('Z-Library warmup queue error:', error);
+    const status = statusFromQueueError(mappedError.code);
+    res.status(status).json({
       success: false,
-      error: error.message || 'Failed to warm up Z-Library session',
+      error: mappedError.message || 'Failed to warm up Z-Library session',
+      code: mappedError.code,
+      details: mappedError.details,
     });
   }
 });
