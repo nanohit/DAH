@@ -148,6 +148,8 @@ if (enableRequestLogging) {
 }
 
 // CORS configuration
+const canonicalizeOrigin = (origin = '') => origin.trim().replace(/\/$/, '');
+
 const staticAllowedOrigins = [
   // Vercel deployments
   'https://dah-omega.vercel.app',
@@ -169,7 +171,7 @@ const staticAllowedOrigins = [
 
 const envAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
-  .map((origin) => origin.trim())
+  .map((origin) => canonicalizeOrigin(origin))
   .filter(Boolean);
 
 const wildcardOriginPatterns = [
@@ -178,16 +180,21 @@ const wildcardOriginPatterns = [
   /\.alphy\.tech$/,
 ];
 
-const allowedOrigins = new Set([...staticAllowedOrigins, ...envAllowedOrigins]);
+const allowedOrigins = new Set(
+  [...staticAllowedOrigins, ...envAllowedOrigins].map((origin) => canonicalizeOrigin(origin))
+);
 
 const isOriginAllowed = (origin) => {
   if (!origin || process.env.NODE_ENV === 'development') {
     return true;
   }
-  if (allowedOrigins.has(origin)) {
+
+  const normalizedOrigin = canonicalizeOrigin(origin);
+  if (allowedOrigins.has(normalizedOrigin)) {
     return true;
   }
-  return wildcardOriginPatterns.some((pattern) => pattern.test(origin));
+
+  return wildcardOriginPatterns.some((pattern) => pattern.test(normalizedOrigin));
 };
 
 const corsOptions = {
