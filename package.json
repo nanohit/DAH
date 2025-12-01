@@ -24,7 +24,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "form-data": "^4.0.2",
-    "https-proxy-agent": "^7.0.6",
+    "https-proxy-agent": "7.0.6",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.3.0",
     "mongoose": "^8.11.0",
@@ -37,7 +37,7 @@
     "react-markdown": "^10.0.0",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
-    "socks-proxy-agent": "^8.0.5",
+    "socks-proxy-agent": "8.0.5",
     "tough-cookie": "^6.0.0",
     "uuid": "^11.1.0"
   },
