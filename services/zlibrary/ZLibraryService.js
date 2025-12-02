@@ -50,8 +50,14 @@ class ZLibraryService {
     this.accountState = this.accountPool.map(() => ({ exhaustedUntil: 0 }));
     this.setActiveAccount(0);
 
-    this.loginValidityMs = 15 * 60 * 1000;
-    this.timeout = 60000;
+    this.loginValidityMs =
+      Number(process.env.ZLIBRARY_LOGIN_VALIDITY_MS) || 15 * 60 * 1000;
+    this.timeout =
+      Number(process.env.ZLIBRARY_REQUEST_TIMEOUT_MS || process.env.ZLIBRARY_TIMEOUT_MS) ||
+      90_000;
+    this.navigationTimeout =
+      Number(process.env.ZLIBRARY_NAVIGATION_TIMEOUT_MS || process.env.ZLIBRARY_TIMEOUT_MS) ||
+      90_000;
     this.queue = new PQueue({ concurrency: 1 });
     this.browserPromise = null;
     this.page = null;
@@ -83,7 +89,13 @@ class ZLibraryService {
       this.browserPromise = puppeteer
         .launch({
           headless: headlessMode,
-          args: ['--no-sandbox', '--disable-setuid-sandbox'],
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-features=site-per-process',
+          ],
           defaultViewport: { width: 1280, height: 720 },
         })
         .catch((error) => {
@@ -99,6 +111,7 @@ class ZLibraryService {
       this.page = await browser.newPage();
       await this.page.setUserAgent(this.defaultHeaders['User-Agent']);
       this.page.setDefaultTimeout(this.timeout);
+      this.page.setDefaultNavigationTimeout(this.navigationTimeout);
       this.page.on('error', (error) => {
         console.error('Z-Library page crashed:', error);
         this.page = null;
@@ -125,8 +138,8 @@ class ZLibraryService {
     console.log('🔐 Performing Z-Library login...');
 
     await page.goto(`${this.baseUrl}/login`, {
-      waitUntil: 'networkidle2',
-      timeout: this.timeout,
+      waitUntil: 'domcontentloaded',
+      timeout: this.navigationTimeout,
     });
 
     await this.waitForLoginForm(page);
@@ -138,7 +151,10 @@ class ZLibraryService {
 
     await Promise.all([
       page.click('form[data-action="login"] button[type="submit"]'),
-      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: this.timeout }),
+      page.waitForNavigation({
+        waitUntil: 'domcontentloaded',
+        timeout: this.navigationTimeout,
+      }),
     ]);
 
     const currentUrl = page.url();
@@ -303,7 +319,10 @@ class ZLibraryService {
     const encoded = encodeURIComponent(query);
     const searchUrl = `${this.baseUrl}/s/${encoded}`;
 
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: this.timeout });
+    await page.goto(searchUrl, {
+      waitUntil: 'domcontentloaded',
+      timeout: this.navigationTimeout,
+    });
     await page.waitForSelector('#searchResultBox z-bookcard', { timeout: this.timeout });
 
     const rawResults = await page.$$eval('#searchResultBox z-bookcard', (cards) =>
