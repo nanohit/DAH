@@ -128,6 +128,33 @@ class ZLibraryService {
     return this.page;
   }
 
+  async safeClick(page, selector) {
+    try {
+      await page.waitForSelector(selector, { timeout: 10_000 });
+      const element = await page.$(selector);
+      if (!element) {
+        throw new Error(`Element not found: ${selector}`);
+      }
+      await page.evaluate((el) => el.scrollIntoView(), element);
+      await element.click({ delay: 10 });
+    } catch (error) {
+      console.warn(`safeClick failed for ${selector}. Retrying with JS click...`, error.message);
+      await page.evaluate((sel) => {
+        const btn = document.querySelector(sel);
+        if (btn) {
+          btn.dispatchEvent(
+            new MouseEvent('click', { bubbles: true, cancelable: true, view: window })
+          );
+        }
+      }, selector);
+      await page.waitForTimeout(200);
+    }
+  }
+
+  delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   async ensureLoggedIn() {
     const page = await this.ensureBrowser();
 
@@ -149,13 +176,19 @@ class ZLibraryService {
     await page.type('form[data-action="login"] input[name="email"]', this.email, { delay: 20 });
     await page.type('form[data-action="login"] input[name="password"]', this.password, { delay: 20 });
 
-    await Promise.all([
-      page.click('form[data-action="login"] button[type="submit"]'),
-      page.waitForNavigation({
+    await this.safeClick(page, 'form[data-action="login"] button[type="submit"]');
+    try {
+      await page.waitForNavigation({
+        waitUntil: 'networkidle2',
+        timeout: this.navigationTimeout,
+      });
+    } catch (navError) {
+      console.warn('Primary login navigation wait failed, retrying with domcontentloaded.', navError.message);
+      await page.waitForNavigation({
         waitUntil: 'domcontentloaded',
         timeout: this.navigationTimeout,
-      }),
-    ]);
+      });
+    }
 
     const currentUrl = page.url();
     if (currentUrl.includes('/login')) {
@@ -586,22 +619,22 @@ class ZLibraryService {
   async waitForLoginForm(page) {
     const selector = 'form[data-action="login"] input[name="email"]';
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
-        await page.waitForSelector(selector, { timeout: 20000 });
+        await page.waitForSelector(selector, { timeout: 20_000, visible: true });
         return;
       } catch (error) {
         const html = await page.content();
         console.warn('Login form not visible yet. Current URL:', page.url());
         if (html.includes('Checking your browser before accessing') || html.includes('ddos-guard')) {
           console.warn('Waiting for DDoS-Guard challenge to complete...');
-          await page.waitForTimeout(4000);
+          await this.delay(5_000);
           continue;
         }
-        if (attempt === 2) {
+        if (attempt >= 4) {
           throw error;
         }
-        await page.waitForTimeout(2000);
+        await this.delay(2_000);
       }
     }
   }
