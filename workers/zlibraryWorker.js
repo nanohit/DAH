@@ -48,10 +48,29 @@ async function handleJob(job) {
         await ZLibraryService.warmup();
         return { success: true, warmedAt: new Date().toISOString() };
       }
+      case JOB_NAMES.RESET: {
+        await ZLibraryService.resetBrowser();
+        return { success: true, resetAt: new Date().toISOString() };
+      }
       default:
         throw new Error(`Unknown job type: ${job.name}`);
     }
   } catch (error) {
+    // On critical navigation/browser errors, reset the browser for next job
+    const msg = error?.message || '';
+    if (
+      msg.includes('Navigation timeout') ||
+      msg.includes('net::ERR_') ||
+      msg.includes('Protocol error') ||
+      msg.includes('Target closed') ||
+      msg.includes('Session closed') ||
+      msg.includes('browser has disconnected')
+    ) {
+      console.warn(`[${SERVICE_NAME}] Critical browser error detected, resetting browser...`);
+      await ZLibraryService.resetBrowser().catch((e) =>
+        console.error(`[${SERVICE_NAME}] Failed to reset browser:`, e.message)
+      );
+    }
     throw serializeWorkerError(error);
   }
 }

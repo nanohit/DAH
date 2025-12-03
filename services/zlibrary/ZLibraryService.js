@@ -65,6 +65,8 @@ class ZLibraryService {
     this.cookieJar = new CookieJar();
     this.cache = new NodeCache({ stdTTL: 900, checkperiod: 120 });
     this.warmupPromise = null;
+    this.consecutiveFailures = 0;
+    this.maxConsecutiveFailures = Number(process.env.ZLIBRARY_MAX_CONSECUTIVE_FAILURES) || 3;
     this.defaultHeaders = {
       'User-Agent':
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
@@ -155,6 +157,32 @@ class ZLibraryService {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  async resetBrowser() {
+    console.log('🔄 Resetting browser session...');
+    try {
+      if (this.page && !this.page.isClosed()) {
+        await this.page.close().catch(() => {});
+      }
+    } catch (e) {
+      // ignore
+    }
+    this.page = null;
+
+    try {
+      const browser = await this.browserPromise;
+      if (browser) {
+        await browser.close().catch(() => {});
+      }
+    } catch (e) {
+      // ignore
+    }
+    this.browserPromise = null;
+    this.lastLoginAt = 0;
+    this.cookieJar = new CookieJar();
+    this.consecutiveFailures = 0;
+    console.log('✅ Browser session reset complete');
+  }
+
   async ensureLoggedIn() {
     const page = await this.ensureBrowser();
 
@@ -232,19 +260,31 @@ class ZLibraryService {
     const cacheKey = `search:${query.trim().toLowerCase()}`;
     const cached = this.cache.get(cacheKey);
     if (cached) {
+      this.consecutiveFailures = 0;
       return cached;
     }
 
     return this.queue.add(async () => {
       const normalizedQuery = query.trim();
-      let results = await this.tryHttpSearch(normalizedQuery);
+      try {
+        let results = await this.tryHttpSearch(normalizedQuery);
 
-      if (!results || results.length === 0) {
-        results = await this.performBrowserSearch(normalizedQuery);
+        if (!results || results.length === 0) {
+          results = await this.performBrowserSearch(normalizedQuery);
+        }
+
+        this.consecutiveFailures = 0;
+        this.cache.set(cacheKey, results);
+        return results;
+      } catch (error) {
+        this.consecutiveFailures += 1;
+        console.error(`Search failed (${this.consecutiveFailures}/${this.maxConsecutiveFailures}):`, error.message);
+        if (this.consecutiveFailures >= this.maxConsecutiveFailures) {
+          console.warn('Too many consecutive failures, resetting browser...');
+          await this.resetBrowser();
+        }
+        throw error;
       }
-
-      this.cache.set(cacheKey, results);
-      return results;
     });
   }
 
