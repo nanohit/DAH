@@ -2,20 +2,26 @@ name: Keep Z-Library Services Warm
 
 on:
   schedule:
-    - cron: '*/30 * * * *' # every 30 minutes
+    - cron: '*/12 * * * *' # every 12 minutes to keep services awake
   workflow_dispatch:
 
 jobs:
   warmup:
     runs-on: ubuntu-latest
     steps:
+      - name: Ping API root
+        run: |
+          curl -sf https://dah-api.onrender.com/ || true
       - name: Hit worker A health endpoint
         run: |
           curl -sf https://zlib-worker-a.onrender.com/health || true
       - name: Hit worker B health endpoint
         run: |
           curl -sf https://zlib-worker-b.onrender.com/health || true
-      - name: Trigger Z-Library warmup
+      - name: Hit worker C health endpoint
+        run: |
+          curl -sf https://zlib-worker-c.onrender.com/health || true
+      - name: Trigger Z-Library warmup (keeps sessions logged in)
         run: |
           curl -sf https://dah-api.onrender.com/api/books/zlibrary/warmup || true
 
