@@ -54,11 +54,13 @@ class ZLibraryService {
       Number(process.env.ZLIBRARY_LOGIN_VALIDITY_MS) || 15 * 60 * 1000;
     this.timeout =
       Number(process.env.ZLIBRARY_REQUEST_TIMEOUT_MS || process.env.ZLIBRARY_TIMEOUT_MS) ||
-      90_000;
+      45_000;
     this.navigationTimeout =
       Number(process.env.ZLIBRARY_NAVIGATION_TIMEOUT_MS || process.env.ZLIBRARY_TIMEOUT_MS) ||
-      90_000;
-    this.queue = new PQueue({ concurrency: 1 });
+      45_000;
+    // Browser operations are serialized to prevent conflicts; HTTP requests can run in parallel
+    this.browserQueue = new PQueue({ concurrency: 1 });
+    this.httpQueue = new PQueue({ concurrency: 3 });
     this.browserPromise = null;
     this.page = null;
     this.lastLoginAt = 0;
@@ -264,8 +266,24 @@ class ZLibraryService {
       return cached;
     }
 
-    return this.queue.add(async () => {
-      const normalizedQuery = query.trim();
+    const normalizedQuery = query.trim();
+
+    // Fast path: try HTTP with existing cookies first (no queue wait)
+    if (this.lastLoginAt && Date.now() - this.lastLoginAt < this.loginValidityMs) {
+      try {
+        const results = await this.tryHttpSearchFast(normalizedQuery);
+        if (results && results.length > 0) {
+          this.consecutiveFailures = 0;
+          this.cache.set(cacheKey, results);
+          return results;
+        }
+      } catch (fastError) {
+        console.warn('Fast HTTP search failed, falling back to browser path:', fastError.message);
+      }
+    }
+
+    // Slow path: need browser for login or search
+    return this.browserQueue.add(async () => {
       try {
         let results = await this.tryHttpSearch(normalizedQuery);
 
@@ -286,6 +304,32 @@ class ZLibraryService {
         throw error;
       }
     });
+  }
+
+  // Fast HTTP search using existing cookies - no browser queue needed
+  async tryHttpSearchFast(query) {
+    const encoded = encodeURIComponent(query);
+    const searchUrl = `${this.baseUrl}/s/${encoded}`;
+    const response = await axios.get(searchUrl, {
+      headers: this.defaultHeaders,
+      jar: this.cookieJar,
+      withCredentials: true,
+      timeout: this.timeout,
+    });
+
+    if (response.status !== 200 || typeof response.data !== 'string') {
+      throw new Error(`Unexpected response status: ${response.status}`);
+    }
+
+    const html = response.data;
+    if (html.includes('Checking your browser before accessing') || html.includes('ddos-guard')) {
+      throw new Error('Encountered browser check');
+    }
+    if (html.includes('/login') || html.includes('sign in')) {
+      throw new Error('Session expired');
+    }
+
+    return this.parseSearchResultsFromHtml(html);
   }
 
   parseDownloadMeta(downloadPath, fallbackId) {
@@ -430,7 +474,7 @@ class ZLibraryService {
       this.cache.del(cacheKey);
     }
 
-    return this.queue.add(async () => {
+    return this.browserQueue.add(async () => {
       let attempts = 0;
       const maxAttempts = this.accountPool.length;
       let lastError = null;

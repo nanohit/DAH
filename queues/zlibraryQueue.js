@@ -3,11 +3,11 @@ const { buildBullmqBaseOptions, queueNames } = require('../config/queue');
 const { JOB_NAMES } = require('./zlibraryJobNames');
 
 const DEFAULT_SEARCH_TIMEOUT =
-  Number(process.env.ZLIBRARY_SEARCH_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 180_000;
+  Number(process.env.ZLIBRARY_SEARCH_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 60_000;
 const DEFAULT_DOWNLOAD_TIMEOUT =
-  Number(process.env.ZLIBRARY_DOWNLOAD_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 180_000;
+  Number(process.env.ZLIBRARY_DOWNLOAD_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 60_000;
 const DEFAULT_WARMUP_TIMEOUT =
-  Number(process.env.ZLIBRARY_WARMUP_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 90_000;
+  Number(process.env.ZLIBRARY_WARMUP_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 45_000;
 
 let queueInstance = null;
 let queueEventsInstance = null;
