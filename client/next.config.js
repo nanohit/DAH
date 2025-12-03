@@ -39,12 +39,13 @@ const nextConfig = {
   },
   async rewrites() {
     const isProduction = process.env.NODE_ENV === 'production';
+    // Use NEXT_PUBLIC_API_URL if set, otherwise default to new backend
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 
+      (isProduction ? 'https://dah-api.onrender.com' : 'http://localhost:5001');
     return [
       {
         source: '/api/:path*',
-        destination: isProduction 
-          ? 'https://dah-tyxc.onrender.com/api/:path*'
-          : 'http://localhost:5001/api/:path*',
+        destination: `${apiUrl}/api/:path*`,
       },
     ];
   },

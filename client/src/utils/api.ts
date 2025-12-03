@@ -1,6 +1,9 @@
-const API_BASE_URL = process.env.NODE_ENV === 'production'
-  ? 'https://dah-tyxc.onrender.com/api'
-  : 'http://localhost:5001/api';
+// Use environment variable if set, otherwise default to new backend
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL 
+  ? `${process.env.NEXT_PUBLIC_API_URL}/api`
+  : process.env.NODE_ENV === 'production'
+    ? 'https://dah-api.onrender.com/api'
+    : 'http://localhost:5001/api';
 
 export const api = {
   get: async (endpoint: string) => {
