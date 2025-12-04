@@ -8,37 +8,31 @@ on:
 jobs:
   warmup:
     runs-on: ubuntu-latest
+    timeout-minutes: 5 # fail fast if something hangs
     steps:
-      # Ping all services to prevent sleep
-      - name: Ping legacy server
-        run: curl -sf https://dah-tyxc.onrender.com/ -o /dev/null || true
+      # Wake ALL services in PARALLEL with strict timeouts
+      # This prevents one slow service from blocking others
+      - name: Wake all services (parallel)
+        run: |
+          echo "Starting parallel pings at $(date -u)"
+          
+          # All pings run in parallel with 60s timeout each
+          curl --max-time 60 -sf https://dah-api.onrender.com/ -o /dev/null &
+          curl --max-time 60 -sf https://zlib-worker-a.onrender.com/health -o /dev/null &
+          curl --max-time 60 -sf https://zlib-worker-b.onrender.com/health -o /dev/null &
+          curl --max-time 60 -sf https://zlib-worker-c.onrender.com/health -o /dev/null &
+          
+          # Wait for all background jobs (ignore failures)
+          wait || true
+          
+          echo "All services pinged at $(date -u)"
       
-      - name: Ping new API
-        run: curl -sf https://dah-api.onrender.com/ -o /dev/null || true
-      
-      - name: Wake worker A
-        run: curl -sf https://zlib-worker-a.onrender.com/health -o /dev/null || true
-      
-      - name: Wake worker B
-        run: curl -sf https://zlib-worker-b.onrender.com/health -o /dev/null || true
-      
-      - name: Wake worker C
-        run: curl -sf https://zlib-worker-c.onrender.com/health -o /dev/null || true
-      
-      # Force browser reset on all workers to ensure clean state
-      - name: Reset worker A browser
-        run: curl -sf https://zlib-worker-a.onrender.com/reset -o /dev/null || true
-      
-      - name: Reset worker B browser
-        run: curl -sf https://zlib-worker-b.onrender.com/reset -o /dev/null || true
-      
-      - name: Reset worker C browser
-        run: curl -sf https://zlib-worker-c.onrender.com/reset -o /dev/null || true
-      
-      # Warmup keeps Z-Library sessions logged in
-      - name: Trigger warmup via API
-        run: curl -sf https://dah-api.onrender.com/api/books/zlibrary/warmup -o /dev/null || true
-      
-      - name: Log completion
-        run: echo "All services pinged at $(date -u)"
+      # Single warmup call to keep Z-Library session logged in
+      # This runs AFTER services are awake
+      - name: Warmup Z-Library session
+        run: |
+          # Give workers a moment to fully wake up
+          sleep 5
+          curl --max-time 90 -sf https://dah-api.onrender.com/api/books/zlibrary/warmup -o /dev/null || true
+          echo "Warmup completed at $(date -u)"
 
