@@ -1,8 +1,12 @@
 name: Keep Z-Library Services Warm
 
+concurrency:
+  group: zlib-warmup
+  cancel-in-progress: true
+
 on:
   schedule:
-    - cron: '*/10 * * * *' # every 10 minutes to prevent Render sleep
+    - cron: '*/5 * * * *' # best-effort every 5 minutes to prevent Render sleep
   workflow_dispatch:
 
 jobs:

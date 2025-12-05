@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import Link from 'next/link';
 import api from '@/services/api';
 import axios from 'axios';
@@ -35,6 +35,8 @@ type SimilarTriggerPayload = {
 
 const PLACEHOLDERS = [
   'Евгений Онегин...',
+  'Мышление и речь',
+  '',
   'Дюна...',
   'Матанализ учебник...',
   'Generation «П»...',
@@ -81,6 +83,7 @@ type BookRailProps = {
   eyebrow?: string;
   title: string;
   description?: string;
+  actionSlot?: ReactNode;
   items: BookRailItem[];
   loading?: boolean;
   emptyMessage?: string;
@@ -89,7 +92,16 @@ type BookRailProps = {
 
 const MAX_RAIL_ITEMS = 24;
 
-const BookRail = ({ eyebrow, title, description, items, loading, emptyMessage, onItemSearch }: BookRailProps) => {
+const BookRail = ({
+  eyebrow,
+  title,
+  description,
+  actionSlot,
+  items,
+  loading,
+  emptyMessage,
+  onItemSearch,
+}: BookRailProps) => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const scroll = (direction: 'left' | 'right') => {
@@ -114,7 +126,10 @@ const BookRail = ({ eyebrow, title, description, items, loading, emptyMessage, o
       )}
       <div className="flex flex-col gap-2 mb-3">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-xl font-semibold text-black font-geometria">{title}</h3>
+          <div className="flex items-center gap-3">
+            {actionSlot ? <div className="flex-shrink-0">{actionSlot}</div> : null}
+            <h3 className="text-xl font-semibold text-black font-geometria">{title}</h3>
+          </div>
           <div className="flex gap-2">
             <button
               type="button"
@@ -177,7 +192,7 @@ const SIMILAR_PREFIX = 'похоже на: ';
 const SIMILAR_PREFIX_LOWER = SIMILAR_PREFIX.toLowerCase();
 const RU_BETA_SUFFIX = ' (проверьте корректность названия на русском, функция в бете!)';
 
-export const HeroSearch = () => {
+export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<BookResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -280,8 +295,12 @@ export const HeroSearch = () => {
     []
   );
 
+  const handleRecommendationsRefresh = useCallback(async () => {
+    await fetchPersonalFeed();
+  }, [fetchPersonalFeed]);
+
   const recordDownload = useCallback(
-    (book: BookResult, format: BookFormat) => {
+    async (book: BookResult, format: BookFormat) => {
       const payload = {
         title: book.title,
         author: book.author,
@@ -289,20 +308,20 @@ export const HeroSearch = () => {
         bookId: book.id,
         format: format.format,
       };
-      api
-        .post('/api/books/booksv/downloads', payload)
-        .then((response) => {
-          const downloadsPayload: TrackedDownload[] = Array.isArray(response.data?.downloads)
-            ? response.data.downloads
-            : null;
-          if (downloadsPayload) {
-            setTrackedDownloads(downloadsPayload);
-          }
-          fetchPersonalFeed({ silent: true });
-        })
-        .catch((registrationError) => {
-          console.warn('Failed to register download', registrationError);
-        });
+
+      try {
+        const response = await api.post('/api/books/booksv/downloads', payload);
+        const downloadsPayload: TrackedDownload[] = Array.isArray(response.data?.downloads)
+          ? response.data.downloads
+          : null;
+        if (downloadsPayload) {
+          setTrackedDownloads(downloadsPayload);
+        }
+      } catch (registrationError) {
+        console.warn('Failed to register download', registrationError);
+      } finally {
+        await fetchPersonalFeed();
+      }
     },
     [fetchPersonalFeed]
   );
@@ -369,6 +388,7 @@ export const HeroSearch = () => {
   }, [fetchPersonalFeed]);
 
   const scrollToForum = () => {
+    onForumRequest?.();
     const forumSection = document.getElementById('alphy-forum-feed');
     if (forumSection) {
       forumSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -562,7 +582,7 @@ export const HeroSearch = () => {
 
   const handleDownload = async (book: BookResult, format: BookFormat) => {
     try {
-      recordDownload(book, format);
+      await recordDownload(book, format);
       if (format.source === 'zlibrary' && format.token) {
         const response = await api.get(`/api/books/zlibrary/download/${book.id}/${format.token}`);
         const downloadUrl: string | undefined = response.data?.data?.downloadUrl;
@@ -1282,9 +1302,7 @@ export const HeroSearch = () => {
 
               <div className="mt-10 space-y-8">
                 <BookRail
-                  eyebrow="чем больше книг вы скачиваете, тем точнее рекомендации!"
                   title="Недавно скачанные"
-                  description="Мы запоминаем книги, которые вы искали на этом устройстве."
                   items={downloadRailItems}
                   loading={isPersonalFeedLoading && !downloadRailItems.length}
                   emptyMessage={
@@ -1296,8 +1314,20 @@ export const HeroSearch = () => {
                   }}
                 />
                 <BookRail
-                  title="Рекомендовано по вашим скачиваниям"
-                  description="book.sv анализирует последние запросы и подбирает что читать дальше."
+                  title="Рекомендовано"
+                  actionSlot={
+                    <button
+                      type="button"
+                      onClick={handleRecommendationsRefresh}
+                      disabled={isPersonalFeedLoading}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-black border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors disabled:opacity-60"
+                    >
+                      {isPersonalFeedLoading ? (
+                        <span className="inline-flex h-4 w-4 border-2 border-gray-200 border-t-gray-700 rounded-full animate-spin" />
+                      ) : null}
+                      <span>Обновить</span>
+                    </button>
+                  }
                   items={recommendationRailItems}
                   loading={Boolean(
                     isPersonalFeedLoading &&

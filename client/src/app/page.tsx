@@ -23,11 +23,13 @@ interface PaginationMeta {
 export default function HomePage() {
   const [feedItems, setFeedItems] = useState<Post[]>([]);
   const [hasMoreFeed, setHasMoreFeed] = useState(true);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(false);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [isForumActivated, setIsForumActivated] = useState(false);
 
   const postMetaRef = useRef<PaginationMeta>({ skip: 0, hasMore: true, loading: false });
   const mapMetaRef = useRef<PaginationMeta>({ skip: 0, hasMore: true, loading: false });
+  const forumSectionRef = useRef<HTMLDivElement | null>(null);
 
   const [postStore, setPostStore] = useState<Post[]>([]);
   const [mapStore, setMapStore] = useState<MapSummary[]>([]);
@@ -38,6 +40,15 @@ export default function HomePage() {
   const postCursorRef = useRef(0);
   const mapCursorRef = useRef(0);
   const awaitingPageRef = useRef(false);
+
+  const activateForum = useCallback(() => {
+    setIsForumActivated((prev) => {
+      if (!prev) {
+        setIsInitialLoading(true);
+      }
+      return true;
+    });
+  }, []);
 
   useSocketConnection({
     debugName: 'HomePage',
@@ -241,8 +252,41 @@ export default function HomePage() {
   }, [hasMoreFeed, pickNextItem]);
 
   useEffect(() => {
+    if (!isForumActivated) {
+      return;
+    }
     loadNextPage();
-  }, [loadNextPage]);
+  }, [isForumActivated, loadNextPage]);
+
+  useEffect(() => {
+    if (isForumActivated) {
+      return;
+    }
+
+    const target = forumSectionRef.current;
+    if (!target) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry?.isIntersecting) {
+          activateForum();
+        }
+      },
+      {
+        rootMargin: '0px 0px 180px 0px',
+        threshold: 0.1,
+      }
+    );
+
+    observer.observe(target);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [activateForum, isForumActivated]);
 
   const handleFeedRefresh = useCallback(() => {
     awaitingPageRef.current = false;
@@ -267,16 +311,20 @@ export default function HomePage() {
     });
   }, [loadNextPage]);
 
-  const showInitialLoader = isInitialLoading && feedItems.length === 0;
+  const showInitialLoader = isForumActivated && isInitialLoading && feedItems.length === 0;
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <HeroSearch />
+      <HeroSearch onForumRequest={activateForum} />
       <div className="max-w-4xl mx-auto">
         <UserRecentMaps maxMaps={5} />
 
-        <div id="alphy-forum-feed" className="scroll-mt-24">
-          {showInitialLoader ? (
+        <div id="alphy-forum-feed" ref={forumSectionRef} className="scroll-mt-24">
+          {!isForumActivated ? (
+            <div className="flex flex-col items-center gap-3 py-12 text-center text-sm text-gray-500">
+              <div>Прокрутите сюда или нажмите «сегодня на alphy», чтобы увидеть форум.</div>
+            </div>
+          ) : showInitialLoader ? (
             <div className="flex justify-center py-16">
               <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-gray-700" />
             </div>

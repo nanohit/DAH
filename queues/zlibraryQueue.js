@@ -2,12 +2,13 @@ const { Queue, QueueEvents } = require('bullmq');
 const { buildBullmqBaseOptions, queueNames } = require('../config/queue');
 const { JOB_NAMES } = require('./zlibraryJobNames');
 
+// Reduced timeouts for faster failure detection
 const DEFAULT_SEARCH_TIMEOUT =
-  Number(process.env.ZLIBRARY_SEARCH_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 60_000;
+  Number(process.env.ZLIBRARY_SEARCH_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 45_000; // 45s
 const DEFAULT_DOWNLOAD_TIMEOUT =
-  Number(process.env.ZLIBRARY_DOWNLOAD_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 60_000;
+  Number(process.env.ZLIBRARY_DOWNLOAD_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 45_000; // 45s
 const DEFAULT_WARMUP_TIMEOUT =
-  Number(process.env.ZLIBRARY_WARMUP_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 45_000;
+  Number(process.env.ZLIBRARY_WARMUP_JOB_TIMEOUT_MS || process.env.ZLIBRARY_JOB_TIMEOUT_MS) || 35_000; // 35s
 
 let queueInstance = null;
 let queueEventsInstance = null;

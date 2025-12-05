@@ -51,13 +51,13 @@ class ZLibraryService {
     this.setActiveAccount(0);
 
     this.loginValidityMs =
-      Number(process.env.ZLIBRARY_LOGIN_VALIDITY_MS) || 15 * 60 * 1000;
+      Number(process.env.ZLIBRARY_LOGIN_VALIDITY_MS) || 10 * 60 * 1000; // 10 min validity
     this.timeout =
       Number(process.env.ZLIBRARY_REQUEST_TIMEOUT_MS || process.env.ZLIBRARY_TIMEOUT_MS) ||
-      45_000;
+      30_000; // 30s timeout (was 45s)
     this.navigationTimeout =
       Number(process.env.ZLIBRARY_NAVIGATION_TIMEOUT_MS || process.env.ZLIBRARY_TIMEOUT_MS) ||
-      45_000;
+      25_000; // 25s navigation timeout (was 45s)
     // Browser operations are serialized to prevent conflicts; HTTP requests can run in parallel
     this.browserQueue = new PQueue({ concurrency: 1 });
     this.httpQueue = new PQueue({ concurrency: 3 });
@@ -99,6 +99,14 @@ class ZLibraryService {
             '--disable-dev-shm-usage',
             '--disable-gpu',
             '--disable-features=site-per-process',
+            '--disable-extensions',
+            '--disable-background-networking',
+            '--disable-sync',
+            '--disable-translate',
+            '--metrics-recording-only',
+            '--mute-audio',
+            '--no-first-run',
+            '--safebrowsing-disable-auto-update',
           ],
           defaultViewport: { width: 1280, height: 720 },
         })
@@ -116,6 +124,29 @@ class ZLibraryService {
       await this.page.setUserAgent(this.defaultHeaders['User-Agent']);
       this.page.setDefaultTimeout(this.timeout);
       this.page.setDefaultNavigationTimeout(this.navigationTimeout);
+
+      // Block unnecessary resources to speed up page loads
+      await this.page.setRequestInterception(true);
+      this.page.on('request', (request) => {
+        const resourceType = request.resourceType();
+        const url = request.url();
+        // Block images, fonts, media, and tracking scripts
+        if (
+          resourceType === 'image' ||
+          resourceType === 'font' ||
+          resourceType === 'media' ||
+          url.includes('google-analytics') ||
+          url.includes('googletagmanager') ||
+          url.includes('facebook') ||
+          url.includes('doubleclick') ||
+          url.includes('analytics')
+        ) {
+          request.abort();
+        } else {
+          request.continue();
+        }
+      });
+
       this.page.on('error', (error) => {
         console.error('Z-Library page crashed:', error);
         this.page = null;
@@ -207,17 +238,16 @@ class ZLibraryService {
     await page.type('form[data-action="login"] input[name="password"]', this.password, { delay: 20 });
 
     await this.safeClick(page, 'form[data-action="login"] button[type="submit"]');
+    // Use fast domcontentloaded - networkidle2 is too slow
     try {
       await page.waitForNavigation({
-        waitUntil: 'networkidle2',
-        timeout: this.navigationTimeout,
+        waitUntil: 'domcontentloaded',
+        timeout: 20_000, // 20s is plenty for login redirect
       });
     } catch (navError) {
-      console.warn('Primary login navigation wait failed, retrying with domcontentloaded.', navError.message);
-      await page.waitForNavigation({
-        waitUntil: 'domcontentloaded',
-        timeout: this.navigationTimeout,
-      });
+      // Sometimes navigation fires before we start waiting - check URL
+      console.warn('Login navigation wait failed, checking URL:', navError.message);
+      await this.delay(1000);
     }
 
     const currentUrl = page.url();
@@ -314,7 +344,7 @@ class ZLibraryService {
       headers: this.defaultHeaders,
       jar: this.cookieJar,
       withCredentials: true,
-      timeout: this.timeout,
+      timeout: 15_000, // Fast path: 15s max
     });
 
     if (response.status !== 200 || typeof response.data !== 'string') {
@@ -374,7 +404,7 @@ class ZLibraryService {
       headers: this.defaultHeaders,
       jar: this.cookieJar,
       withCredentials: true,
-      timeout: this.timeout,
+      timeout: 20_000, // 20s for HTTP after login
     });
 
     if (response.status !== 200 || typeof response.data !== 'string') {
