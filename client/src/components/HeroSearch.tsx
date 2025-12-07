@@ -5,6 +5,14 @@ import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import type { BookResult, SearchError, BookFormat, SimilarRecommendation } from '@/types/books';
 
+const isBrowser = typeof window !== 'undefined';
+const isLocalhost =
+  isBrowser &&
+  (window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname === '0.0.0.0');
+const disableZlibrary = isLocalhost || process.env.NEXT_PUBLIC_DISABLE_ZLIB === 'true';
+
 type HistoryEntry =
   | {
       view: 'search';
@@ -103,6 +111,8 @@ const BookRail = ({
   onItemSearch,
 }: BookRailProps) => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [showLeft, setShowLeft] = useState(false);
+  const [showRight, setShowRight] = useState(false);
 
   const scroll = (direction: 'left' | 'right') => {
     const node = scrollRef.current;
@@ -111,11 +121,41 @@ const BookRail = ({
     node.scrollBy({ left: delta, behavior: 'smooth' });
   };
 
+  const updateArrows = () => {
+    const node = scrollRef.current;
+    if (!node) {
+      setShowLeft(false);
+      setShowRight(false);
+      return;
+    }
+    const maxScroll = node.scrollWidth - node.clientWidth;
+    if (maxScroll <= 2) {
+      setShowLeft(false);
+      setShowRight(false);
+      return;
+    }
+    setShowLeft(node.scrollLeft > 2);
+    setShowRight(node.scrollLeft < maxScroll - 2);
+  };
+
+  useEffect(() => {
+    updateArrows();
+    const node = scrollRef.current;
+    if (!node) return;
+    const handler = () => updateArrows();
+    node.addEventListener('scroll', handler, { passive: true });
+    window.addEventListener('resize', handler);
+    return () => {
+      node.removeEventListener('scroll', handler);
+      window.removeEventListener('resize', handler);
+    };
+  }, []);
+
   const showEmptyState = !loading && items.length === 0;
   const skeletons = Array.from({ length: 4 }, (_, index) => (
     <div
       key={`rail-skeleton-${index}`}
-      className="min-w-[220px] max-w-[220px] h-[130px] rounded-xl border border-gray-100 bg-gray-50 animate-pulse"
+      className="min-w-[220px] max-w-[220px] h-[110px] rounded-xl border border-gray-100 bg-gray-50 animate-pulse"
     />
   ));
 
@@ -124,31 +164,11 @@ const BookRail = ({
       {eyebrow && (
         <p className="text-xs uppercase tracking-[0.2em] text-gray-500 font-semibold font-geometria mb-2">{eyebrow}</p>
       )}
-      <div className="flex flex-col gap-2 mb-3">
+      <div className="flex flex-col gap-2 mb-2">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-semibold text-black font-geometria">{title}</h3>
             {actionSlot ? <div className="flex-shrink-0">{actionSlot}</div> : null}
-            <h3 className="text-xl font-semibold text-black font-geometria">{title}</h3>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => scroll('left')}
-              aria-label="Прокрутить влево"
-              className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 hover:text-black hover:border-black transition-colors disabled:opacity-40"
-              disabled={showEmptyState}
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              onClick={() => scroll('right')}
-              aria-label="Прокрутить вправо"
-              className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 hover:text-black hover:border-black transition-colors disabled:opacity-40"
-              disabled={showEmptyState}
-            >
-              ›
-            </button>
           </div>
         </div>
         {description && <p className="text-sm text-gray-500 font-geometria">{description}</p>}
@@ -158,30 +178,75 @@ const BookRail = ({
           {emptyMessage || 'Пока нет данных.'}
         </div>
       ) : (
-        <div ref={scrollRef} className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
-          {loading
-            ? skeletons
-            : items.map((item) => (
-                <div
-                  key={item.id}
-                  className="min-w-[220px] max-w-[220px] rounded-xl border border-gray-200 bg-white shadow-sm p-4 flex flex-col justify-between"
-                >
-                  <div>
-                    <h4 className="text-base font-semibold text-gray-900 font-geometria">{item.title}</h4>
-                    {item.author && (
-                      <p className="text-sm text-gray-600 font-geometria mt-1 truncate">{item.author}</p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onItemSearch(item)}
-                    className="mt-4 inline-flex items-center justify-between px-3 py-1.5 text-sm font-semibold text-black border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors font-geometria"
+        <div className="relative">
+          <div
+            ref={scrollRef}
+            className="rail-scroll flex gap-3 overflow-x-auto overflow-y-hidden pb-2 pr-10"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          >
+            {loading
+              ? skeletons
+              : items.map((item) => (
+                  <div
+                    key={item.id}
+                    className="min-w-[220px] max-w-[220px] min-h-[110px] rounded-xl border border-gray-200 bg-white shadow-sm p-3 flex flex-col justify-between"
                   >
-                    <span>Найти</span>
-                    <span className="text-lg leading-none">›</span>
-                  </button>
-                </div>
-              ))}
+                    <div>
+                      <h4
+                        className="text-sm font-semibold text-gray-900 font-geometria leading-snug"
+                        style={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {item.title}
+                      </h4>
+                      {item.author && (
+                        <p className="text-xs text-gray-600 font-geometria mt-1 truncate">{item.author}</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onItemSearch(item)}
+                      className="mt-3 inline-flex items-center justify-center px-3 py-1.5 text-xs font-semibold text-black border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors font-geometria"
+                    >
+                      <span>Найти</span>
+                    </button>
+                  </div>
+                ))}
+          </div>
+          {!showEmptyState && items.length > 0 && (
+            <>
+              {showLeft && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    scroll('left');
+                    setTimeout(updateArrows, 300);
+                  }}
+                  aria-label="Прокрутить влево"
+                  className="absolute left-[-10px] top-1/2 -translate-y-1/2 w-10 h-10 inline-flex items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors shadow-sm"
+                >
+                  ‹
+                </button>
+              )}
+              {showRight && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    scroll('right');
+                    setTimeout(updateArrows, 300);
+                  }}
+                  aria-label="Прокрутить вправо"
+                  className="absolute right-[-10px] top-1/2 -translate-y-1/2 w-10 h-10 inline-flex items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors shadow-sm"
+                >
+                  ›
+                </button>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -198,10 +263,9 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<SearchError | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  // To avoid hydration mismatch, use a deterministic initial placeholder, then randomize on mount
   const [currentPlaceholder, setCurrentPlaceholder] = useState(PLACEHOLDERS[0]);
-  const [nextPlaceholder, setNextPlaceholder] = useState(
-    PLACEHOLDERS[1] ?? PLACEHOLDERS[0]
-  );
+  const [nextPlaceholder, setNextPlaceholder] = useState(PLACEHOLDERS[1] ?? PLACEHOLDERS[0]);
   const [isFlipping, setIsFlipping] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [isResultsVisible, setIsResultsVisible] = useState(false);
@@ -258,14 +322,16 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
   };
 
   const fetchPersonalFeed = useCallback(
-    async (options?: { silent?: boolean }) => {
+    async (options?: { silent?: boolean; force?: boolean }) => {
       const requestId = (personalFeedRequestRef.current += 1);
       if (!options?.silent) {
         personalFeedLoadingRequestRef.current = requestId;
         setIsPersonalFeedLoading(true);
       }
       try {
-        const response = await api.get('/api/books/booksv/personal-feed');
+        const response = await api.get('/api/books/booksv/personal-feed', {
+          params: { force: options?.force ? 'true' : undefined },
+        });
         if (requestId !== personalFeedRequestRef.current) {
           return;
         }
@@ -296,8 +362,38 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
   );
 
   const handleRecommendationsRefresh = useCallback(async () => {
-    await fetchPersonalFeed();
+    await fetchPersonalFeed({ force: true });
   }, [fetchPersonalFeed]);
+
+  const refreshRecommendationsFromDownloads = useCallback(async () => {
+    // Use trackedDownloads to get up to 5 latest titles, query booksv similar, take results
+    const latest = trackedDownloads.slice(0, 5);
+    if (!latest.length) return;
+    const allRecs: PersonalRecommendationItem[] = [];
+    for (const item of latest) {
+      try {
+        const resp = await api.get('/api/books/booksv/similar', {
+          params: { title: item.title, author: item.author },
+        });
+        const payload = resp.data?.data || resp.data;
+        const recs: PersonalRecommendationItem[] = payload?.recommendations || [];
+        allRecs.push(...recs.slice(0, 6)); // keep it short per item
+      } catch (err) {
+        // ignore individual failures
+      }
+    }
+    // Deduplicate by title+author
+    const seen = new Set<string>();
+    const deduped: PersonalRecommendationItem[] = [];
+    for (const r of allRecs) {
+      const key = `${r.title}|${r.author}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push(r);
+      }
+    }
+    setPersonalRecommendations(deduped.slice(0, MAX_RAIL_ITEMS));
+  }, [trackedDownloads]);
 
   const recordDownload = useCallback(
     async (book: BookResult, format: BookFormat) => {
@@ -317,13 +413,17 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
         if (downloadsPayload) {
           setTrackedDownloads(downloadsPayload);
         }
+        // Refresh recs based on latest downloads (force server refresh + local fallback)
+        await fetchPersonalFeed({ force: true });
+        refreshRecommendationsFromDownloads().catch(() => {});
       } catch (registrationError) {
         console.warn('Failed to register download', registrationError);
       } finally {
-        await fetchPersonalFeed();
+        // Ensure UI updated even if forced refresh above failed
+        await fetchPersonalFeed({ force: true, silent: true });
       }
     },
-    [fetchPersonalFeed]
+    [fetchPersonalFeed, refreshRecommendationsFromDownloads]
   );
 
   const applyHistoryEntry = (entry: HistoryEntry) => {
@@ -380,6 +480,7 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
   };
 
   useEffect(() => {
+    if (disableZlibrary) return;
     api.get('/api/books/zlibrary/warmup').catch(() => {});
   }, []);
 
@@ -393,6 +494,21 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
     if (forumSection) {
       forumSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+  };
+
+  const insertSimilarPrefix = () => {
+    const prefix = SIMILAR_PREFIX;
+    setSearchTerm(prefix);
+    setResultsView('similar');
+    setShouldShowRuBetaHint(false);
+    setIsResultsVisible(true);
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        const len = prefix.length;
+        inputRef.current.setSelectionRange(len, len);
+      }
+    });
   };
 
   const mapFlibustaResults = (results: BookResult[] = []) =>
@@ -412,6 +528,26 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
       formats: (book.formats || []).map((format) => ({
         ...format,
         source: 'zlibrary' as const,
+      })),
+    }));
+
+  const mapLiber3Results = (results: BookResult[] = []) =>
+    results.map((book) => ({
+      ...book,
+      source: 'liber3' as const,
+      formats: (book.formats || []).map((format) => ({
+        ...format,
+        source: 'liber3' as const,
+      })),
+    }));
+
+  const mapMotwResults = (results: BookResult[] = []) =>
+    results.map((book) => ({
+      ...book,
+      source: 'motw' as const,
+      formats: (book.formats || []).map((format) => ({
+        ...format,
+        source: 'motw' as const,
       })),
     }));
 
@@ -450,6 +586,22 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
     const encodedQuery = encodeURIComponent(query);
     const response = await api.get(`/api/books/zlibrary/search?query=${encodedQuery}`);
     return mapZlibraryResults(response.data?.data || []);
+  };
+
+  const fetchLiber3Results = async (term: string) => {
+    const query = term.trim();
+    if (!query) return [];
+    const encodedQuery = encodeURIComponent(query);
+    const response = await api.get(`/api/books/liber3/search?query=${encodedQuery}`);
+    return mapLiber3Results(response.data?.data || []);
+  };
+
+  const fetchMotwResults = async (term: string) => {
+    const query = term.trim();
+    if (!query) return [];
+    const encodedQuery = encodeURIComponent(query);
+    const response = await api.get(`/api/books/motw/search?query=${encodedQuery}`);
+    return mapMotwResults(response.data?.data || []);
   };
 
   const translateTitleToRussian = async (title: string, author?: string) => {
@@ -516,6 +668,8 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
       const encodedQuery = encodeURIComponent(trimmedTerm);
       let flibustaError: unknown = null;
       let zlibraryError: unknown = null;
+      let liber3Error: unknown = null;
+      let motwError: unknown = null;
 
       const flibustaPromise = api
         .get(`/api/books/flibusta/search?query=${encodedQuery}`)
@@ -526,26 +680,61 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
           return [];
         });
 
-      const zlibraryPromise = api
-        .get(`/api/books/zlibrary/search?query=${encodedQuery}`)
-        .then((res) => mapZlibraryResults(res.data?.data || []))
+      const zlibraryPromise = disableZlibrary
+        ? Promise.resolve([])
+        : api
+            .get(`/api/books/zlibrary/search?query=${encodedQuery}`)
+            .then((res) => mapZlibraryResults(res.data?.data || []))
+            .catch((err) => {
+              zlibraryError = err;
+              console.warn('Z-Library search failed:', err);
+              return [];
+            });
+
+      const liber3Promise = api
+        .get(`/api/books/liber3/search?query=${encodedQuery}`)
+        .then((res) => mapLiber3Results(res.data?.data || []))
         .catch((err) => {
-          zlibraryError = err;
-          console.warn('Z-Library search failed:', err);
+          liber3Error = err;
+          console.warn('Liber3 search failed:', err);
+          return [];
+        });
+
+      const motwPromise = api
+        .get(`/api/books/motw/search?query=${encodedQuery}`)
+        .then((res) => mapMotwResults(res.data?.data || []))
+        .catch((err) => {
+          motwError = err;
+          console.warn('MOTW search failed:', err);
           return [];
         });
 
       const flibustaResults = await flibustaPromise;
       setSearchResults(flibustaResults);
+
+      const [zlibraryResults, liber3Results, motwResults] = await Promise.all([
+        zlibraryPromise,
+        liber3Promise,
+        motwPromise,
+      ]);
+
+      const combinedResults = mergeResults(
+        flibustaResults,
+        mergeResults(
+          motwResults,
+          mergeResults(zlibraryResults, liber3Results) // p2p last
+        )
+      );
+      setSearchResults(combinedResults);
       setIsLoading(false);
 
-      const zlibraryResults = await zlibraryPromise;
-
-      const combinedResults = mergeResults(flibustaResults, zlibraryResults);
-      setSearchResults(combinedResults);
-
-      if (!flibustaResults.length && !zlibraryResults.length) {
-        const fallbackError = flibustaError || zlibraryError;
+      if (
+        !flibustaResults.length &&
+        !zlibraryResults.length &&
+        !liber3Results.length &&
+        !motwResults.length
+      ) {
+        const fallbackError = flibustaError || zlibraryError || liber3Error || motwError;
         const constructedError: SearchError = {
           message:
             fallbackError instanceof Error
@@ -590,6 +779,47 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
           throw new Error('Download link is not available');
         }
         window.location.href = downloadUrl;
+        return;
+      }
+
+      if (format.source === 'liber3' && format.downloadPath) {
+        const mirrors = format.mirrors && format.mirrors.length ? format.mirrors : [format.downloadPath];
+
+        // Try client-side fetch first (uses end-user network, bypasses server IP blocking)
+        for (const url of mirrors) {
+          try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 8000);
+            const resp = await fetch(url, { signal: controller.signal, mode: 'cors' });
+            clearTimeout(timeout);
+            if (resp.ok) {
+              const blob = await resp.blob();
+              const dlUrl = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = dlUrl;
+              a.download = `${book.title || format.id || 'book'}.${(format.format || 'bin').toLowerCase()}`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(dlUrl);
+              return;
+            }
+          } catch (_) {
+            // try next mirror
+          }
+        }
+
+        // Fallback to server proxy (may still fail if gateways block server IP)
+        if (format.cid) {
+          window.location.href = `/api/books/liber3/download/${format.cid}`;
+          return;
+        }
+        window.location.href = mirrors[0];
+        return;
+      }
+
+      if (format.source === 'motw' && format.downloadPath) {
+        window.location.href = format.downloadPath;
         return;
       }
 
@@ -747,7 +977,10 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
           }
         }
       } else {
-        results = await fetchZlibraryResults(baseTitle);
+        // English: prefer MOTW first, then p2p (Liber3). Skip Flibusta.
+        const motw = await fetchMotwResults(baseTitle);
+        const p2p = await fetchLiber3Results(baseTitle);
+        results = [...motw, ...p2p];
       }
 
       if (!results.length) {
@@ -849,6 +1082,14 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
   }, [isFlipping, nextPlaceholder]);
 
   useEffect(() => {
+    // Randomize placeholders after mount to avoid SSR/CSR mismatch
+    const idx = Math.floor(Math.random() * PLACEHOLDERS.length);
+    const nextIdx = (idx + 1) % PLACEHOLDERS.length;
+    setCurrentPlaceholder(PLACEHOLDERS[idx]);
+    setNextPlaceholder(PLACEHOLDERS[nextIdx]);
+  }, []);
+
+  useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
       if (!isResultsVisible) return;
       if (searchContainerRef.current?.contains(event.target as Node)) {
@@ -896,20 +1137,28 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
     title: item.title,
     author: item.author,
   }));
+  const hasRailsContent = downloadRailItems.length > 0 || recommendationRailItems.length > 0;
 
   return (
     <>
-      <section className="relative w-full overflow-hidden bg-white">
-        <div className="relative flex flex-col min-h-[calc(100vh-2rem)]">
+      <section className="relative w-full overflow-hidden">
+        <div className="relative flex flex-col min-h-[calc(100vh-3rem)]">
           <div className="flex-1 w-full">
-            <div className="max-w-5xl mx-auto mb-20 mt-10 px-4 relative">
-              {/* Title Section - Left aligned, Black text, Geometria font */}
-              <div className="text-left mb-5">
-                <h1 className="text-[28px] md:text-[40px] font-medium text-black mb-1.5 leading-tight font-geometria">
-                  Бесплатный доступ к любой литературе.
-                  <br />
-                  Мощный инструмент работы с ней.
-                </h1>
+            <div className="max-w-5xl mx-auto mb-16 mt-4 px-4 relative">
+              {/* Title Section - image + text */}
+              <div className="flex items-start gap-4 mb-4">
+                <img
+                  src="https://i.ibb.co/Nng4sd3N/image-120.png"
+                  alt="books"
+                  className="w-28 h-28 md:w-32 md:h-32 object-contain -mt-6"
+                />
+                <div className="text-left">
+                  <h1 className="text-[24px] md:text-[34px] font-medium text-black leading-tight font-geometria">
+                    Бесплатный доступ к любой литературе.
+                    <br />
+                    Мощный инструмент работы с ней.
+                  </h1>
+                </div>
               </div>
 
               <div className="flex flex-col md:flex-row gap-3.5 items-start max-w-4xl w-full">
@@ -1017,7 +1266,7 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
                       </div>
                     )}
 
-                    {searchTerm && (
+              {searchTerm && (
                       <div
                         aria-hidden="true"
                         className="pointer-events-none absolute inset-0 flex items-center px-4 font-geometria text-base whitespace-pre"
@@ -1071,9 +1320,16 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
                                 ? 'zlb'
                                 : book.source === 'flibusta'
                                   ? 'flbst'
-                                  : book.source || '';
+                                  : book.source === 'liber3'
+                                    ? 'p2p'
+                                    : book.source === 'motw'
+                                      ? 'motw'
+                                    : book.source || '';
                             const canShowSimilar =
-                              book.source === 'zlibrary' || book.source === 'flibusta';
+                              book.source === 'zlibrary' ||
+                              book.source === 'flibusta' ||
+                              book.source === 'liber3' ||
+                              book.source === 'motw';
                             const similarButtonId = `${book.source || 'book'}-${book.id}`;
                             const titleLang = book.source === 'flibusta' ? 'ru' : 'en';
 
@@ -1109,7 +1365,7 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
                                           )}
                                         </button>
                                       ))}
-                                    {book.source !== 'zlibrary' && (
+                                    {book.source === 'flibusta' && (
                                       <a
                                         href={`https://flibusta.is/b/${book.id}/read`}
                                         target="_blank"
@@ -1190,68 +1446,68 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
                                     )}
                                     <p className="text-sm text-gray-600 font-geometria">{rec.author}</p>
                                   </div>
-                                  <div className="flex items-center gap-3">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleSimilarClick({
-                                          id: similarButtonId,
-                                          title: rec.title,
-                                          author: rec.author,
-                                          workId: rec.workId,
-                                          titleLang: 'en',
-                                        })
-                                      }
-                                      disabled={isSimilarLoading && similarLoadingId === similarButtonId}
-                                      className="px-3 py-0.5 text-xs bg-white border border-gray-200 text-gray-700 rounded transition-colors font-semibold uppercase font-geometria hover:bg-gray-50 disabled:opacity-60 flex items-center gap-1"
-                                    >
-                                      {isSimilarLoading && similarLoadingId === similarButtonId ? (
-                                        <span className="inline-flex h-3.5 w-3.5 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
-                                      ) : null}
-                                      <span>Похожее</span>
-                                    </button>
-                                    <div className="flex flex-col items-end gap-1">
-                                      <span className="text-[10px] uppercase text-gray-400 tracking-[0.08em] font-semibold">
-                                        скачать
-                                      </span>
-                                      <div className="flex items-center gap-1.5">
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            handleRecommendationAutoSearch({
-                                              recommendation: rec,
-                                              language: 'ru',
-                                            })
-                                          }
-                                          disabled={isAutoSearchBusy || isSimilarLoading}
-                                          className="px-2.5 py-0.5 text-xs bg-white border border-gray-200 text-gray-700 rounded font-semibold uppercase font-geometria hover:bg-gray-50 disabled:opacity-60 flex items-center justify-center min-w-[44px]"
-                                        >
-                                          {ruLoading ? (
-                                            <span className="inline-flex h-3.5 w-3.5 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
-                                          ) : (
-                                            'Ru'
-                                          )}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            handleRecommendationAutoSearch({
-                                              recommendation: rec,
-                                              language: 'en',
-                                            })
-                                          }
-                                          disabled={isAutoSearchBusy || isSimilarLoading}
-                                          className="px-2.5 py-0.5 text-xs bg-white border border-gray-200 text-gray-700 rounded font-semibold uppercase font-geometria hover:bg-gray-50 disabled:opacity-60 flex items-center justify-center min-w-[44px]"
-                                        >
-                                          {engLoading ? (
-                                            <span className="inline-flex h-3.5 w-3.5 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
-                                          ) : (
-                                            'Eng'
-                                          )}
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex flex-col items-center gap-1">
+                      <span className="text-[10px] uppercase text-gray-400 tracking-[0.08em] font-semibold">
+                        скачать
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleRecommendationAutoSearch({
+                              recommendation: rec,
+                              language: 'ru',
+                            })
+                          }
+                          disabled={isAutoSearchBusy || isSimilarLoading}
+                          className="px-2.5 py-0.5 text-xs bg-white border border-gray-200 text-gray-700 rounded font-semibold uppercase font-geometria hover:bg-gray-50 disabled:opacity-60 flex items-center justify-center min-w-[44px]"
+                        >
+                          {ruLoading ? (
+                            <span className="inline-flex h-3.5 w-3.5 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
+                          ) : (
+                            'Ru'
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleRecommendationAutoSearch({
+                              recommendation: rec,
+                              language: 'en',
+                            })
+                          }
+                          disabled={isAutoSearchBusy || isSimilarLoading}
+                          className="px-2.5 py-0.5 text-xs bg-white border border-gray-200 text-gray-700 rounded font-semibold uppercase font-geometria hover:bg-gray-50 disabled:opacity-60 flex items-center justify-center min-w-[44px]"
+                        >
+                          {engLoading ? (
+                            <span className="inline-flex h-3.5 w-3.5 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
+                          ) : (
+                            'Eng'
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleSimilarClick({
+                          id: similarButtonId,
+                          title: rec.title,
+                          author: rec.author,
+                          workId: rec.workId,
+                          titleLang: 'en',
+                        })
+                      }
+                      disabled={isSimilarLoading && similarLoadingId === similarButtonId}
+                      className="px-3 py-0.5 text-xs bg-white border border-gray-200 text-gray-700 rounded transition-colors font-semibold uppercase font-geometria hover:bg-gray-50 disabled:opacity-60 flex items-center gap-1"
+                    >
+                      {isSimilarLoading && similarLoadingId === similarButtonId ? (
+                        <span className="inline-flex h-3.5 w-3.5 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
+                      ) : null}
+                      <span>Похожее</span>
+                    </button>
+                  </div>
                                 </div>
                               </div>
                             );
@@ -1262,7 +1518,9 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
                           !similarError &&
                           activeSimilarRecommendations.length === 0 && (
                             <div className="p-8 text-center text-gray-500 font-geometria">
-                              Нет рекомендаций для этой книги.
+                              {searchTerm.trim() === SIMILAR_PREFIX.trim()
+                                ? 'Введите название книги и получите список похожих на неё книг'
+                                : 'Нет рекомендаций для этой книги.'}
                             </div>
                           )}
                       </div>
@@ -1289,8 +1547,19 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
                 </button>
               </div>
 
+              {/* Attached similar button */}
+              <div className="relative w-full">
+                <button
+                  type="button"
+                  onClick={insertSimilarPrefix}
+                  className="absolute right-[140px] top-[calc(100%+4px)] px-3 py-1 text-xs bg-white border border-gray-200 rounded-b-lg rounded-t-none text-gray-600 hover:text-black hover:bg-gray-50 transition-colors font-geometria shadow-sm"
+                >
+                  или найти похожее на:
+                </button>
+              </div>
+
               {/* CTA Section */}
-              <div className="mt-5 flex items-center gap-3 text-base text-black">
+              <div className="mt-8 flex items-center gap-3 text-base text-black">
                 <span className="font-medium font-geometria">либо начните с</span>
                 <Link 
                   href="/maps" 
@@ -1300,64 +1569,83 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
                 </Link>
               </div>
 
-              <div className="mt-10 space-y-8">
-                <BookRail
-                  title="Недавно скачанные"
-                  items={downloadRailItems}
-                  loading={isPersonalFeedLoading && !downloadRailItems.length}
-                  emptyMessage={
-                    personalFeedError || 'Скачайте книгу, чтобы она появилась в вашем списке.'
-                  }
-                  onItemSearch={(item) => {
-                    void handleSearch(item.title);
-                    setIsResultsVisible(true);
-                  }}
-                />
-                <BookRail
-                  title="Рекомендовано"
-                  actionSlot={
-                    <button
-                      type="button"
-                      onClick={handleRecommendationsRefresh}
-                      disabled={isPersonalFeedLoading}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-black border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors disabled:opacity-60"
-                    >
-                      {isPersonalFeedLoading ? (
-                        <span className="inline-flex h-4 w-4 border-2 border-gray-200 border-t-gray-700 rounded-full animate-spin" />
-                      ) : null}
-                      <span>Обновить</span>
-                    </button>
-                  }
-                  items={recommendationRailItems}
-                  loading={Boolean(
-                    isPersonalFeedLoading &&
-                      !recommendationRailItems.length &&
-                      trackedDownloads.length
+              {hasRailsContent && (
+                <div className="mt-6 space-y-6">
+                  {downloadRailItems.length > 0 && (
+                    <BookRail
+                      title="Недавно скачанные"
+                      items={downloadRailItems}
+                      loading={isPersonalFeedLoading && !downloadRailItems.length}
+                      emptyMessage={
+                        personalFeedError || 'Скачайте книгу, чтобы она появилась в вашем списке.'
+                      }
+                      onItemSearch={(item) => {
+                        void handleSearch(item.title);
+                        setIsResultsVisible(true);
+                      }}
+                    />
                   )}
-                  emptyMessage={
-                    personalFeedError ||
-                    (trackedDownloads.length
-                      ? 'Собираем рекомендации... Попробуйте позже.'
-                      : 'Скачайте несколько книг, чтобы получить персональные рекомендации.')
-                  }
-                  onItemSearch={(item) => {
-                    void handleSearch(item.title);
-                    setIsResultsVisible(true);
-                  }}
-                />
-              </div>
+                  {recommendationRailItems.length > 0 && (
+                    <BookRail
+                      title="Рекомендовано"
+                      actionSlot={
+                        <button
+                          type="button"
+                          onClick={handleRecommendationsRefresh}
+                          disabled={isPersonalFeedLoading}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-black border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors disabled:opacity-60"
+                        >
+                          {isPersonalFeedLoading ? (
+                            <span className="inline-flex h-3.5 w-3.5 border-2 border-gray-200 border-t-gray-700 rounded-full animate-spin" />
+                          ) : (
+                            <span className="text-base leading-none">↻</span>
+                          )}
+                        </button>
+                      }
+                      items={recommendationRailItems}
+                      loading={Boolean(
+                        isPersonalFeedLoading &&
+                          !recommendationRailItems.length &&
+                          trackedDownloads.length
+                      )}
+                      emptyMessage={
+                        personalFeedError ||
+                        (trackedDownloads.length
+                          ? 'Собираем рекомендации... Попробуйте позже.'
+                          : 'Скачайте несколько книг, чтобы получить персональные рекомендации.')
+                      }
+                      onItemSearch={(item) => {
+                        void handleSearch(item.title);
+                        setIsResultsVisible(true);
+                      }}
+                    />
+                  )}
+                </div>
+              )}
 
-              {/* Feature description */}
-              <div className="flex items-start gap-3 mt-10 max-w-2xl">
-                <div className="mt-2.5 w-2 h-2 bg-black flex-shrink-0 transform rotate-45"></div>
-                <p className="text-base md:text-lg leading-relaxed font-medium text-black font-geometria">
-                  Альфи позволяет бесплатно скачивать книги и визуально работать с их идеями
-                </p>
-              </div>
+              {!trackedDownloads.length && (
+                <div className="flex items-start gap-3 mt-10 max-w-2xl">
+                  <div className="mt-2.5 w-2 h-2 bg-black flex-shrink-0 transform rotate-45"></div>
+                  <p className="text-base md:text-lg leading-relaxed font-medium text-black font-geometria">
+                    Альфи позволяет бесплатно скачивать книги и визуально работать с их идеями
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="flex justify-center pb-14 px-4">
+          {!trackedDownloads.length && (
+            <div className="flex justify-center mt-2 mb-2 px-4">
+              <div className="text-center max-w-xl">
+                <p className="text-sm md:text-base text-gray-700 font-geometria italic leading-snug">
+                  “The only thing that you absolutely have to know, is the location of the library.”
+                </p>
+                <p className="text-xs text-gray-500 font-geometria mt-2">— Albert Einstein</p>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-center pb-10 px-4">
             <button
               onClick={scrollToForum}
               className="inline-flex items-center gap-2 text-sm text-gray-700 hover:text-black transition-colors font-geometria"
@@ -1417,6 +1705,18 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
 
         .no-scrollbar::-webkit-scrollbar {
           display: none;
+        }
+
+        .rail-scroll {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+
+        :global(.rail-scroll::-webkit-scrollbar) {
+          display: none;
+          width: 0;
+          height: 0;
+          background: transparent;
         }
 
         @keyframes flipOut {

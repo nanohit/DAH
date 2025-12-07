@@ -12,6 +12,9 @@ const {
   getDownloadLink,
 } = require('../controllers/flibustaController');
 const { searchZLibrary, getZLibraryDownloadLink, warmupZLibrary } = require('../controllers/zlibraryController');
+const { searchLiber3 } = require('../controllers/liber3Controller');
+const { downloadLiber3 } = require('../controllers/liber3DownloadController');
+const { searchMotw } = require('../controllers/motwController');
 const { getBookSvSimilar, registerBookDownload, getPersonalBookFeed } = require('../controllers/booksvController');
 const { translateTitle } = require('../controllers/wikidataController');
 
@@ -117,6 +120,9 @@ console.log('\nRegistering confirm-download-links route with pattern: /:id/confi
 router.get('/flibusta/search', searchBooks);
 router.get('/flibusta/variant/:id', getVariantDetails);
 router.get('/flibusta/download/:id/:format', getDownloadLink);
+router.get('/liber3/search', searchLiber3);
+router.get('/liber3/download/:cid', downloadLiber3);
+router.get('/motw/search', searchMotw);
 router.get('/zlibrary/search', searchZLibrary);
 router.get('/zlibrary/download/:bookId/:token', getZLibraryDownloadLink);
 router.get('/zlibrary/warmup', warmupZLibrary);

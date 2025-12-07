@@ -1,4 +1,4 @@
-export type BookSource = 'flibusta' | 'zlibrary';
+export type BookSource = 'flibusta' | 'zlibrary' | 'liber3';
 
 export interface BookFormat {
   id: string;

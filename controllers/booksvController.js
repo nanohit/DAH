@@ -4,8 +4,9 @@ const BookDownloadProfile = require('../models/BookDownloadProfile');
 
 const MAX_TRACKED_BOOKS = 120;
 const MAX_DOWNLOADS_RESPONSE = 40;
-const MAX_BULK_SEED_BOOKS = 70;
-const MAX_RECOMMENDATIONS = 70;
+const MAX_BULK_SEED_BOOKS = 5;
+const MAX_RECOMMENDATIONS = 24;
+const MAX_FALLBACK_SEED_DOWNLOADS = 5;
 const RECOMMENDATION_TTL_MS = 1000 * 60 * 60 * 6;
 const DEFAULT_FILTER_TOP = false;
 
@@ -253,6 +254,34 @@ const fetchBulkRecommendations = async (workIds = []) => {
   }
 };
 
+const fetchFallbackRecommendationsFromDownloads = async (downloads = []) => {
+  const seeds = downloads.slice(0, MAX_FALLBACK_SEED_DOWNLOADS);
+  const all = [];
+  for (const entry of seeds) {
+    try {
+      const data = await bookSvService.getSimilarRecommendations({
+        title: entry.title,
+        author: entry.author,
+      });
+      const normalized = normalizeBookSvRecommendations(data).slice(0, MAX_RECOMMENDATIONS);
+      all.push(...normalized);
+    } catch (error) {
+      // ignore individual failures
+    }
+  }
+  // Deduplicate by title+author
+  const seen = new Set();
+  const deduped = [];
+  for (const rec of all) {
+    const key = `${rec.title}|${rec.author}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(rec);
+    }
+  }
+  return deduped.slice(0, MAX_RECOMMENDATIONS);
+};
+
 const shouldReuseCache = (profile = {}) => {
   if (!profile.recommendationCache) {
     return false;
@@ -431,6 +460,7 @@ exports.getPersonalBookFeed = async (req, res) => {
   try {
     const userId = req.user?._id ? req.user._id.toString() : null;
     const ip = extractClientIp(req);
+    const forceRefresh = req.query.force === 'true';
 
     if (!userId && !ip) {
       return res.json({
@@ -487,7 +517,7 @@ exports.getPersonalBookFeed = async (req, res) => {
       workIds = ensureResult.workIds;
     }
 
-    if (workIds.length && !shouldReuseCache(profile)) {
+    if (workIds.length && (forceRefresh || !shouldReuseCache(profile))) {
       const syncResult = await fetchBulkRecommendations(workIds);
       recommendations = syncResult.recommendations;
       generatedAt = new Date();
@@ -499,6 +529,23 @@ exports.getPersonalBookFeed = async (req, res) => {
         downloadsFingerprint: profile.downloadsFingerprint,
       };
       profileNeedsSave = true;
+    }
+
+    // Fallback: if no workIds or no recs after bulk, try per-title similar on latest downloads
+    if ((!workIds.length || recommendations.length === 0) && profile.downloads.length) {
+      const fallbackRecs = await fetchFallbackRecommendationsFromDownloads(profile.downloads);
+      if (fallbackRecs.length) {
+        recommendations = fallbackRecs;
+        generatedAt = new Date();
+        seedsProcessed = Math.min(profile.downloads.length, MAX_FALLBACK_SEED_DOWNLOADS);
+        profile.recommendationCache = {
+          items: recommendations,
+          generatedAt,
+          seedCount: seedsProcessed,
+          downloadsFingerprint: profile.downloadsFingerprint,
+        };
+        profileNeedsSave = true;
+      }
     }
 
     if (profileNeedsSave) {
