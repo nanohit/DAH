@@ -1,4 +1,4 @@
-export type BookSource = 'flibusta' | 'zlibrary' | 'liber3';
+export type BookSource = 'flibusta' | 'zlibrary' | 'liber3' | 'motw';
 
 export interface BookFormat {
   id: string;
@@ -8,6 +8,8 @@ export interface BookFormat {
   language?: string;
   token?: string;
   downloadPath?: string;
+  mirrors?: string[];
+  cid?: string;
 }
 
 export interface BookResult {

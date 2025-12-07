@@ -700,7 +700,7 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
           return [];
         });
 
-      const motwPromise = api
+      const motwPromise: Promise<BookResult[]> = api
         .get(`/api/books/motw/search?query=${encodedQuery}`)
         .then((res) => mapMotwResults(res.data?.data || []))
         .catch((err) => {
@@ -712,7 +712,7 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
       const flibustaResults = await flibustaPromise;
       setSearchResults(flibustaResults);
 
-      const [zlibraryResults, liber3Results, motwResults] = await Promise.all([
+      const [zlibraryResults, liber3Results, motwResults] = await Promise.all<BookResult[][]>([
         zlibraryPromise,
         liber3Promise,
         motwPromise,
