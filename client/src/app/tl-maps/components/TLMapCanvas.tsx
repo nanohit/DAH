@@ -12,10 +12,9 @@ const customShapeUtils = [ConnectableImageShapeUtil];
 
 interface TLMapCanvasProps {
   onEditorReady: (editor: Editor) => void;
-  persistenceKey?: string;
 }
 
-const TLMapCanvas = ({ onEditorReady, persistenceKey }: TLMapCanvasProps) => {
+const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [showUi, setShowUi] = useState(true);
   const { openImagePicker, isUploading } = useImageUpload({ editor });
@@ -34,7 +33,6 @@ const TLMapCanvas = ({ onEditorReady, persistenceKey }: TLMapCanvasProps) => {
       <Tldraw
         shapeUtils={customShapeUtils}
         onMount={handleMount}
-        persistenceKey={persistenceKey}
         hideUi={!showUi}
         className="tlmaps-canvas"
         licenseKey={licenseKey}

@@ -213,7 +213,6 @@ function TLMapsContent() {
       />
       <TLMapCanvas
         onEditorReady={handleEditorReady}
-        persistenceKey={mapId ? undefined : 'tl-map-new'}
       />
       <style jsx global>{`
         .tlmaps-shell {
