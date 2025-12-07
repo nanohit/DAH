@@ -712,7 +712,7 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
       const flibustaResults = await flibustaPromise;
       setSearchResults(flibustaResults);
 
-      const [zlibraryResults, liber3Results, motwResults] = await Promise.all<BookResult[][]>([
+      const [zlibraryResults, liber3Results, motwResults] = await Promise.all<BookResult[]>([
         zlibraryPromise,
         liber3Promise,
         motwPromise,
