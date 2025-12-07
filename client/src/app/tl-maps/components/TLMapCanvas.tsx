@@ -5,7 +5,7 @@ import 'tldraw/tldraw.css';
 import { ConnectableImageShapeUtil } from '../shapes/ConnectableImageShape';
 import TLCanvasToolbar from './TLCanvasToolbar';
 import { useImageUpload } from '../hooks/useImageUpload';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 // Custom shape utils
 const customShapeUtils = [ConnectableImageShapeUtil];
@@ -19,6 +19,13 @@ const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
   const [showUi, setShowUi] = useState(true);
   const { openImagePicker, isUploading } = useImageUpload({ editor });
   const licenseKey = process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY;
+
+  // Surface whether the license key is present at runtime (helps debug deployments)
+  useEffect(() => {
+    // Mask the key in logs
+    const masked = licenseKey ? `${licenseKey.slice(0, 4)}…${licenseKey.slice(-4)}` : 'missing';
+    console.info('[TLDraw] license key present:', !!licenseKey, masked);
+  }, [licenseKey]);
 
   const handleMount = useCallback(
     (editorInstance: Editor) => {
