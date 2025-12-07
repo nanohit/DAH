@@ -3,7 +3,15 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
   ? `${process.env.NEXT_PUBLIC_API_URL}/api`
   : process.env.NODE_ENV === 'production'
     ? 'https://dah-api.onrender.com/api'
-    : 'http://localhost:5001/api';
+  : 'http://localhost:5001/api';
+
+// Export function to get base URL (without /api suffix)
+export const getApiBaseUrl = (): string => {
+  return process.env.NEXT_PUBLIC_API_URL 
+    || (process.env.NODE_ENV === 'production' 
+        ? 'https://dah-api.onrender.com' 
+        : 'http://localhost:5001');
+};
 
 export const api = {
   get: async (endpoint: string) => {

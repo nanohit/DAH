@@ -32,6 +32,7 @@
     "react-markdown": "^9.0.1",
     "react-xarrows": "^2.0.2",
     "socket.io-client": "^4.5.1",
+    "tldraw": "^4.2.1",
     "turndown": "^7.2.1",
     "uuid": "^11.1.0"
   },

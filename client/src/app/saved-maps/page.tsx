@@ -296,6 +296,12 @@ export default function SavedMapsPage() {
             >
               + New Map
             </Link>
+            <Link 
+              href="/tl-maps" 
+              className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200 ml-2"
+            >
+              + New TL Map
+            </Link>
           </div>
           <div className="flex justify-center items-center h-48">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
@@ -320,6 +326,12 @@ export default function SavedMapsPage() {
               className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
             >
               + New Map
+            </Link>
+            <Link 
+              href="/tl-maps" 
+              className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200 ml-2"
+            >
+              + New TL Map
             </Link>
           </div>
           <div className="bg-white shadow rounded-lg p-6 text-center">
@@ -364,12 +376,20 @@ export default function SavedMapsPage() {
             </button>
           </div>
           {user && (
-            <Link 
-              href="/maps" 
-              className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
-            >
-              + New Map
-            </Link>
+            <div className="flex gap-2">
+              <Link 
+                href="/maps" 
+                className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
+              >
+                + New Map
+              </Link>
+              <Link 
+                href="/tl-maps" 
+                className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
+              >
+                + New TL Map
+              </Link>
+            </div>
           )}
         </div>
 

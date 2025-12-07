@@ -343,6 +343,7 @@ const bookRoutes = require('./routes/booksRouter');
 const uploadRoutes = require('./routes/upload');
 const userRoutes = require('./routes/users');
 const mapRoutes = require('./routes/maps');
+const tlMapRoutes = require('./routes/tlMaps');
 const linkPreviewRoutes = require('./routes/linkPreview');
 
 // Debug route registration
@@ -357,6 +358,7 @@ app.use('/api/books', bookRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/maps', mapRoutes);
+app.use('/api/tl-maps', tlMapRoutes);
 app.use('/api/link-preview', linkPreviewRoutes);
 
 // Log registered routes

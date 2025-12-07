@@ -62,6 +62,12 @@ const Navigation = () => {
                 + New Map
               </Link>
               <Link 
+                href="/tl-maps" 
+                className="border border-gray-400/50 text-white hover:bg-white hover:text-black px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
+              >
+                + New TL Map
+              </Link>
+              <Link 
                 href="/saved-maps" 
                 className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-xs font-medium group"
               >
@@ -166,6 +172,12 @@ const Navigation = () => {
             className="block text-gray-300 hover:text-white px-3 py-2 rounded-md text-base font-medium"
           >
             + New Map
+          </Link>
+          <Link 
+            href="/tl-maps" 
+            className="block text-gray-300 hover:text-white px-3 py-2 rounded-md text-base font-medium"
+          >
+            + New TL Map
           </Link>
           <Link 
             href="/saved-maps" 
