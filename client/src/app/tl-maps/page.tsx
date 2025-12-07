@@ -215,39 +215,6 @@ function TLMapsContent() {
         onEditorReady={handleEditorReady}
       />
       <style jsx global>{`
-        .tlmaps-shell {
-          background-color: rgb(249, 250, 251);
-          background-image: radial-gradient(circle, #c5c7cb 1px, transparent 1px);
-          background-size: 20px 20px;
-          background-position: center center;
-        }
-        /* Make tldraw layers transparent to let the dotted bg show */
-        .tlmaps-shell .tlmaps-canvas,
-        .tlmaps-shell .tl-theme,
-        .tlmaps-shell .tl-background,
-        .tlmaps-shell .tl-editor {
-          background: transparent !important;
-        }
-        /* Put the dotted pattern on the transformed viewport so it scales with zoom */
-        .tlmaps-shell .tl-viewport {
-          position: relative !important;
-          background: transparent !important;
-        }
-        .tlmaps-shell .tl-viewport::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background-image: radial-gradient(circle, #c5c7cb 1px, transparent 1px);
-          background-size: 20px 20px;
-          background-position: center center;
-          pointer-events: none;
-          z-index: 0;
-        }
-        /* Keep the canvas content above the pattern */
-        .tlmaps-shell .tl-viewport > * {
-          position: relative;
-          z-index: 1;
-        }
         /* Hide the tldraw production license badge / link aggressively */
         .tlui-license,
         .tlui-license__link,

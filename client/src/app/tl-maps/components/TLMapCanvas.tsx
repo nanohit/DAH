@@ -47,6 +47,8 @@ const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
     const update = () => {
       const cam = editor.getCamera();
       el.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`;
+      // Ensure the pattern tiles from a stable origin
+      el.style.backgroundPosition = `${-cam.x}px ${-cam.y}px`;
     };
 
     let frame: number;
