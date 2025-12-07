@@ -16,7 +16,8 @@ interface TLMapCanvasProps {
 
 const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
   const [editor, setEditor] = useState<Editor | null>(null);
-  const [showUi, setShowUi] = useState(true);
+  // Default to hiding built-in UI to avoid license prompts
+  const [showUi, setShowUi] = useState(false);
   const { openImagePicker, isUploading } = useImageUpload({ editor });
   const licenseKey = process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY;
 
@@ -44,6 +45,16 @@ const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
         className="tlmaps-canvas"
         licenseKey={licenseKey}
       />
+      {/* Small runtime indicator for license + UI state */}
+      <div className="fixed bottom-4 left-4 z-[400] bg-white/85 border border-gray-200 shadow-sm rounded px-3 py-2 text-xs text-gray-700 flex items-center gap-2">
+        <span>{licenseKey ? 'tldraw license: set' : 'tldraw license: missing'}</span>
+        <button
+          onClick={() => setShowUi((prev) => !prev)}
+          className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 transition text-gray-700"
+        >
+          {showUi ? 'Hide UI' : 'Show UI'}
+        </button>
+      </div>
       <TLCanvasToolbar
         editor={editor}
         onAddImage={openImagePicker}
