@@ -19,6 +19,7 @@ const TLMapCanvas = ({ onEditorReady, persistenceKey }: TLMapCanvasProps) => {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [showUi, setShowUi] = useState(true);
   const { openImagePicker, isUploading } = useImageUpload({ editor });
+  const licenseKey = process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY;
 
   const handleMount = useCallback(
     (editorInstance: Editor) => {
@@ -36,6 +37,7 @@ const TLMapCanvas = ({ onEditorReady, persistenceKey }: TLMapCanvasProps) => {
         persistenceKey={persistenceKey}
         hideUi={!showUi}
         className="tlmaps-canvas"
+        licenseKey={licenseKey}
       />
       <TLCanvasToolbar
         editor={editor}
