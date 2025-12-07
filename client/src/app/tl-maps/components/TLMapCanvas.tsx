@@ -5,7 +5,7 @@ import 'tldraw/tldraw.css';
 import { ConnectableImageShapeUtil } from '../shapes/ConnectableImageShape';
 import TLCanvasToolbar from './TLCanvasToolbar';
 import { useImageUpload } from '../hooks/useImageUpload';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Custom shape utils
 const customShapeUtils = [ConnectableImageShapeUtil];
@@ -20,6 +20,7 @@ const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
   const [showUi, setShowUi] = useState(false);
   const { openImagePicker, isUploading } = useImageUpload({ editor });
   const licenseKey = process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY;
+  const bgRef = useRef<HTMLDivElement>(null);
 
   // Surface whether the license key is present at runtime (helps debug deployments)
   useEffect(() => {
@@ -36,8 +37,43 @@ const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
     [onEditorReady]
   );
 
+  // Keep dotted background in sync with camera transform so it scales / pans with content
+  useEffect(() => {
+    if (!editor || !bgRef.current) return;
+
+    const el = bgRef.current;
+    el.style.transformOrigin = '0 0';
+
+    const update = () => {
+      const cam = editor.getCamera();
+      el.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`;
+    };
+
+    let frame: number;
+    const loop = () => {
+      update();
+      frame = requestAnimationFrame(loop);
+    };
+    loop();
+
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [editor]);
+
   return (
-    <div className="w-full h-full relative">
+    <div className="w-full h-full relative overflow-hidden">
+      <div
+        ref={bgRef}
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage: 'radial-gradient(circle, #c5c7cb 1px, transparent 1px)',
+          backgroundSize: '20px 20px',
+          backgroundPosition: 'center center',
+          width: '4000px',
+          height: '4000px',
+        }}
+      />
       <Tldraw
         shapeUtils={customShapeUtils}
         onMount={handleMount}
