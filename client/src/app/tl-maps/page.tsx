@@ -215,6 +215,14 @@ function TLMapsContent() {
         onEditorReady={handleEditorReady}
       />
       <style jsx global>{`
+        /* Make tldraw canvas transparent so our dotted background shows */
+        .tlmaps-shell .tlmaps-canvas,
+        .tlmaps-shell .tl-theme,
+        .tlmaps-shell .tl-background,
+        .tlmaps-shell .tl-editor,
+        .tlmaps-shell .tl-canvas {
+          background: transparent !important;
+        }
         /* Hide the tldraw production license badge / link aggressively */
         .tlui-license,
         .tlui-license__link,

@@ -6,11 +6,9 @@ interface TLCanvasToolbarProps {
   editor: Editor | null;
   onAddImage: () => void;
   isUploadingImage: boolean;
-  showUi: boolean;
-  onToggleUi: () => void;
 }
 
-const TLCanvasToolbar = ({ editor, onAddImage, isUploadingImage, showUi, onToggleUi }: TLCanvasToolbarProps) => {
+const TLCanvasToolbar = ({ editor, onAddImage, isUploadingImage }: TLCanvasToolbarProps) => {
   const handleAddText = () => {
     if (!editor) return;
 
@@ -140,21 +138,6 @@ const TLCanvasToolbar = ({ editor, onAddImage, isUploadingImage, showUi, onToggl
           <line x1="5" y1="12" x2="19" y2="12" />
           <polyline points="12 5 19 12 12 19" />
         </svg>
-      </button>
-
-      {/* Toggle built-in UI (hides right panel & license) */}
-      <button
-        onClick={onToggleUi}
-        className="p-2 hover:bg-gray-100 rounded-lg text-gray-700 flex items-center gap-2 transition-colors"
-        title={showUi ? 'Hide built-in UI' : 'Show built-in UI'}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="4" width="18" height="16" rx="2" />
-          <line x1="7" y1="8" x2="17" y2="8" />
-          <line x1="7" y1="12" x2="13" y2="12" />
-          <line x1="7" y1="16" x2="11" y2="16" />
-        </svg>
-        <span className="hidden md:inline text-xs">{showUi ? 'Hide UI' : 'Show UI'}</span>
       </button>
 
       {/* Image upload */}

@@ -16,18 +16,9 @@ interface TLMapCanvasProps {
 
 const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
   const [editor, setEditor] = useState<Editor | null>(null);
-  // Default to hiding built-in UI to avoid license prompts
-  const [showUi, setShowUi] = useState(false);
   const { openImagePicker, isUploading } = useImageUpload({ editor });
   const licenseKey = process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY;
   const bgRef = useRef<HTMLDivElement>(null);
-
-  // Surface whether the license key is present at runtime (helps debug deployments)
-  useEffect(() => {
-    // Mask the key in logs
-    const masked = licenseKey ? `${licenseKey.slice(0, 4)}…${licenseKey.slice(-4)}` : 'missing';
-    console.info('[TLDraw] license key present:', !!licenseKey, masked);
-  }, [licenseKey]);
 
   const handleMount = useCallback(
     (editorInstance: Editor) => {
@@ -65,6 +56,7 @@ const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
 
   return (
     <div className="w-full h-full relative overflow-hidden">
+      {/* Dotted background that syncs with camera */}
       <div
         ref={bgRef}
         className="absolute inset-0 pointer-events-none"
@@ -76,29 +68,19 @@ const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
           height: '4000px',
         }}
       />
+      {/* Tldraw canvas with hidden UI */}
       <Tldraw
         shapeUtils={customShapeUtils}
         onMount={handleMount}
-        hideUi={!showUi}
+        hideUi
         className="tlmaps-canvas"
         licenseKey={licenseKey}
       />
-      {/* Small runtime indicator for license + UI state */}
-      <div className="fixed bottom-4 left-4 z-[400] bg-white/85 border border-gray-200 shadow-sm rounded px-3 py-2 text-xs text-gray-700 flex items-center gap-2">
-        <span>{licenseKey ? 'tldraw license: set' : 'tldraw license: missing'}</span>
-        <button
-          onClick={() => setShowUi((prev) => !prev)}
-          className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 transition text-gray-700"
-        >
-          {showUi ? 'Hide UI' : 'Show UI'}
-        </button>
-      </div>
+      {/* Our custom toolbar */}
       <TLCanvasToolbar
         editor={editor}
         onAddImage={openImagePicker}
         isUploadingImage={isUploading}
-        showUi={showUi}
-        onToggleUi={() => setShowUi((prev) => !prev)}
       />
     </div>
   );
