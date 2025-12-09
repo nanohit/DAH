@@ -1,10 +1,9 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
-import { Editor, getSnapshot } from 'tldraw';
+import { useRef, useEffect, useState, useCallback } from 'react';
+import { Editor } from 'tldraw';
 
 interface TLMapToolbarProps {
-  editor: Editor | null;
   mapName: string;
   onChangeMapName: (name: string) => void;
   onSave: () => Promise<void>;
@@ -17,11 +16,10 @@ interface TLMapToolbarProps {
   onCopyShareLink: () => void;
   onDelete?: () => void;
   canDelete: boolean;
-  onUploadMedia?: () => void;
+  editor: Editor | null;
 }
 
 const TLMapToolbar = ({
-  editor,
   mapName,
   onChangeMapName,
   onSave,
@@ -34,11 +32,13 @@ const TLMapToolbar = ({
   onCopyShareLink,
   onDelete,
   canDelete,
-  onUploadMedia,
+  editor,
 }: TLMapToolbarProps) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mapNameInputRef = useRef<HTMLInputElement>(null);
   const hiddenTextRef = useRef<HTMLSpanElement>(null);
@@ -48,6 +48,7 @@ const TLMapToolbar = ({
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowDropdown(false);
+        setActiveSubmenu(null);
       }
     };
 
@@ -71,132 +72,271 @@ const TLMapToolbar = ({
     setTimeout(() => setLinkCopied(false), 2000);
   };
 
-  const handleUndo = () => editor?.undo();
-  const handleRedo = () => editor?.redo();
-  const handleZoomIn = () => editor?.zoomIn();
-  const handleZoomOut = () => editor?.zoomOut();
-  const handleZoomReset = () => {
+  // Editor actions
+  const handleUndo = useCallback(() => {
     if (!editor) return;
-    const cam = editor.getCamera();
-    editor.setCamera({ x: cam.x, y: cam.y, z: 1 });
-  };
+    editor.undo();
+  }, [editor]);
 
-  const handleExportJson = () => {
+  const handleRedo = useCallback(() => {
     if (!editor) return;
-    const snap = getSnapshot(editor.store);
-    const blob = new Blob([JSON.stringify(snap, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${mapName || 'map'}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+    editor.redo();
+  }, [editor]);
 
-  const handleCopyJson = async () => {
+  const handleSelectAll = useCallback(() => {
     if (!editor) return;
-    const snap = getSnapshot(editor.store);
-    await navigator.clipboard.writeText(JSON.stringify(snap));
-    setLinkCopied(true);
-    setTimeout(() => setLinkCopied(false), 2000);
-  };
+    editor.selectAll();
+    setShowDropdown(false);
+  }, [editor]);
+
+  const handleSelectNone = useCallback(() => {
+    if (!editor) return;
+    editor.selectNone();
+    setShowDropdown(false);
+  }, [editor]);
+
+  const handleZoomIn = useCallback(() => {
+    if (!editor) return;
+    editor.zoomIn();
+    setShowDropdown(false);
+  }, [editor]);
+
+  const handleZoomOut = useCallback(() => {
+    if (!editor) return;
+    editor.zoomOut();
+    setShowDropdown(false);
+  }, [editor]);
+
+  const handleZoomToFit = useCallback(() => {
+    if (!editor) return;
+    editor.zoomToFit();
+    setShowDropdown(false);
+  }, [editor]);
+
+  const handleZoomToSelection = useCallback(() => {
+    if (!editor) return;
+    editor.zoomToSelection();
+    setShowDropdown(false);
+  }, [editor]);
+
+  const handleResetZoom = useCallback(() => {
+    if (!editor) return;
+    editor.resetZoom();
+    setShowDropdown(false);
+  }, [editor]);
+
+  const handleToggleGrid = useCallback(() => {
+    if (!editor) return;
+    const current = editor.getInstanceState().isGridMode;
+    editor.updateInstanceState({ isGridMode: !current });
+  }, [editor]);
+
+  const handleToggleDarkMode = useCallback(() => {
+    if (!editor) return;
+    const current = editor.user.getIsDarkMode();
+    editor.user.updateUserPreferences({ colorScheme: current ? 'light' : 'dark' });
+  }, [editor]);
+
+  const handleExportSvg = useCallback(async () => {
+    if (!editor) return;
+    try {
+      const shapeIds = editor.getCurrentPageShapeIds();
+      if (shapeIds.size === 0) return;
+      
+      const svg = await editor.getSvgString([...shapeIds]);
+      if (!svg) return;
+      
+      const blob = new Blob([svg.svg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${mapName || 'map'}.svg`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Export SVG failed:', e);
+    }
+    setShowDropdown(false);
+  }, [editor, mapName]);
+
+  const handleExportPng = useCallback(async () => {
+    if (!editor) return;
+    try {
+      const shapeIds = editor.getCurrentPageShapeIds();
+      if (shapeIds.size === 0) return;
+      
+      const result = await editor.toImage([...shapeIds], { format: 'png', quality: 1 });
+      if (!result || !result.blob) return;
+      
+      const url = URL.createObjectURL(result.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${mapName || 'map'}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Export PNG failed:', e);
+    }
+    setShowDropdown(false);
+  }, [editor, mapName]);
+
+  const handleExportJson = useCallback(() => {
+    if (!editor) return;
+    try {
+      const snapshot = editor.store.getStoreSnapshot();
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${mapName || 'map'}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Export JSON failed:', e);
+    }
+    setShowDropdown(false);
+  }, [editor, mapName]);
+
+  const handleInsertMedia = useCallback(() => {
+    if (!editor) return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,video/*';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      await editor.putExternalContent({
+        type: 'files',
+        files: [file],
+        point: editor.getViewportScreenCenter(),
+        ignoreParent: false,
+      });
+    };
+    input.click();
+    setShowDropdown(false);
+  }, [editor]);
+
+  const handleInsertEmbed = useCallback(() => {
+    const url = prompt('Enter URL to embed:');
+    if (!url || !editor) return;
+    
+    const center = editor.getViewportScreenCenter();
+    editor.putExternalContent({
+      type: 'url',
+      url,
+      point: center,
+    });
+    setShowDropdown(false);
+  }, [editor]);
+
+  const isGridMode = editor?.getInstanceState()?.isGridMode ?? false;
+  const isDarkMode = editor?.user?.getIsDarkMode?.() ?? false;
+
+  const shortcuts = [
+    { key: 'V', action: 'Select' },
+    { key: 'H', action: 'Hand (pan)' },
+    { key: 'D', action: 'Draw' },
+    { key: 'E', action: 'Eraser' },
+    { key: 'A', action: 'Arrow' },
+    { key: 'T', action: 'Text' },
+    { key: 'N', action: 'Note' },
+    { key: 'R', action: 'Rectangle' },
+    { key: 'O', action: 'Ellipse' },
+    { key: '⌘/Ctrl + Z', action: 'Undo' },
+    { key: '⌘/Ctrl + Shift + Z', action: 'Redo' },
+    { key: '⌘/Ctrl + A', action: 'Select all' },
+    { key: '⌘/Ctrl + C', action: 'Copy' },
+    { key: '⌘/Ctrl + V', action: 'Paste' },
+    { key: 'Delete/Backspace', action: 'Delete' },
+    { key: '⌘/Ctrl + D', action: 'Duplicate' },
+    { key: '+/-', action: 'Zoom in/out' },
+    { key: 'Shift + 1', action: 'Zoom to fit' },
+    { key: 'Shift + 0', action: 'Reset zoom' },
+    { key: 'Space + Drag', action: 'Pan' },
+  ];
 
   return (
-    <div className="absolute top-5 left-5 bg-white rounded-lg shadow-lg px-3 p-2 flex items-center gap-1 z-[300] h-14">
-      {/* Back button */}
-      <button
-        onClick={onSaveAndExit}
-        className="p-2 hover:bg-gray-100 rounded-lg text-gray-700 flex items-center justify-center transition-colors"
-        title="Save and return"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M19 12H5M12 19l-7-7 7-7" />
-        </svg>
-      </button>
-
-      {/* Map name input + undo/redo */}
-      <div className="flex items-center relative">
-        <input
-          ref={mapNameInputRef}
-          type="text"
-          value={mapName}
-          onChange={(e) => onChangeMapName(e.target.value)}
-          className="text-gray-800 font-medium bg-transparent border border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none rounded px-1 py-0.5 transition-colors"
-          placeholder="Untitled"
-        />
-        <span
-          ref={hiddenTextRef}
-          className="absolute opacity-0 pointer-events-none font-medium"
-          style={{ visibility: 'hidden', position: 'absolute', whiteSpace: 'pre' }}
+    <>
+      <div className="absolute top-5 left-5 bg-white rounded-lg shadow-lg px-3 p-2 flex items-center gap-1 z-[300] h-14">
+        {/* Back button */}
+        <button
+          onClick={onSaveAndExit}
+          className="p-2 hover:bg-gray-100 rounded-lg text-gray-700 flex items-center justify-center transition-colors"
+          title="Save and return"
         >
-          {mapName || 'Untitled'}
-        </span>
-        {isAutosaveEnabled && (
-          <span className={`text-xs ml-2 ${isSaving ? 'text-yellow-600' : 'text-green-600'} flex items-center`}>
-            {isSaving ? (
-              <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-            ) : (
-              <svg className="h-3 w-3 text-green-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-            )}
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7" />
+          </svg>
+        </button>
+
+        {/* Map name input with dropdown arrow */}
+        <div className="flex items-center relative">
+          <input
+            ref={mapNameInputRef}
+            type="text"
+            value={mapName}
+            onChange={(e) => onChangeMapName(e.target.value)}
+            className="text-gray-800 font-medium bg-transparent border border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none rounded px-1 py-0.5 transition-colors"
+            placeholder="Untitled"
+          />
+          <button
+            onClick={() => setShowDropdown(!showDropdown)}
+            className="p-1 hover:bg-gray-100 rounded transition-colors text-gray-500"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </button>
+          <span
+            ref={hiddenTextRef}
+            className="absolute opacity-0 pointer-events-none font-medium"
+            style={{ visibility: 'hidden', position: 'absolute', whiteSpace: 'pre' }}
+          >
+            {mapName || 'Untitled'}
           </span>
-        )}
-      </div>
-      <div className="flex items-center gap-1 ml-2">
+          {isAutosaveEnabled && (
+            <span className={`text-xs ml-2 ${isSaving ? 'text-yellow-600' : 'text-green-600'} flex items-center`}>
+              {isSaving ? (
+                <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+              ) : (
+                <svg className="h-3 w-3 text-green-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+              )}
+            </span>
+          )}
+        </div>
+
+        {/* Undo button */}
         <button
           onClick={handleUndo}
           className="p-2 hover:bg-gray-100 rounded-lg text-gray-700 flex items-center justify-center transition-colors"
-          title="Undo"
+          title="Undo (⌘Z)"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 14 4 9l5-5" />
-            <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+            <path d="M3 7v6h6" />
+            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
           </svg>
         </button>
+
+        {/* Redo button */}
         <button
           onClick={handleRedo}
           className="p-2 hover:bg-gray-100 rounded-lg text-gray-700 flex items-center justify-center transition-colors"
-          title="Redo"
+          title="Redo (⌘⇧Z)"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m15 14 5-5-5-5" />
-            <path d="M4 20v-7a4 4 0 0 1 4-4h12" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Save button */}
-      <button
-        onClick={onSave}
-        className="p-2 hover:bg-gray-100 rounded-lg text-gray-700 flex items-center justify-center transition-colors"
-        title="Save"
-        disabled={isSaving}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-          <polyline points="17 21 17 13 7 13 7 21" />
-          <polyline points="7 3 7 8 15 8" />
-        </svg>
-      </button>
-
-      {/* More options dropdown */}
-      <div className="relative">
-        <button
-          className="p-2 hover:bg-gray-100 rounded-lg text-gray-700 transition-colors"
-          title="More options"
-          onClick={() => setShowDropdown(!showDropdown)}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+            <path d="M21 7v6h-6" />
+            <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
           </svg>
         </button>
 
+        {/* Main dropdown - already triggered by map name dropdown arrow */}
         {showDropdown && (
-          <div ref={dropdownRef} className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
+          <div ref={dropdownRef} className="absolute left-0 top-16 w-56 bg-white rounded-md shadow-lg py-1 z-50 border border-gray-200">
             {/* Privacy toggle */}
             <div className="px-4 py-2">
               <div className="inline-flex border border-gray-400/50 rounded-md overflow-hidden w-full">
@@ -255,47 +395,131 @@ const TLMapToolbar = ({
               )}
             </div>
 
-            {/* Extra actions from tldraw menu */}
-            <div className="border-t border-gray-100 my-1"></div>
-            <div className="px-4 py-2 text-xs text-gray-500 uppercase">Edit</div>
-            <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={handleUndo}>
-              Undo
-            </div>
-            <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={handleRedo}>
-              Redo
-            </div>
+            <div className="border-t border-gray-200 my-1" />
 
-            <div className="px-4 py-2 text-xs text-gray-500 uppercase">View</div>
-            <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={handleZoomIn}>
-              Zoom in
-            </div>
-            <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={handleZoomOut}>
-              Zoom out
-            </div>
-            <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={handleZoomReset}>
-              Reset zoom
-            </div>
-
-            <div className="px-4 py-2 text-xs text-gray-500 uppercase">Export</div>
-            <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={handleExportJson}>
-              Download JSON
-            </div>
-            <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={handleCopyJson}>
-              Copy JSON
-            </div>
-
-            {onUploadMedia && (
-              <>
-                <div className="px-4 py-2 text-xs text-gray-500 uppercase">Media</div>
-                <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={onUploadMedia}>
-                  Upload media
+            {/* Edit submenu */}
+            <div
+              className="relative"
+              onMouseEnter={() => setActiveSubmenu('edit')}
+              onMouseLeave={() => setActiveSubmenu(null)}
+            >
+              <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700 flex items-center justify-between">
+                Edit
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                </svg>
+              </div>
+              {activeSubmenu === 'edit' && (
+                <div className="absolute left-full top-0 w-48 bg-white rounded-md shadow-lg py-1 border border-gray-200">
+                  <div onClick={handleSelectAll} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700 flex justify-between">
+                    Select all <span className="text-gray-400">⌘A</span>
+                  </div>
+                  <div onClick={handleSelectNone} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700">
+                    Select none
+                  </div>
                 </div>
-              </>
-            )}
+              )}
+            </div>
+
+            {/* View submenu */}
+            <div
+              className="relative"
+              onMouseEnter={() => setActiveSubmenu('view')}
+              onMouseLeave={() => setActiveSubmenu(null)}
+            >
+              <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700 flex items-center justify-between">
+                View
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                </svg>
+              </div>
+              {activeSubmenu === 'view' && (
+                <div className="absolute left-full top-0 w-48 bg-white rounded-md shadow-lg py-1 border border-gray-200">
+                  <div onClick={handleZoomIn} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700 flex justify-between">
+                    Zoom in <span className="text-gray-400">+</span>
+                  </div>
+                  <div onClick={handleZoomOut} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700 flex justify-between">
+                    Zoom out <span className="text-gray-400">−</span>
+                  </div>
+                  <div onClick={handleResetZoom} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700 flex justify-between">
+                    Reset zoom <span className="text-gray-400">⇧0</span>
+                  </div>
+                  <div onClick={handleZoomToFit} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700 flex justify-between">
+                    Zoom to fit <span className="text-gray-400">⇧1</span>
+                  </div>
+                  <div onClick={handleZoomToSelection} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700">
+                    Zoom to selection
+                  </div>
+                  <div className="border-t border-gray-200 my-1" />
+                  <div onClick={handleToggleGrid} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700 flex justify-between">
+                    <span>{isGridMode ? '✓ ' : ''}Grid</span>
+                  </div>
+                  <div onClick={handleToggleDarkMode} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700 flex justify-between">
+                    <span>{isDarkMode ? '✓ ' : ''}Dark mode</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Export submenu */}
+            <div
+              className="relative"
+              onMouseEnter={() => setActiveSubmenu('export')}
+              onMouseLeave={() => setActiveSubmenu(null)}
+            >
+              <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700 flex items-center justify-between">
+                Export as
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                </svg>
+              </div>
+              {activeSubmenu === 'export' && (
+                <div className="absolute left-full top-0 w-36 bg-white rounded-md shadow-lg py-1 border border-gray-200">
+                  <div onClick={handleExportSvg} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700">
+                    SVG
+                  </div>
+                  <div onClick={handleExportPng} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700">
+                    PNG
+                  </div>
+                  <div onClick={handleExportJson} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700">
+                    JSON
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-gray-200 my-1" />
+
+            {/* Insert embed */}
+            <div
+              className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700 flex justify-between"
+              onClick={handleInsertEmbed}
+            >
+              Insert embed <span className="text-gray-400">⌘I</span>
+            </div>
+
+            {/* Upload media */}
+            <div
+              className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700 flex justify-between"
+              onClick={handleInsertMedia}
+            >
+              Upload media <span className="text-gray-400">⌘U</span>
+            </div>
+
+            <div className="border-t border-gray-200 my-1" />
+
+            {/* Keyboard shortcuts */}
+            <div
+              className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700"
+              onClick={() => { setShowShortcuts(true); setShowDropdown(false); }}
+            >
+              Keyboard shortcuts
+            </div>
 
             {/* Delete option */}
             {canDelete && (
               <>
+                <div className="border-t border-gray-200 my-1" />
                 {showDeleteConfirm ? (
                   <div className="px-4 py-2 text-sm text-red-600">
                     <div className="text-gray-800 mb-2">Are you sure?</div>
@@ -327,7 +551,35 @@ const TLMapToolbar = ({
           </div>
         )}
       </div>
-    </div>
+
+      {/* Keyboard shortcuts modal */}
+      {showShortcuts && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[500]" onClick={() => setShowShortcuts(false)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-lg font-semibold text-gray-800">Keyboard shortcuts</h2>
+              <button onClick={() => setShowShortcuts(false)} className="text-gray-500 hover:text-gray-700">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-4">
+              <table className="w-full text-sm">
+                <tbody>
+                  {shortcuts.map((s, i) => (
+                    <tr key={i} className="border-b border-gray-100 last:border-0">
+                      <td className="py-2 text-gray-600">{s.action}</td>
+                      <td className="py-2 text-right font-mono text-gray-400">{s.key}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

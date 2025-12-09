@@ -22,7 +22,6 @@ function TLMapsContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isAutosaveEnabled, setIsAutosaveEnabled] = useState(false);
-  const [uploadHandler, setUploadHandler] = useState<(() => void) | null>(null);
 
   // Handle editor ready
   const handleEditorReady = useCallback((editorInstance: Editor) => {
@@ -199,7 +198,6 @@ function TLMapsContent() {
   return (
     <div className="tlmaps-shell fixed inset-0 top-[60px]">
       <TLMapToolbar
-        editor={editor}
         mapName={mapName}
         onChangeMapName={setMapName}
         onSave={saveMap}
@@ -212,11 +210,10 @@ function TLMapsContent() {
         onCopyShareLink={handleCopyShareLink}
         onDelete={handleDeleteMap}
         canDelete={Boolean(savedMapId)}
-        onUploadMedia={uploadHandler || undefined}
+        editor={editor}
       />
       <TLMapCanvas
         onEditorReady={handleEditorReady}
-        onRegisterUpload={setUploadHandler}
       />
       <style jsx global>{`
         /* Hide the tldraw production license badge / link aggressively */
