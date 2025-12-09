@@ -16,9 +16,18 @@ interface TLMapCanvasProps {
 
 const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
   const [editor, setEditor] = useState<Editor | null>(null);
+  // Default to hiding built-in UI to avoid license prompts
+  const [showUi, setShowUi] = useState(false);
   const { openImagePicker, isUploading } = useImageUpload({ editor });
   const licenseKey = process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY;
   const bgRef = useRef<HTMLDivElement>(null);
+
+  // Surface whether the license key is present at runtime (helps debug deployments)
+  useEffect(() => {
+    // Mask the key in logs
+    const masked = licenseKey ? `${licenseKey.slice(0, 4)}…${licenseKey.slice(-4)}` : 'missing';
+    console.info('[TLDraw] license key present:', !!licenseKey, masked);
+  }, [licenseKey]);
 
   const handleMount = useCallback(
     (editorInstance: Editor) => {
@@ -26,6 +35,27 @@ const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
       onEditorReady(editorInstance);
     },
     [onEditorReady]
+  );
+
+  const handleDoubleClick = useCallback(
+    (event: React.MouseEvent) => {
+      if (!editor) return;
+      const point = editor.screenToPage({ x: event.clientX, y: event.clientY });
+      editor.createShape({
+        type: 'geo',
+        x: point.x - 90,
+        y: point.y - 60,
+        props: {
+          w: 180,
+          h: 120,
+          geo: 'rectangle',
+          color: 'black',
+          fill: 'solid',
+        },
+      });
+      editor.setCurrentTool('select');
+    },
+    [editor]
   );
 
   // Keep dotted background in sync with camera transform so it scales / pans with content
@@ -55,8 +85,7 @@ const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
   }, [editor]);
 
   return (
-    <div className="w-full h-full relative overflow-hidden">
-      {/* Dotted background that syncs with camera */}
+    <div className="w-full h-full relative overflow-hidden" onDoubleClick={handleDoubleClick}>
       <div
         ref={bgRef}
         className="absolute inset-0 pointer-events-none"
@@ -68,19 +97,15 @@ const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
           height: '4000px',
         }}
       />
-      {/* Tldraw canvas with hidden UI */}
       <Tldraw
         shapeUtils={customShapeUtils}
         onMount={handleMount}
-        hideUi
+        hideUi={!showUi}
         className="tlmaps-canvas"
         licenseKey={licenseKey}
       />
-      {/* Our custom toolbar */}
       <TLCanvasToolbar
         editor={editor}
-        onAddImage={openImagePicker}
-        isUploadingImage={isUploading}
       />
     </div>
   );
