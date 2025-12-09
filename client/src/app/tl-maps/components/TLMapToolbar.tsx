@@ -1,8 +1,10 @@
 'use client';
 
 import { useRef, useEffect, useState } from 'react';
+import { Editor, getSnapshot } from 'tldraw';
 
 interface TLMapToolbarProps {
+  editor: Editor | null;
   mapName: string;
   onChangeMapName: (name: string) => void;
   onSave: () => Promise<void>;
@@ -15,9 +17,11 @@ interface TLMapToolbarProps {
   onCopyShareLink: () => void;
   onDelete?: () => void;
   canDelete: boolean;
+  onUploadMedia?: () => void;
 }
 
 const TLMapToolbar = ({
+  editor,
   mapName,
   onChangeMapName,
   onSave,
@@ -30,6 +34,7 @@ const TLMapToolbar = ({
   onCopyShareLink,
   onDelete,
   canDelete,
+  onUploadMedia,
 }: TLMapToolbarProps) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -66,6 +71,36 @@ const TLMapToolbar = ({
     setTimeout(() => setLinkCopied(false), 2000);
   };
 
+  const handleUndo = () => editor?.undo();
+  const handleRedo = () => editor?.redo();
+  const handleZoomIn = () => editor?.zoomIn();
+  const handleZoomOut = () => editor?.zoomOut();
+  const handleZoomReset = () => {
+    if (!editor) return;
+    const cam = editor.getCamera();
+    editor.setCamera({ x: cam.x, y: cam.y, z: 1 });
+  };
+
+  const handleExportJson = () => {
+    if (!editor) return;
+    const snap = getSnapshot(editor.store);
+    const blob = new Blob([JSON.stringify(snap, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${mapName || 'map'}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCopyJson = async () => {
+    if (!editor) return;
+    const snap = getSnapshot(editor.store);
+    await navigator.clipboard.writeText(JSON.stringify(snap));
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  };
+
   return (
     <div className="absolute top-5 left-5 bg-white rounded-lg shadow-lg px-3 p-2 flex items-center gap-1 z-[300] h-14">
       {/* Back button */}
@@ -79,7 +114,7 @@ const TLMapToolbar = ({
         </svg>
       </button>
 
-      {/* Map name input */}
+      {/* Map name input + undo/redo */}
       <div className="flex items-center relative">
         <input
           ref={mapNameInputRef}
@@ -110,6 +145,28 @@ const TLMapToolbar = ({
             )}
           </span>
         )}
+      </div>
+      <div className="flex items-center gap-1 ml-2">
+        <button
+          onClick={handleUndo}
+          className="p-2 hover:bg-gray-100 rounded-lg text-gray-700 flex items-center justify-center transition-colors"
+          title="Undo"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 14 4 9l5-5" />
+            <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+          </svg>
+        </button>
+        <button
+          onClick={handleRedo}
+          className="p-2 hover:bg-gray-100 rounded-lg text-gray-700 flex items-center justify-center transition-colors"
+          title="Redo"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m15 14 5-5-5-5" />
+            <path d="M4 20v-7a4 4 0 0 1 4-4h12" />
+          </svg>
+        </button>
       </div>
 
       {/* Save button */}
@@ -197,6 +254,44 @@ const TLMapToolbar = ({
                 </>
               )}
             </div>
+
+            {/* Extra actions from tldraw menu */}
+            <div className="border-t border-gray-100 my-1"></div>
+            <div className="px-4 py-2 text-xs text-gray-500 uppercase">Edit</div>
+            <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={handleUndo}>
+              Undo
+            </div>
+            <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={handleRedo}>
+              Redo
+            </div>
+
+            <div className="px-4 py-2 text-xs text-gray-500 uppercase">View</div>
+            <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={handleZoomIn}>
+              Zoom in
+            </div>
+            <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={handleZoomOut}>
+              Zoom out
+            </div>
+            <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={handleZoomReset}>
+              Reset zoom
+            </div>
+
+            <div className="px-4 py-2 text-xs text-gray-500 uppercase">Export</div>
+            <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={handleExportJson}>
+              Download JSON
+            </div>
+            <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={handleCopyJson}>
+              Copy JSON
+            </div>
+
+            {onUploadMedia && (
+              <>
+                <div className="px-4 py-2 text-xs text-gray-500 uppercase">Media</div>
+                <div className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm text-gray-700" onClick={onUploadMedia}>
+                  Upload media
+                </div>
+              </>
+            )}
 
             {/* Delete option */}
             {canDelete && (

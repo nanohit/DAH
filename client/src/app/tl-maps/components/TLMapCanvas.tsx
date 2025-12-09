@@ -14,7 +14,12 @@ interface TLMapCanvasProps {
   onEditorReady: (editor: Editor) => void;
 }
 
-const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
+interface TLMapCanvasProps {
+  onEditorReady: (editor: Editor) => void;
+  onRegisterUpload?: (handler: () => void) => void;
+}
+
+const TLMapCanvas = ({ onEditorReady, onRegisterUpload }: TLMapCanvasProps) => {
   const [editor, setEditor] = useState<Editor | null>(null);
   // Default to hiding built-in UI to avoid license prompts
   const [showUi, setShowUi] = useState(false);
@@ -37,26 +42,12 @@ const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
     [onEditorReady]
   );
 
-  const handleDoubleClick = useCallback(
-    (event: React.MouseEvent) => {
-      if (!editor) return;
-      const point = editor.screenToPage({ x: event.clientX, y: event.clientY });
-      editor.createShape({
-        type: 'geo',
-        x: point.x - 90,
-        y: point.y - 60,
-        props: {
-          w: 180,
-          h: 120,
-          geo: 'rectangle',
-          color: 'black',
-          fill: 'solid',
-        },
-      });
-      editor.setCurrentTool('select');
-    },
-    [editor]
-  );
+  // Provide upload handler to parent for menu integration
+  useEffect(() => {
+    if (onRegisterUpload) {
+      onRegisterUpload(() => openImagePicker());
+    }
+  }, [onRegisterUpload, openImagePicker]);
 
   // Keep dotted background in sync with camera transform so it scales / pans with content
   useEffect(() => {
@@ -85,7 +76,7 @@ const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
   }, [editor]);
 
   return (
-    <div className="w-full h-full relative overflow-hidden" onDoubleClick={handleDoubleClick}>
+    <div className="w-full h-full relative overflow-hidden">
       <div
         ref={bgRef}
         className="absolute inset-0 pointer-events-none"
@@ -104,8 +95,22 @@ const TLMapCanvas = ({ onEditorReady }: TLMapCanvasProps) => {
         className="tlmaps-canvas"
         licenseKey={licenseKey}
       />
+      {/* Small runtime indicator for license + UI state */}
+      <div className="fixed bottom-4 left-4 z-[400] bg-white/85 border border-gray-200 shadow-sm rounded px-3 py-2 text-xs text-gray-700 flex items-center gap-2">
+        <span>{licenseKey ? 'tldraw license: set' : 'tldraw license: missing'}</span>
+        <button
+          onClick={() => setShowUi((prev) => !prev)}
+          className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 transition text-gray-700"
+        >
+          {showUi ? 'Hide UI' : 'Show UI'}
+        </button>
+      </div>
       <TLCanvasToolbar
         editor={editor}
+        onAddImage={openImagePicker}
+        isUploadingImage={isUploading}
+        showUi={showUi}
+        onToggleUi={() => setShowUi((prev) => !prev)}
       />
     </div>
   );

@@ -22,6 +22,7 @@ function TLMapsContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isAutosaveEnabled, setIsAutosaveEnabled] = useState(false);
+  const [uploadHandler, setUploadHandler] = useState<(() => void) | null>(null);
 
   // Handle editor ready
   const handleEditorReady = useCallback((editorInstance: Editor) => {
@@ -198,6 +199,7 @@ function TLMapsContent() {
   return (
     <div className="tlmaps-shell fixed inset-0 top-[60px]">
       <TLMapToolbar
+        editor={editor}
         mapName={mapName}
         onChangeMapName={setMapName}
         onSave={saveMap}
@@ -210,19 +212,13 @@ function TLMapsContent() {
         onCopyShareLink={handleCopyShareLink}
         onDelete={handleDeleteMap}
         canDelete={Boolean(savedMapId)}
+        onUploadMedia={uploadHandler || undefined}
       />
       <TLMapCanvas
         onEditorReady={handleEditorReady}
+        onRegisterUpload={setUploadHandler}
       />
       <style jsx global>{`
-        /* Make tldraw canvas transparent so our dotted background shows */
-        .tlmaps-shell .tlmaps-canvas,
-        .tlmaps-shell .tl-theme,
-        .tlmaps-shell .tl-background,
-        .tlmaps-shell .tl-editor,
-        .tlmaps-shell .tl-canvas {
-          background: transparent !important;
-        }
         /* Hide the tldraw production license badge / link aggressively */
         .tlui-license,
         .tlui-license__link,
