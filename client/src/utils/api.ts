@@ -1,9 +1,12 @@
 // Use environment variable if set, otherwise default to new backend
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
   ? `${process.env.NEXT_PUBLIC_API_URL}/api`
   : process.env.NODE_ENV === 'production'
     ? 'https://dah-api.onrender.com/api'
     : 'http://localhost:5001/api';
+
+// Explicit helper for places that need the base URL (e.g., TL map persistence)
+export const getApiBaseUrl = () => API_BASE_URL;
 
 export const api = {
   get: async (endpoint: string) => {
