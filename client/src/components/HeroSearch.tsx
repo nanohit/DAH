@@ -1639,7 +1639,7 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
                   <>
                     <span className="font-medium font-geometria">либо начните с</span>
                     <Link 
-                      href="/maps" 
+                      href="/map-canvas" 
                       className="inline-flex items-center px-4 py-2.5 bg-white text-black font-semibold border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 transition-all hover:shadow-md font-geometria text-sm"
                     >
                       создания новой доски <span className="ml-1.5 text-base leading-none">+</span>
