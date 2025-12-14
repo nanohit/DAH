@@ -5,6 +5,10 @@ const { buildBullmqBaseOptions, queueNames } = require('../config/queue');
 const { JOB_NAMES } = require('../queues/zlibraryJobNames');
 const ZLibraryService = require('../services/zlibrary/ZLibraryService');
 
+// Feature flag: do not start the worker unless explicitly enabled.
+const ZLIBRARY_ENABLED =
+  process.env.ZLIBRARY_ENABLED === 'true' || process.env.ENABLE_ZLIBRARY === 'true';
+
 const SERVICE_NAME = process.env.WORKER_NAME || `zlibrary-worker-${process.pid}`;
 const baseOptions = buildBullmqBaseOptions();
 
@@ -76,6 +80,11 @@ async function handleJob(job) {
 }
 
 async function startWorker() {
+  if (!ZLIBRARY_ENABLED) {
+    console.log(`[${SERVICE_NAME}] Z-Library disabled; worker will not start.`);
+    return;
+  }
+
   const queueEvents = new QueueEvents(queueNames.zlibrary, baseOptions);
   queueEvents.on('error', (err) => {
     console.error(`[${SERVICE_NAME}] QueueEvents error:`, err);

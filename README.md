@@ -36,8 +36,8 @@ npm install
 4. **Frontend (optional / separate deployment)**  
    ```bash
    cd client
-   npm run dev
-   ```
+npm run dev
+```
 
 ### Environment variables
 

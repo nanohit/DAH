@@ -4,6 +4,7 @@ import api from '@/services/api';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import type { BookResult, SearchError, BookFormat, SimilarRecommendation } from '@/types/books';
+import { useAuth } from '@/context/AuthContext';
 
 const isBrowser = typeof window !== 'undefined';
 const isLocalhost =
@@ -117,7 +118,8 @@ const BookRail = ({
   const scroll = (direction: 'left' | 'right') => {
     const node = scrollRef.current;
     if (!node) return;
-    const delta = direction === 'left' ? -280 : 280;
+    const scrollAmount = Math.max(node.clientWidth * 0.85, 240);
+    const delta = direction === 'left' ? -scrollAmount : scrollAmount;
     node.scrollBy({ left: delta, behavior: 'smooth' });
   };
 
@@ -155,7 +157,7 @@ const BookRail = ({
   const skeletons = Array.from({ length: 4 }, (_, index) => (
     <div
       key={`rail-skeleton-${index}`}
-      className="min-w-[220px] max-w-[220px] h-[110px] rounded-xl border border-gray-100 bg-gray-50 animate-pulse"
+      className="w-full min-w-0 h-[110px] rounded-xl border border-gray-100 bg-gray-50 animate-pulse"
     />
   ));
 
@@ -181,15 +183,19 @@ const BookRail = ({
         <div className="relative">
           <div
             ref={scrollRef}
-            className="rail-scroll flex gap-3 overflow-x-auto overflow-y-hidden pb-2 pr-10"
+            className="rail-scroll grid grid-flow-col auto-cols-[minmax(170px,1fr)] sm:auto-cols-[minmax(200px,1fr)] md:auto-cols-[minmax(230px,1fr)] lg:auto-cols-[minmax(260px,1fr)] gap-3 overflow-x-auto overflow-y-hidden pb-3 pr-12 sm:pr-14 snap-x snap-mandatory"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {loading
-              ? skeletons
+              ? skeletons.map((skeleton, index) => (
+                  <div key={`rail-skeleton-${index}`} className="w-full min-w-0 snap-start">
+                    {skeleton}
+                  </div>
+                ))
               : items.map((item) => (
                   <div
                     key={item.id}
-                    className="min-w-[220px] max-w-[220px] min-h-[110px] rounded-xl border border-gray-200 bg-white shadow-sm p-3 flex flex-col justify-between"
+                    className="w-full min-w-0 min-h-[110px] rounded-xl border border-gray-200 bg-white shadow-sm p-3 flex flex-col justify-between snap-start"
                   >
                     <div>
                       <h4
@@ -227,7 +233,7 @@ const BookRail = ({
                     setTimeout(updateArrows, 300);
                   }}
                   aria-label="Прокрутить влево"
-                  className="absolute left-[-10px] top-1/2 -translate-y-1/2 w-10 h-10 inline-flex items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors shadow-sm"
+                  className="inline-flex absolute left-[-10px] top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors shadow-sm"
                 >
                   ‹
                 </button>
@@ -240,7 +246,7 @@ const BookRail = ({
                     setTimeout(updateArrows, 300);
                   }}
                   aria-label="Прокрутить вправо"
-                  className="absolute right-[-10px] top-1/2 -translate-y-1/2 w-10 h-10 inline-flex items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors shadow-sm"
+                  className="inline-flex absolute right-[-10px] top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors shadow-sm"
                 >
                   ›
                 </button>
@@ -258,6 +264,7 @@ const SIMILAR_PREFIX_LOWER = SIMILAR_PREFIX.toLowerCase();
 const RU_BETA_SUFFIX = ' (проверьте корректность названия на русском, функция в бете!)';
 
 export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) => {
+  const { isAuthenticated } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<BookResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -296,6 +303,7 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
   const historyIndexRef = useRef(-1);
   const personalFeedRequestRef = useRef(0);
   const personalFeedLoadingRequestRef = useRef<number | null>(null);
+  const [lastTlMap, setLastTlMap] = useState<{ id: string; name: string } | null>(null);
 
   const stripSimilarPrefix = (value: string) => {
     if (value.toLowerCase().startsWith(SIMILAR_PREFIX_LOWER)) {
@@ -487,6 +495,50 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
   useEffect(() => {
     fetchPersonalFeed();
   }, [fetchPersonalFeed]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setLastTlMap(null);
+      return;
+    }
+
+    const token = isBrowser ? localStorage.getItem('token') : null;
+    if (!token) {
+      setLastTlMap(null);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const loadLatestTlMap = async () => {
+      try {
+        const res = await fetch('/api/tl-maps', {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          return;
+        }
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const latest = data[0];
+          setLastTlMap({
+            id: latest._id,
+            name: latest.name || 'Untitled Map',
+          });
+        } else {
+          setLastTlMap(null);
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.warn('Failed to load latest TL map', err);
+      }
+    };
+
+    loadLatestTlMap();
+
+    return () => controller.abort();
+  }, [isAuthenticated]);
 
   const scrollToForum = () => {
     onForumRequest?.();
@@ -1142,18 +1194,13 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
   return (
     <>
       <section className="relative w-full overflow-hidden">
-        <div className="relative flex flex-col min-h-[calc(100vh-3rem)]">
+        <div className="relative flex flex-col">
           <div className="flex-1 w-full">
-            <div className="max-w-5xl mx-auto mb-16 mt-4 px-4 relative">
-              {/* Title Section - image + text */}
-              <div className="flex items-start gap-4 mb-4">
-                <img
-                  src="https://i.ibb.co/Nng4sd3N/image-120.png"
-                  alt="books"
-                  className="w-28 h-28 md:w-32 md:h-32 object-contain -mt-6"
-                />
-                <div className="text-left">
-                  <h1 className="text-[24px] md:text-[34px] font-medium text-black leading-tight font-geometria">
+            <div className="max-w-5xl mx-auto mb-10 mt-3 px-3 sm:px-4 relative">
+              {/* Title Section - compact, image removed on mobile */}
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4 mb-4">
+                <div className="text-left w-full">
+                  <h1 className="text-[20px] sm:text-[24px] md:text-[32px] font-medium text-black leading-tight font-geometria">
                     Бесплатный доступ к любой литературе.
                     <br />
                     Мощный инструмент работы с ней.
@@ -1161,9 +1208,9 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
                 </div>
               </div>
 
-              <div className="flex flex-col md:flex-row gap-3.5 items-start max-w-4xl w-full">
+              <div className="flex flex-row flex-nowrap items-stretch gap-2 max-w-4xl w-full">
                 {/* Input Group */}
-                <div className="flex items-start gap-2 w-full">
+                <div className="flex items-start gap-2 w-full min-w-0">
                   {showHistoryControls && (
                     <div className="flex flex-col gap-1 pt-1">
                       <button
@@ -1266,7 +1313,7 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
                       </div>
                     )}
 
-              {searchTerm && (
+                    {searchTerm && (
                       <div
                         aria-hidden="true"
                         className="pointer-events-none absolute inset-0 flex items-center px-4 font-geometria text-base whitespace-pre"
@@ -1538,21 +1585,39 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
                   className="w-12 h-12 flex-shrink-0 flex items-center justify-center bg-white text-gray-500 border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 hover:text-black transition-colors disabled:opacity-50 text-sm"
                 >
                   {isLoading ? (
-                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
                   ) : (
-                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                       <polyline points="9 18 15 12 9 6"></polyline>
-                     </svg>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
                   )}
                 </button>
               </div>
 
               {/* Attached similar button */}
-              <div className="relative w-full">
+              <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
                 <button
                   type="button"
                   onClick={insertSimilarPrefix}
-                  className="absolute right-[140px] top-[calc(100%+4px)] px-3 py-1 text-xs bg-white border border-gray-200 rounded-b-lg rounded-t-none text-gray-600 hover:text-black hover:bg-gray-50 transition-colors font-geometria shadow-sm"
+                  className="inline-flex items-center px-3 py-2 text-xs sm:text-sm bg-white border border-gray-200 rounded-lg text-gray-700 hover:text-black hover:bg-gray-50 transition-colors font-geometria shadow-sm w-full sm:w-auto"
+                  style={{
+                    position: 'absolute',
+                    left: '661px',
+                    top: '142px',
+                    width: '190px',
+                    height: '27px',
+                    textAlign: 'right',
+                  }}
                 >
                   или найти похожее на:
                 </button>
@@ -1560,13 +1625,27 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
 
               {/* CTA Section */}
               <div className="mt-8 flex items-center gap-3 text-base text-black">
-                <span className="font-medium font-geometria">либо начните с</span>
-                <Link 
-                  href="/maps" 
-                  className="inline-flex items-center px-4 py-2.5 bg-white text-black font-semibold border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 transition-all hover:shadow-md font-geometria text-sm"
-                >
-                  создания новой доски <span className="ml-1.5 text-base leading-none">+</span>
-                </Link>
+                {lastTlMap ? (
+                  <>
+                    <span className="font-medium font-geometria">или продолжите работать с</span>
+                    <Link
+                      href={`/map-canvas?id=${lastTlMap.id}`}
+                      className="inline-flex items-center px-4 py-2.5 bg-white text-black font-semibold border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 transition-all hover:shadow-md font-geometria text-sm"
+                    >
+                      {lastTlMap.name}
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium font-geometria">либо начните с</span>
+                    <Link 
+                      href="/maps" 
+                      className="inline-flex items-center px-4 py-2.5 bg-white text-black font-semibold border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 transition-all hover:shadow-md font-geometria text-sm"
+                    >
+                      создания новой доски <span className="ml-1.5 text-base leading-none">+</span>
+                    </Link>
+                  </>
+                )}
               </div>
 
               {hasRailsContent && (
@@ -1623,19 +1702,11 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
                 </div>
               )}
 
-              {!trackedDownloads.length && (
-                <div className="flex items-start gap-3 mt-10 max-w-2xl">
-                  <div className="mt-2.5 w-2 h-2 bg-black flex-shrink-0 transform rotate-45"></div>
-                  <p className="text-base md:text-lg leading-relaxed font-medium text-black font-geometria">
-                    Альфи позволяет бесплатно скачивать книги и визуально работать с их идеями
-                  </p>
-                </div>
-              )}
             </div>
           </div>
 
           {!trackedDownloads.length && (
-            <div className="flex justify-center mt-2 mb-2 px-4">
+            <div className="flex justify-center mt-1 mb-0 px-4">
               <div className="text-center max-w-xl">
                 <p className="text-sm md:text-base text-gray-700 font-geometria italic leading-snug">
                   “The only thing that you absolutely have to know, is the location of the library.”
@@ -1645,7 +1716,7 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
             </div>
           )}
 
-          <div className="flex justify-center pb-10 px-4">
+          <div className="flex justify-center pb-2 px-4">
             <button
               onClick={scrollToForum}
               className="inline-flex items-center gap-2 text-sm text-gray-700 hover:text-black transition-colors font-geometria"

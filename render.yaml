@@ -50,7 +50,7 @@ services:
           type: redis
           name: dah-redis
           property: connectionString
-    healthCheckPath: /api/auth/test
+    healthCheckPath: /api/auth/test 
 
   - type: web
     name: zlib-worker-a

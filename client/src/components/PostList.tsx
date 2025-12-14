@@ -1072,6 +1072,11 @@ export default function PostList({
   }, [posts]);
 
   const handleOpenMap = (mapId: string, mapData: any) => {
+    const isTl = mapData && (mapData.isTl || mapData.type === 'tl');
+    if (isTl) {
+      router.push(`/map-canvas?id=${mapId}`);
+      return;
+    }
     if (user && mapData.user._id === user._id) {
       router.push(`/maps?id=${mapId}`);
     } else {

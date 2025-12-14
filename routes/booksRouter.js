@@ -117,15 +117,23 @@ router.get('/bookmarked', protect, async (req, res) => {
 console.log('\nRegistering confirm-download-links route with pattern: /:id/confirm-download-links');
 
 // Flibusta search routes
+// Feature flag for Z-Library; disabled by default to avoid headless browsers/Redis.
+const zlibraryEnabled =
+  process.env.ZLIBRARY_ENABLED === 'true' || process.env.ENABLE_ZLIBRARY === 'true';
+
 router.get('/flibusta/search', searchBooks);
 router.get('/flibusta/variant/:id', getVariantDetails);
 router.get('/flibusta/download/:id/:format', getDownloadLink);
 router.get('/liber3/search', searchLiber3);
 router.get('/liber3/download/:cid', downloadLiber3);
 router.get('/motw/search', searchMotw);
-router.get('/zlibrary/search', searchZLibrary);
-router.get('/zlibrary/download/:bookId/:token', getZLibraryDownloadLink);
-router.get('/zlibrary/warmup', warmupZLibrary);
+if (zlibraryEnabled) {
+  router.get('/zlibrary/search', searchZLibrary);
+  router.get('/zlibrary/download/:bookId/:token', getZLibraryDownloadLink);
+  router.get('/zlibrary/warmup', warmupZLibrary);
+} else {
+  console.log('Z-Library routes are disabled (set ZLIBRARY_ENABLED=true to enable).');
+}
 router.get('/booksv/similar', getBookSvSimilar);
 router.post('/booksv/downloads', optionalAuth, registerBookDownload);
 router.get('/booksv/personal-feed', optionalAuth, getPersonalBookFeed);

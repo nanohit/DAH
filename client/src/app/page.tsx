@@ -40,6 +40,7 @@ export default function HomePage() {
   const postCursorRef = useRef(0);
   const mapCursorRef = useRef(0);
   const awaitingPageRef = useRef(false);
+  const tlFetchedRef = useRef(false);
 
   const activateForum = useCallback(() => {
     setIsForumActivated((prev) => {
@@ -139,8 +140,48 @@ export default function HomePage() {
       const response = await getMapSummaries({ limit: FETCH_BATCH_SIZE, skip: currentSkip });
       const summaries = response.maps ?? [];
 
+      // One-time fetch TL maps and merge into store
+      let tlSummaries: MapSummary[] = [];
+      if (!tlFetchedRef.current) {
+        tlFetchedRef.current = true;
+        try {
+          const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+          if (token) {
+            const res = await fetch('/api/tl-maps', {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+              const data = await res.json();
+              tlSummaries = (data || []).map((m: any) => ({
+                _id: m._id,
+                name: m.name || 'Untitled Map',
+                user: m.user || { _id: 'unknown', username: 'Unknown' },
+                createdAt: m.createdAt || '',
+                updatedAt: m.updatedAt || m.createdAt || '',
+                lastSaved: m.lastSaved || m.updatedAt || m.createdAt || '',
+                elementCount: m.elementCount || 0,
+                connectionCount: m.connectionCount || 0,
+                commentsCount: m.commentsCount || 0,
+                bookmarksCount: 0,
+                isPrivate: m.isPrivate || false,
+                isOwner: true,
+                // marker for TL map
+                // @ts-ignore
+                isTl: true,
+              }));
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to fetch TL maps for feed', err);
+        }
+      }
+
       if (summaries.length > 0) {
-        const updatedStore = [...mapStoreRef.current, ...summaries];
+        const updatedStore = [...mapStoreRef.current, ...summaries, ...tlSummaries];
+        mapStoreRef.current = updatedStore;
+        setMapStore(updatedStore);
+      } else if (tlSummaries.length > 0) {
+        const updatedStore = [...mapStoreRef.current, ...tlSummaries];
         mapStoreRef.current = updatedStore;
         setMapStore(updatedStore);
       }
@@ -276,8 +317,9 @@ export default function HomePage() {
         }
       },
       {
-        rootMargin: '0px 0px 180px 0px',
-        threshold: 0.1,
+        // Trigger earlier to ensure scroll activates the feed
+        rootMargin: '0px 0px 400px 0px',
+        threshold: 0.05,
       }
     );
 
@@ -286,6 +328,22 @@ export default function HomePage() {
     return () => {
       observer.disconnect();
     };
+  }, [activateForum, isForumActivated]);
+
+  useEffect(() => {
+    if (isForumActivated) {
+      return;
+    }
+
+    const handleScroll = () => {
+      const nearBottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 400;
+      if (nearBottom) {
+        activateForum();
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
   }, [activateForum, isForumActivated]);
 
   const handleFeedRefresh = useCallback(() => {
@@ -316,12 +374,10 @@ export default function HomePage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <HeroSearch onForumRequest={activateForum} />
-      <div className="max-w-4xl mx-auto">
-        <UserRecentMaps maxMaps={5} />
-
+      <div className="max-w-4xl mx-auto mt-8 lg:mt-10">
         <div id="alphy-forum-feed" ref={forumSectionRef} className="scroll-mt-24">
           {!isForumActivated ? (
-            <div className="flex flex-col items-center gap-3 py-12 text-center text-sm text-gray-500">
+            <div className="flex flex-col items-center gap-3 py-8 text-center text-sm text-gray-500">
               <div>Прокрутите сюда или нажмите «сегодня на alphy», чтобы увидеть форум.</div>
             </div>
           ) : showInitialLoader ? (
@@ -330,14 +386,17 @@ export default function HomePage() {
             </div>
           ) : (
             <>
-              <PostList
-                onPostUpdated={handleFeedRefresh}
-                posts={feedItems}
-                hasMorePosts={hasMoreFeed}
-                isLoading={isInitialLoading || isFetchingMore}
-                autoLoadOnScroll
-                onLoadMore={loadNextPage}
-              />
+              <UserRecentMaps maxMaps={5} />
+              <div className="mt-6">
+                <PostList
+                  onPostUpdated={handleFeedRefresh}
+                  posts={feedItems}
+                  hasMorePosts={hasMoreFeed}
+                  isLoading={isInitialLoading || isFetchingMore}
+                  autoLoadOnScroll
+                  onLoadMore={loadNextPage}
+                />
+              </div>
 
               {isFetchingMore && feedItems.length > 0 && (
                 <div className="flex justify-center py-6">

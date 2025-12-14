@@ -70,7 +70,7 @@ class BookSvService {
       const bestMatch = this.pickBestMatch(title, author, candidates);
 
       if (!bestMatch) {
-        const error = new Error('Book not found on book.sv');
+        const error = new Error('Book not found');
         error.code = 'BOOKSV_TITLE_NOT_FOUND';
         throw error;
       }

@@ -5,6 +5,11 @@ const {
   enqueueWarmupJob,
 } = require('../queues/zlibraryQueue');
 
+// Feature flag: keep code but disable all Z-Library traffic by default.
+// Explicitly set ZLIBRARY_ENABLED=true (or ENABLE_ZLIBRARY=true) to re-enable.
+const ZLIBRARY_ENABLED =
+  process.env.ZLIBRARY_ENABLED === 'true' || process.env.ENABLE_ZLIBRARY === 'true';
+
 const ZLIBRARY_WORKER_URL =
   process.env.ZLIBRARY_PROXY_URL || 'https://zlibrary-proxy.alphy-flibusta.workers.dev';
 
@@ -55,6 +60,14 @@ const statusFromQueueError = (code) => {
 };
 
 exports.searchZLibrary = asyncHandler(async (req, res) => {
+  if (!ZLIBRARY_ENABLED) {
+    return res.status(503).json({
+      success: false,
+      error: 'Z-Library integration is disabled',
+      code: 'ZLIBRARY_DISABLED',
+    });
+  }
+
   const { query } = req.query;
 
   if (!query?.trim()) {
@@ -110,6 +123,14 @@ exports.searchZLibrary = asyncHandler(async (req, res) => {
 });
 
 exports.getZLibraryDownloadLink = asyncHandler(async (req, res) => {
+  if (!ZLIBRARY_ENABLED) {
+    return res.status(503).json({
+      success: false,
+      error: 'Z-Library integration is disabled',
+      code: 'ZLIBRARY_DISABLED',
+    });
+  }
+
   const { bookId, token } = req.params;
 
   if (!bookId || !token) {
@@ -174,6 +195,14 @@ exports.getZLibraryDownloadLink = asyncHandler(async (req, res) => {
 });
 
 exports.warmupZLibrary = asyncHandler(async (req, res) => {
+  if (!ZLIBRARY_ENABLED) {
+    return res.status(503).json({
+      success: false,
+      error: 'Z-Library integration is disabled',
+      code: 'ZLIBRARY_DISABLED',
+    });
+  }
+
   try {
     const payload = await enqueueWarmupJob();
     res.json({ success: true, message: 'Z-Library session ready', data: payload });

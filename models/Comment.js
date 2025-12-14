@@ -18,6 +18,10 @@ const CommentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Map'
   },
+  tlMap: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'TLMap'
+  },
   content: {
     type: String,
     required: [true, 'Please add a comment'],
@@ -53,11 +57,12 @@ CommentSchema.pre('validate', function(next) {
   const hasPost = this.post != null;
   const hasBook = this.book != null;
   const hasMap = this.map != null;
+  const hasTlMap = this.tlMap != null;
   
-  const sourceCount = (hasPost ? 1 : 0) + (hasBook ? 1 : 0) + (hasMap ? 1 : 0);
+  const sourceCount = (hasPost ? 1 : 0) + (hasBook ? 1 : 0) + (hasMap ? 1 : 0) + (hasTlMap ? 1 : 0);
   
   if (sourceCount !== 1) {
-    next(new Error('Comment must belong to exactly one of: post, book, or map'));
+    next(new Error('Comment must belong to exactly one of: post, book, map, or canvas map'));
   } else {
     next();
   }

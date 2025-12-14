@@ -87,6 +87,8 @@ export default function SavedMapsPage() {
   const [mapComments, setMapComments] = useState<Record<string, any[]>>({});
   const router = useRouter();
   const { user } = useAuth();
+  const isNanoAdmin = user?.username === 'nano';
+  const canvasButtonLabel = isNanoAdmin ? '+ New Map Canvas' : '+ Новая доска';
 
   // Toggle comment visibility
   const toggleComments = (mapId: string) => {
@@ -116,6 +118,9 @@ export default function SavedMapsPage() {
     if (map._id in commentCounts) {
       return commentCounts[map._id] || 0;
     }
+    if (typeof map.commentsCount === 'number') {
+      return map.commentsCount;
+    }
     return map.comments?.length || 0;
   };
   
@@ -133,23 +138,51 @@ export default function SavedMapsPage() {
       setLoading(true);
       try {
         const userMaps = await getUserMaps();
-        
-        // Log information about the maps we received
-        console.log(`Received ${userMaps.length} maps`);
-        
-        // Log the first few maps to debug the structure
-        userMaps.slice(0, 3).forEach((map, index) => {
-          console.log(`Map ${index + 1}:`, {
-            _id: map._id,
-            name: map.name,
-            user: map.user,
-            elementCount: map.elementCount,
-            connectionCount: map.connectionCount,
-            bookmarks: map.bookmarks ? map.bookmarks.length : 0
-          });
-        });
-        
-        setMaps(userMaps);
+
+        // Also fetch TL maps and normalize to SavedMap shape
+        let tlMaps: SavedMap[] = [];
+        try {
+          const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+          if (token) {
+            const res = await fetch('/api/tl-maps', {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+              const data = await res.json();
+              tlMaps = (data || []).map((m: any) => ({
+                _id: m._id,
+                name: m.name || 'Untitled Map',
+                user: m.user || { _id: 'unknown', username: 'Unknown' },
+                createdAt: m.createdAt || '',
+                updatedAt: m.updatedAt || '',
+                lastSaved: m.lastSaved || m.updatedAt || m.createdAt || '',
+                elements: [],
+                connections: [],
+                canvasPosition: { x: 0, y: 0 },
+                scale: 1,
+                canvasWidth: 0,
+                canvasHeight: 0,
+                isPrivate: m.isPrivate || false,
+                elementCount: m.elementCount || 0,
+                connectionCount: m.connectionCount || 0,
+                comments: m.comments || [],
+                commentsCount: m.commentsCount || 0,
+                bookmarks: m.bookmarks || [],
+                // marker to distinguish TL maps in UI
+                // @ts-ignore
+                isTl: true,
+              }));
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to fetch TL maps', err);
+        }
+
+        // Tag TL maps with isTl marker for typing
+        setMaps([
+          ...userMaps,
+          ...tlMaps.map((m) => ({ ...m, isTl: true } as SavedMap & { isTl: boolean })),
+        ]);
       } catch (error) {
         console.error('Error fetching maps:', error);
         toast.error('Failed to load maps');
@@ -181,12 +214,25 @@ export default function SavedMapsPage() {
   // Handle deleting a map
   const handleDeleteMap = async (mapId: string) => {
     try {
-      const success = await deleteMap(mapId);
+      const isTl = (maps.find(m => m._id === mapId) as any)?.isTl;
+      let success = false;
+      if (isTl) {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          toast.error('You must be logged in to delete maps');
+          return;
+        }
+        const res = await fetch(`/api/tl-maps/${mapId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        success = res.ok;
+      } else {
+        success = await deleteMap(mapId);
+      }
       if (success) {
         setMaps(maps.filter(map => map._id !== mapId));
         setDeleteConfirm(null);
-        
-        // Explicitly call notifyMapDeleted here as well for redundancy
         notifyMapDeleted(mapId);
       }
     } catch (error) {
@@ -196,7 +242,7 @@ export default function SavedMapsPage() {
   };
 
   // Function to open a map
-  const handleOpenMap = (mapId: string) => {
+  const handleOpenMap = (mapId: string, isTl?: boolean) => {
     // Check if the map belongs to the current user
     const map = maps.find(m => m._id === mapId);
     
@@ -208,12 +254,16 @@ export default function SavedMapsPage() {
       isOwner: map && user && map.user._id === user._id
     });
     
+    // Canvas maps open via map-canvas route (no view-only variant)
+    if ((map as any)?.isTl || isTl) {
+      router.push(`/map-canvas?id=${mapId}`);
+      return;
+    }
+
     if (map && user && map.user._id === user._id) {
-      // If the map belongs to the current user, open in edit mode
       console.log('Opening map in edit mode');
       router.push(`/maps?id=${mapId}`);
     } else {
-      // For non-owners and unregistered users, open in view-only mode
       console.log('Opening map in view-only mode');
       router.push(`/maps/view?id=${mapId}`);
     }
@@ -290,12 +340,22 @@ export default function SavedMapsPage() {
               <button className="px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-800">Last Added</button>
               <button className="px-3 py-1.5 text-xs font-medium bg-white text-black">Last Updated</button>
             </div>
-            <Link 
-              href="/maps" 
-              className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
-            >
-              + New Map
-            </Link>
+            <div className="flex items-center gap-2">
+              {isNanoAdmin && (
+                <Link
+                  href="/maps"
+                  className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
+                >
+                  + New Map
+                </Link>
+              )}
+              <Link
+                href="/map-canvas"
+                className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
+              >
+                {canvasButtonLabel}
+              </Link>
+            </div>
           </div>
           <div className="flex justify-center items-center h-48">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
@@ -315,22 +375,41 @@ export default function SavedMapsPage() {
               <button className="px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-800">Last Added</button>
               <button className="px-3 py-1.5 text-xs font-medium bg-white text-black">Last Updated</button>
             </div>
-            <Link 
-              href="/maps" 
-              className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
-            >
-              + New Map
-            </Link>
+            <div className="flex items-center gap-2">
+              {isNanoAdmin && (
+                <Link
+                  href="/maps"
+                  className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
+                >
+                  + New Map
+                </Link>
+              )}
+              <Link
+                href="/map-canvas"
+                className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
+              >
+                {canvasButtonLabel}
+              </Link>
+            </div>
           </div>
           <div className="bg-white shadow rounded-lg p-6 text-center">
             <h2 className="text-lg text-gray-600 mb-3">No saved maps found</h2>
             <p className="text-gray-500 mb-4">Create a new map to get started</p>
-            <Link 
-              href="/maps" 
-              className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
-            >
-              + New Map
-            </Link>
+            {isNanoAdmin ? (
+              <Link
+                href="/maps"
+                className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
+              >
+                + New Map
+              </Link>
+            ) : (
+              <Link
+                href="/map-canvas"
+                className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
+              >
+                {canvasButtonLabel}
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -364,12 +443,22 @@ export default function SavedMapsPage() {
             </button>
           </div>
           {user && (
-            <Link 
-              href="/maps" 
-              className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
-            >
-              + New Map
-            </Link>
+            <div className="flex gap-2">
+              {isNanoAdmin && (
+                <Link
+                  href="/maps"
+                  className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
+                >
+                  + New Map
+                </Link>
+              )}
+              <Link
+                href="/map-canvas"
+                className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
+              >
+                {canvasButtonLabel}
+              </Link>
+            </div>
           )}
         </div>
 
@@ -458,7 +547,7 @@ export default function SavedMapsPage() {
                 {/* Map title and stats - clickable to open map */}
                 <div 
                   className="cursor-pointer" 
-                  onClick={() => handleOpenMap(map._id)}
+              onClick={() => handleOpenMap(map._id, (map as any).isTl)}
                 >
                   {map.name && (
                     <h2 className="text-lg font-semibold mb-1 text-black hover:underline">{map.name || 'Untitled Map'}</h2>
