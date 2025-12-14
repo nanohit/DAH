@@ -20,6 +20,8 @@ const Navigation = () => {
   const [isBookmarkHovered, setIsBookmarkHovered] = useState(false);
   const isBookmarksPage = pathname === '/bookmarks';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isNanoAdmin = isAdmin || user?.username === 'nano';
+  const canvasButtonLabel = '+ Новая доска';
 
   // Close mobile menu when route changes
   useEffect(() => {
@@ -55,11 +57,19 @@ const Navigation = () => {
             
             {/* Desktop Navigation Links */}
             <div className="hidden md:flex ml-10 items-baseline space-x-4">
-              <Link 
-                href="/maps" 
+              {isNanoAdmin && (
+                <Link
+                  href="/maps"
+                  className="border border-gray-400/50 text-white hover:bg-white hover:text-black px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
+                >
+                  + New Map
+                </Link>
+              )}
+              <Link
+                href="/map-canvas"
                 className="border border-gray-400/50 text-white hover:bg-white hover:text-black px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
               >
-                + New Map
+                {canvasButtonLabel}
               </Link>
               <Link 
                 href="/saved-maps" 
@@ -161,11 +171,19 @@ const Navigation = () => {
       {/* Mobile menu */}
       <div className={`${mobileMenuOpen ? 'block' : 'hidden'} md:hidden absolute top-16 left-0 right-0 z-50 bg-black shadow-lg`}>
         <div className="px-2 pt-2 pb-3 space-y-3 border-t border-gray-700">
-          <Link 
-            href="/maps" 
+          {isNanoAdmin && (
+            <Link
+              href="/maps"
+              className="block text-gray-300 hover:text-white px-3 py-2 rounded-md text-base font-medium"
+            >
+              + New Map
+            </Link>
+          )}
+          <Link
+            href="/map-canvas"
             className="block text-gray-300 hover:text-white px-3 py-2 rounded-md text-base font-medium"
           >
-            + New Map
+            {canvasButtonLabel}
           </Link>
           <Link 
             href="/saved-maps" 

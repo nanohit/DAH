@@ -1,13 +1,24 @@
 services:
+  - type: redis
+    name: dah-redis
+    plan: free
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: allow Render services to connect
+
   - type: web
-    name: dah
+    name: dah-api
     env: node
     plan: free
     buildCommand: npm install
     startCommand: node index.js
     envVars:
+      - key: SERVICE_ROLE
+        value: api
       - key: NODE_ENV
         value: production
+      - key: PORT
+        value: 5001
       - key: MONGODB_URI
         sync: false
       - key: JWT_SECRET
@@ -20,4 +31,87 @@ services:
         sync: false
       - key: FLIBUSTA_PROXY_URL
         value: https://flibusta-proxy.alphy-flibusta.workers.dev
+      - key: ZLIBRARY_PROXY_URL
+        value: https://zlibrary-proxy.alphy-flibusta.workers.dev
+      - key: ZLIBRARY_BASE_URL
+        value: https://z-library.sk
+      - key: ZLIBRARY_PASSWORD
+        value: 123456789
+      - key: ZLIBRARY_ACCOUNT_POOL
+        value: zlib.alphy@mail.ru,nanohit.docker@nutritionxtreme.com,nanohit.docker1@nutritionxtreme.com,nanohit.docker2@nutritionxtreme.com,nanohit.docker3@nutritionxtreme.com,nanohit.docker4@nutritionxtreme.com,nanohit.docker5@nutritionxtreme.com,nanohit.docker6@nutritionxtreme.com,nanohit.docker7@nutritionxtreme.com,nanohit.docker8@nutritionxtreme.com,nanohit.docker9@nutritionxtreme.com,nanohit.docker10@willeloof.com,nanohit.docker11@willeloof.com,nanohit.docker12@willeloof.com,nanohit.docker13@willeloof.com,nanohit.docker14@willeloof.com,nanohit.docker15@willeloof.com,nanohit.docker16@willeloof.com,nanohit.docker17@willeloof.com,nanohit.docker18@willeloof.com,nanohit.docker19@willeloof.com
+      - key: QUEUE_PREFIX
+        value: dah
+      - key: ZLIBRARY_QUEUE_NAME
+        value: zlibrary-jobs
+      - key: PUPPETEER_HEADLESS
+        value: new
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: dah-redis
+          property: connectionString
     healthCheckPath: /api/auth/test 
+
+  - type: web
+    name: zlib-worker-a
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run worker:zlibrary:web
+    envVars:
+      - key: WORKER_NAME
+        value: zlib-worker-a
+      - key: NODE_ENV
+        value: production
+      - key: ZLIBRARY_PROXY_URL
+        value: https://zlibrary-proxy.alphy-flibusta.workers.dev
+      - key: ZLIBRARY_BASE_URL
+        value: https://z-library.sk
+      - key: ZLIBRARY_PASSWORD
+        value: 123456789
+      - key: ZLIBRARY_ACCOUNT_POOL
+        value: zlib.alphy@mail.ru,nanohit.docker@nutritionxtreme.com,nanohit.docker1@nutritionxtreme.com,nanohit.docker2@nutritionxtreme.com,nanohit.docker3@nutritionxtreme.com,nanohit.docker4@nutritionxtreme.com,nanohit.docker5@nutritionxtreme.com,nanohit.docker6@nutritionxtreme.com,nanohit.docker7@nutritionxtreme.com,nanohit.docker8@nutritionxtreme.com,nanohit.docker9@nutritionxtreme.com,nanohit.docker10@willeloof.com,nanohit.docker11@willeloof.com,nanohit.docker12@willeloof.com,nanohit.docker13@willeloof.com,nanohit.docker14@willeloof.com,nanohit.docker15@willeloof.com,nanohit.docker16@willeloof.com,nanohit.docker17@willeloof.com,nanohit.docker18@willeloof.com,nanohit.docker19@willeloof.com
+      - key: QUEUE_PREFIX
+        value: dah
+      - key: ZLIBRARY_QUEUE_NAME
+        value: zlibrary-jobs
+      - key: PUPPETEER_HEADLESS
+        value: new
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: dah-redis
+          property: connectionString
+    healthCheckPath: /health
+
+  - type: web
+    name: zlib-worker-b
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run worker:zlibrary:web
+    envVars:
+      - key: WORKER_NAME
+        value: zlib-worker-b
+      - key: NODE_ENV
+        value: production
+      - key: ZLIBRARY_PROXY_URL
+        value: https://zlibrary-proxy.alphy-flibusta.workers.dev
+      - key: ZLIBRARY_BASE_URL
+        value: https://z-library.sk
+      - key: ZLIBRARY_PASSWORD
+        value: 123456789
+      - key: ZLIBRARY_ACCOUNT_POOL
+        value: zlib.alphy@mail.ru,nanohit.docker@nutritionxtreme.com,nanohit.docker1@nutritionxtreme.com,nanohit.docker2@nutritionxtreme.com,nanohit.docker3@nutritionxtreme.com,nanohit.docker4@nutritionxtreme.com,nanohit.docker5@nutritionxtreme.com,nanohit.docker6@nutritionxtreme.com,nanohit.docker7@nutritionxtreme.com,nanohit.docker8@nutritionxtreme.com,nanohit.docker9@nutritionxtreme.com,nanohit.docker10@willeloof.com,nanohit.docker11@willeloof.com,nanohit.docker12@willeloof.com,nanohit.docker13@willeloof.com,nanohit.docker14@willeloof.com,nanohit.docker15@willeloof.com,nanohit.docker16@willeloof.com,nanohit.docker17@willeloof.com,nanohit.docker18@willeloof.com,nanohit.docker19@willeloof.com
+      - key: QUEUE_PREFIX
+        value: dah
+      - key: ZLIBRARY_QUEUE_NAME
+        value: zlibrary-jobs
+      - key: PUPPETEER_HEADLESS
+        value: new
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: dah-redis
+          property: connectionString
+    healthCheckPath: /health

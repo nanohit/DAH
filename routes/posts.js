@@ -92,6 +92,10 @@ router.get('/', async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 10;
         const skip = parseInt(req.query.skip) || 0;
+        const includeParam = typeof req.query.include === 'string'
+            ? req.query.include.split(',').map(item => item.trim()).filter(Boolean)
+            : [];
+        const includeComments = includeParam.includes('comments') || req.query.includeComments === 'true';
 
         // Get the user ID from auth token if available
         let userId = null;
@@ -126,9 +130,11 @@ router.get('/', async (req, res) => {
 
         console.log('Debug - Fetching all posts with recursive population');
         
-        const posts = await Post.find({})
-            .populate('author', 'username badge')
-            .populate({
+        let query = Post.find({})
+            .populate('author', 'username badge');
+
+        if (includeComments) {
+            query = query.populate({
                 path: 'comments',
                 options: {
                     sort: { createdAt: -1 }
@@ -140,13 +146,17 @@ router.get('/', async (req, res) => {
                     },
                     populateRepliesRecursively(0) // Use recursive population
                 ]
-            })
+            });
+        }
+
+        const posts = await query
             .sort({ createdAt: -1 })
+            .skip(skip)
             .limit(limit)
-            .skip(skip);
+            .lean();
 
         // Log comment structure for debugging
-        if (posts.length > 0 && posts[0].comments.length > 0) {
+        if (includeComments && posts.length > 0 && posts[0].comments.length > 0) {
             console.log(`Debug - First post has ${posts[0].comments.length} comments`);
             posts[0].comments.forEach((comment, idx) => {
                 if (comment.replies && comment.replies.length > 0) {
@@ -163,8 +173,25 @@ router.get('/', async (req, res) => {
         // Get total count for pagination
         const total = await Post.countDocuments();
 
+        const processedPosts = posts.map(post => {
+            const commentsCount = Array.isArray(post.comments) ? post.comments.length : 0;
+
+            if (!includeComments) {
+                return {
+                    ...post,
+                    comments: [],
+                    commentsCount
+                };
+            }
+
+            return {
+                ...post,
+                commentsCount
+            };
+        });
+
         res.json({
-            posts,
+            posts: processedPosts,
             total,
             hasMore: total > skip + limit
         });

@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { useDraggable } from '@dnd-kit/core';
+import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 
 // Define MapElement here or import from a shared types file
@@ -65,7 +64,23 @@ interface DraggableElementProps {
   isAltPressed?: boolean;
   isDuplicating?: boolean;
   children?: React.ReactNode;
+  liveTransform?: { x: number; y: number } | null;
+  onDragStart?: (context: { altKey: boolean }) => void;
+  onDragMove?: (delta: { x: number; y: number }) => void;
+  onDragEnd?: (delta: { x: number; y: number }, context: { altKey: boolean }) => void;
 }
+
+type DragState = {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  altKey: boolean;
+  started: boolean;
+  lastDelta: { x: number; y: number };
+  scaleAtStart: number;
+};
+
+const DRAG_ACTIVATION_DISTANCE = 5;
 
 const DraggableElement: React.FC<DraggableElementProps> = ({ 
   id, 
@@ -85,6 +100,10 @@ const DraggableElement: React.FC<DraggableElementProps> = ({
   isAltPressed,
   isDuplicating,
   children,
+  liveTransform,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
 }) => {
   const [isDragStarted, setIsDragStarted] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -92,10 +111,42 @@ const DraggableElement: React.FC<DraggableElementProps> = ({
   const [resizeDirection, setResizeDirection] = useState<string | null>(null);
   const [startResize, setStartResize] = useState({ x: 0, y: 0, width: 0, height: 0, left: 0, top: 0 });
   const inputRef = useRef<HTMLInputElement>(null);
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id,
-    disabled: isResizing || isEditing
-  });
+  const elementRef = useRef<HTMLDivElement>(null);
+  const dragStateRef = useRef<DragState | null>(null);
+  const pointerHandlersRef = useRef<
+    | {
+        move: (event: PointerEvent) => void;
+        up: (event: PointerEvent) => void;
+        cancel: (event: PointerEvent) => void;
+      }
+    | null
+  >(null);
+
+  const transformChangeRef = useRef(onTransformChange);
+  const dragMoveRef = useRef(onDragMove);
+  const dragStartRef = useRef(onDragStart);
+  const dragEndRef = useRef(onDragEnd);
+  const selectRef = useRef(onSelect);
+
+  useEffect(() => {
+    transformChangeRef.current = onTransformChange;
+  }, [onTransformChange]);
+
+  useEffect(() => {
+    dragMoveRef.current = onDragMove;
+  }, [onDragMove]);
+
+  useEffect(() => {
+    dragStartRef.current = onDragStart;
+  }, [onDragStart]);
+
+  useEffect(() => {
+    dragEndRef.current = onDragEnd;
+  }, [onDragEnd]);
+
+  useEffect(() => {
+    selectRef.current = onSelect;
+  }, [onSelect]);
 
   // Default sizes if not provided in element
   const defaultWidth = orientation === 'horizontal' ? 160 : 140;
@@ -107,14 +158,6 @@ const DraggableElement: React.FC<DraggableElementProps> = ({
 
   // Check if the element is a book (not resizable)
   const isBook = element.type === 'book';
-
-  const currentTransform = useMemo(() => 
-    transform ? { x: transform.x, y: transform.y } : null
-  , [transform?.x, transform?.y]);
-
-  useEffect(() => {
-    onTransformChange(currentTransform);
-  }, [currentTransform, onTransformChange]);
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -130,9 +173,6 @@ const DraggableElement: React.FC<DraggableElementProps> = ({
     // Get the element's initial state before any resize operations
     const elementNode = document.getElementById(id);
     if (!elementNode) return;
-
-    // Store the original element's position before any resize changes
-    const rect = elementNode.getBoundingClientRect();
 
     const handleResizeMouseMove = (e: MouseEvent) => {
       e.preventDefault();
@@ -185,10 +225,7 @@ const DraggableElement: React.FC<DraggableElementProps> = ({
       // Apply changes directly to the element's position and size
       elementNode.style.width = `${newWidth}px`;
       elementNode.style.height = `${newHeight}px`;
-      elementNode.style.left = `${newLeft}px`;
-      elementNode.style.top = `${newTop}px`;
-      // Remove transform during resize to prevent conflicts
-      elementNode.style.transform = 'none';
+      elementNode.style.transform = `translate(${newLeft - element.left}px, ${newTop - element.top}px)`;
       
       // Dispatch a resize-in-progress event to update connections in real-time
       const resizeEvent = new CustomEvent('element-resize-progress', {
@@ -211,8 +248,10 @@ const DraggableElement: React.FC<DraggableElementProps> = ({
       // Get the final dimensions and position
       const finalWidth = parseFloat(elementNode.style.width);
       const finalHeight = parseFloat(elementNode.style.height);
-      const finalLeft = parseFloat(elementNode.style.left);
-      const finalTop = parseFloat(elementNode.style.top);
+      const finalTransform = elementNode.style.transform;
+      const translateMatch = finalTransform.match(/translate\(([-0-9.]+)px,\s*([-0-9.]+)px\)/);
+      const finalLeft = translateMatch ? element.left + parseFloat(translateMatch[1]) : element.left;
+      const finalTop = translateMatch ? element.top + parseFloat(translateMatch[2]) : element.top;
 
       // Create a custom event with the final position and size
       const event = new CustomEvent('element-resized', {
@@ -230,11 +269,9 @@ const DraggableElement: React.FC<DraggableElementProps> = ({
       // Clean up
       setIsResizing(false);
       setResizeDirection(null);
-      
-      // Dispatch event after state is updated
-      setTimeout(() => {
-        elementNode.dispatchEvent(event);
-      }, 0);
+      elementNode.style.transform = 'none';
+
+      elementNode.dispatchEvent(event);
 
       document.removeEventListener('mousemove', handleResizeMouseMove);
       document.removeEventListener('mouseup', handleResizeMouseUp);
@@ -247,7 +284,7 @@ const DraggableElement: React.FC<DraggableElementProps> = ({
       document.removeEventListener('mousemove', handleResizeMouseMove);
       document.removeEventListener('mouseup', handleResizeMouseUp);
     };
-  }, [isResizing, resizeDirection, startResize, id, scale]);
+  }, [isResizing, resizeDirection, startResize, id, scale, element.left, element.top]);
 
   const handleResizeMouseDown = (e: React.MouseEvent, direction: string) => {
     e.preventDefault();
@@ -281,30 +318,155 @@ const DraggableElement: React.FC<DraggableElementProps> = ({
       left: left,
       top: top
     });
+
+    const resizeStartEvent = new CustomEvent('element-resize-start', {
+      detail: {
+        id,
+        left,
+        top,
+        width: renderedWidth,
+        height: renderedHeight,
+      },
+      bubbles: true,
+    });
+    elementNode.dispatchEvent(resizeStartEvent);
   };
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault(); // Prevent default text selection
-    
+  const cleanupPointerListeners = () => {
+    if (pointerHandlersRef.current) {
+      window.removeEventListener('pointermove', pointerHandlersRef.current.move);
+      window.removeEventListener('pointerup', pointerHandlersRef.current.up);
+      window.removeEventListener('pointercancel', pointerHandlersRef.current.cancel);
+      pointerHandlersRef.current = null;
+    }
+  };
+
+  useEffect(
+    () => () => {
+      cleanupPointerListeners();
+    },
+    [],
+  );
+
+  const handlePointerMoveInternal = (event: PointerEvent) => {
+    const drag = dragStateRef.current;
+    if (!drag || event.pointerId !== drag.pointerId) {
+      return;
+    }
+
+    const dxScreen = event.clientX - drag.startClientX;
+    const dyScreen = event.clientY - drag.startClientY;
+
+    if (!drag.started) {
+      const distance = Math.hypot(dxScreen, dyScreen);
+      if (distance < DRAG_ACTIVATION_DISTANCE) {
+        return;
+      }
+      drag.started = true;
+      setIsDragStarted(true);
+      dragStartRef.current?.({ altKey: drag.altKey });
+    }
+
+    const deltaX = dxScreen / drag.scaleAtStart;
+    const deltaY = dyScreen / drag.scaleAtStart;
+
+    if (deltaX === drag.lastDelta.x && deltaY === drag.lastDelta.y) {
+      return;
+    }
+
+    drag.lastDelta = { x: deltaX, y: deltaY };
+
+    transformChangeRef.current?.({ x: deltaX, y: deltaY });
+    dragMoveRef.current?.({ x: deltaX, y: deltaY });
+  };
+
+  const endDragSession = (drag: DragState | null) => {
+    if (!drag) {
+      return;
+    }
+
+    cleanupPointerListeners();
+
+    if (elementRef.current && drag) {
+      try {
+        if (elementRef.current.hasPointerCapture(drag.pointerId)) {
+          elementRef.current.releasePointerCapture(drag.pointerId);
+        }
+      } catch (error) {
+        // ignore release errors
+      }
+    }
+
+    if (drag.started) {
+      transformChangeRef.current?.(null);
+      dragEndRef.current?.(drag.lastDelta, { altKey: drag.altKey });
+    } else if (!drag.started && !isResizing) {
+      selectRef.current?.(id);
+    }
+
+    setIsDragStarted(false);
+    dragStateRef.current = null;
+  };
+
+  const handlePointerUpInternal = (event: PointerEvent) => {
+    const drag = dragStateRef.current;
+    if (!drag || event.pointerId !== drag.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    endDragSession(drag);
+  };
+
+  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    handlePointerUpInternal(event.nativeEvent);
+  };
+
+  const handlePointerCancel = (event: React.PointerEvent<HTMLDivElement>) => {
+    handlePointerUpInternal(event.nativeEvent);
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
     if (isEditing || isResizing) {
       return;
     }
-    setIsDragStarted(false);
-    if (listeners?.onMouseDown) {
-      listeners.onMouseDown(e);
-    }
-  };
 
-  const handleMouseUp = (e: React.MouseEvent) => {
-    if (!isDragStarted && !isResizing) {
-      onSelect(id);
-    }
-    setIsDragStarted(false);
-  };
+    event.stopPropagation();
+    event.preventDefault();
 
-  const handleDragStart = () => {
-    setIsDragStarted(true);
+    const altKey = event.altKey || Boolean(isAltPressed);
+
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      altKey,
+      started: false,
+      lastDelta: { x: 0, y: 0 },
+      scaleAtStart: scale,
+    };
+
+    setIsDragStarted(false);
+
+    if (elementRef.current) {
+      try {
+        elementRef.current.setPointerCapture(event.pointerId);
+      } catch (error) {
+        // ignore
+      }
+    }
+
+    const moveHandler = (e: PointerEvent) => handlePointerMoveInternal(e);
+    const upHandler = (e: PointerEvent) => handlePointerUpInternal(e);
+    const cancelHandler = (e: PointerEvent) => handlePointerUpInternal(e);
+
+    pointerHandlersRef.current = { move: moveHandler, up: upHandler, cancel: cancelHandler };
+
+    window.addEventListener('pointermove', moveHandler, { passive: false });
+    window.addEventListener('pointerup', upHandler, { passive: false });
+    window.addEventListener('pointercancel', cancelHandler, { passive: false });
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {
@@ -373,19 +535,34 @@ const DraggableElement: React.FC<DraggableElementProps> = ({
     }
   }, [isResizing, onResizeStateChange]);
 
+  useEffect(() => {
+    return () => {
+      if (isDragStarted) {
+        document.dispatchEvent(new CustomEvent('element-drag-finished', { detail: { id } }));
+      }
+    };
+  }, [id, isDragStarted]);
+
+  const elementTransform = liveTransform ?? null;
+
   return (
     <>
       <div
-        ref={setNodeRef}
+        ref={elementRef}
         id={id}
-        data-type={element.type} // Keep data-type attribute if needed elsewhere
+        data-type={element.type}
+        data-anchor-id={`anchor-${id}-body`}
         style={{
           position: 'absolute',
           left: `${left}px`,
           top: `${top}px`,
-          opacity: isDragging ? (isDuplicating ? 0.3 : 0.5) : 1,
-          // When duplicating, don't apply the transform to the original element
-          transform: isDragging && isDuplicating ? 'none' : (transform ? `translate3d(${transform.x / scale}px, ${transform.y / scale}px, 0)` : undefined),
+          opacity: isDragStarted && isDuplicating ? 0.3 : 1,
+          transform:
+            isDragStarted && isDuplicating
+              ? 'none'
+              : elementTransform
+              ? `translate3d(${elementTransform.x}px, ${elementTransform.y}px, 0)`
+              : undefined,
           width: `${elementWidth}px`,
           height: `${elementHeight}px`,
           display: 'flex',
@@ -403,11 +580,10 @@ const DraggableElement: React.FC<DraggableElementProps> = ({
           zIndex: isSelected ? 20 : 10,
         }}
         className={`map-element ${isSelected ? 'selected' : ''}`}
-        onMouseDown={handleMouseDown}
-        onMouseUp={handleMouseUp}
-        onDragStart={handleDragStart}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
         onDoubleClick={handleDoubleClick}
-        {...(isEditing || isResizing ? {} : { ...attributes, ...listeners })}
       >
         {isEditing ? (
           <input
@@ -441,9 +617,12 @@ const DraggableElement: React.FC<DraggableElementProps> = ({
                 style={{ fontSize: '16px', pointerEvents: 'none' }}
               >
                 <ReactMarkdown components={{
-                  p: ({ children }) => <span style={{ pointerEvents: 'none' }}>{children}</span>,
-                  strong: ({ children }) => <strong style={{ pointerEvents: 'none' }}>{children}</strong>,
-                  em: ({ children }) => <em style={{ pointerEvents: 'none' }}>{children}</em>
+                  p: ({ children }) => <span style={{ pointerEvents: 'none', color: '#1f2937' }}>{children}</span>,
+                  strong: ({ children }) => <strong style={{ pointerEvents: 'none', color: '#1f2937' }}>{children}</strong>,
+                  em: ({ children }) => <em style={{ pointerEvents: 'none', color: '#1f2937' }}>{children}</em>,
+                  a: ({ href, children }) => (
+                    <span style={{ pointerEvents: 'none', color: '#1f2937', textDecoration: 'underline' }}>{children}</span>
+                  )
                 }}>
                   {text}
                 </ReactMarkdown>
@@ -468,16 +647,23 @@ const DraggableElement: React.FC<DraggableElementProps> = ({
             )}
           </>
         )}
+        {element.type !== 'line' && (
+          <span
+            id={`anchor-${id}-body`}
+            data-anchor-id={`anchor-${id}-body`}
+            style={{ position: 'absolute', left: 0, top: 0, width: 0, height: 0, pointerEvents: 'none' }}
+          />
+        )}
       </div>
       
       {/* Add a ghost element when duplicating */}
-      {isDragging && isDuplicating && transform && (
+      {isDragStarted && isDuplicating && elementTransform && (
         <div
           style={{
             position: 'absolute',
             left: `${left}px`,
             top: `${top}px`,
-            transform: `translate3d(${transform.x / scale}px, ${transform.y / scale}px, 0)`,
+            transform: `translate3d(${elementTransform.x}px, ${elementTransform.y}px, 0)`,
             width: `${elementWidth}px`,
             height: `${elementHeight}px`,
             display: 'flex',
@@ -491,7 +677,7 @@ const DraggableElement: React.FC<DraggableElementProps> = ({
             boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
             zIndex: 30,
           }}
-          className="element-duplicate-ghost"
+          className="element-drag-preview"
         >
           <div style={{ opacity: 0.7 }}>
             {element.type === 'book' && element.bookData ? (
@@ -528,7 +714,9 @@ const DraggableElement: React.FC<DraggableElementProps> = ({
             height: `${elementHeight}px`,
             pointerEvents: 'none',
             zIndex: 30,
-            transform: transform ? `translate3d(${transform.x / scale}px, ${transform.y / scale}px, 0)` : undefined,
+            transform: elementTransform
+              ? `translate3d(${elementTransform.x}px, ${elementTransform.y}px, 0)`
+              : undefined,
           }}
         >
           {/* Corner resize handles */}

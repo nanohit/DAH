@@ -1,0 +1,103 @@
+Tools
+
+In tldraw, a tool is what we call any top-level state in our state chart. For example, the select tool, the draw tool, and the arrow tool are all top-level states that the user can be in.
+A diagram showing the state chart of tldraw. The top row of states (apart from the Root state) are annotated as tools.
+The first level of states in the start chart are known as tools.
+
+For more detailed information about the state chart, and how it works, go to the Editor page. Or read below for more information about tools, and how to make your own.
+Types of tool
+
+The tldraw editor comes with some in-built core tools: the select tool, the zoom tool, and the text tool. These are always added to the state chart.
+
+There are also some default tools available, like the draw tool, the hand tool, the arrow tool, and more. The <Tldraw> component automatically adds these tools to the state chart.
+
+You can also create your own custom tools. You can add them to the state chart by passing an array of them to the Tldraw component's tools prop.
+
+Note: You might also want to add a tool to the user interface in various ways, such as the toolbar. See the User Interface section for more on changing the menus.
+Transitioning
+
+You can change the current active tool using editor.setCurrentTool.
+
+editor.setCurrentTool('select')
+
+You can "deep transition" by using a path of active tool ids.
+
+editor.setCurrentTool('select.eraser.pointing')
+
+Inside a tool
+
+Every tool has an id. This is used to identify it in the state chart.
+
+class MyTool extends StateNode {
+	static override id = 'my-tool'
+}
+
+Tools can contain children. For example, the hand tool has three children, Idle, Pointing and Dragging. If a state has children, it must also have an initial state, so that it knows which state to start in.
+
+class MyIdleState extends StateNode {
+	static override id = 'my-idle-state'
+}
+
+class MyPointingState extends StateNode {
+	static override id = 'my-pointing-state'
+}
+
+class MyTool extends StateNode {
+	static override id = 'my-tool'
+	static override initial = 'my-idle-state'
+	static override children() {
+		return [MyIdleState, MyPointingState]
+	}
+}
+
+Handling events
+
+When the editor receives an event via its Editor.dispatch method, the event is first processed in order to update its inputs, then passed to the editor's state chart.
+
+Beginning at the root, each node will first handle the event and then pass the event to its current active child state. This continues until either: the event is handled on a state without any children; or the event is handled in a way that produces a transition.
+Parents handle events before children
+
+class MyIdleState extends StateNode {
+	static override id = 'my-idle-state'
+
+	onPointerDown(info: TLPointerEventInfo) {
+		console.log('world')
+	}
+}
+
+class MyTool extends StateNode {
+	static override id = 'my-tool'
+	static override initial = 'my-idle-state'
+	static override children() {
+		return [MyIdleState]
+	}
+
+	onPointerDown(info: TLPointerEventInfo) {
+		console.log('hello')
+	}
+}
+
+Using the example above, if a pointer_down event is passed to the editor while the MyTool state is active, MyTool's onPointerDown method will be called first, then MyIdleState's onPointerDown method will be called second.
+Transitions stop the process
+
+class MyIdleState extends StateNode {
+	static override id = 'my-idle-state'
+
+	onPointerDown(info: TLPointerEventInfo) {
+		console.log("this won't run")
+	}
+}
+
+class MyTool extends StateNode {
+	static override id = 'my-tool'
+	static override initial = 'my-idle-state'
+	static override children() {
+		return [MyIdleState]
+	}
+
+	onPointerDown(info: TLPointerEventInfo) {
+		editor.setCurrentTool('select')
+	}
+}
+
+If MyTool's onPointerDown handler produced a transition (changing anything about which states are active) then the chain would stop and the event would not be handled on MyIdleState.

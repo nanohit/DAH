@@ -16,6 +16,8 @@ import api from '@/services/api';
 import socketService from '@/services/socketService';
 import useSocketConnection from '@/hooks/useSocketConnection';
 import { bookmarkMap, deleteMap } from '@/utils/mapUtils';
+import type { SavedMap, MapSummary } from '@/utils/mapUtils';
+import CommentInput from './CommentInput';
 
 export interface Post {
   _id: string;
@@ -29,7 +31,9 @@ export interface Post {
   };
   createdAt: string;
   updatedAt: string;
-  comments: Comment[];
+  comments?: Comment[];
+  commentsCount?: number;
+  bookmarksCount?: number;
   likes?: string[];
   dislikes?: string[];
   bookmarks?: Array<{
@@ -38,7 +42,7 @@ export interface Post {
   }>;
   isOptimistic?: boolean;
   isMap?: boolean;
-  mapData?: any;
+  mapData?: SavedMap | MapSummary | (SavedMap & MapSummary);
 }
 
 // Type for creating optimistic posts
@@ -55,6 +59,7 @@ interface PostListProps {
   hasMorePosts?: boolean;
   onLoadMore?: () => void;
   isLoading?: boolean;
+  autoLoadOnScroll?: boolean;
 }
 
 export default function PostList({ 
@@ -64,9 +69,10 @@ export default function PostList({
   showPostCreation = true,
   hasMorePosts,
   onLoadMore,
-  isLoading = false
+  isLoading = false,
+  autoLoadOnScroll = false
 }: PostListProps) {
-  useParticles(); // Initialize particles animation
+  useParticles('forum-particles'); // Initialize particles animation
   const pathname = usePathname();
   const isMainPage = pathname === '/';
   const router = useRouter();
@@ -76,6 +82,11 @@ export default function PostList({
   const [hasMore, setHasMore] = useState(true);
   const [skip, setSkip] = useState(0);
   const LIMIT = 10;
+  const hasMoreToRender = hasMorePosts ?? hasMore;
+  const shouldShowManualLoadMore = !autoLoadOnScroll && (
+    (initialPosts && hasMorePosts) || (!initialPosts && hasMore)
+  );
+  const shouldRenderAutoSentinel = autoLoadOnScroll && !!onLoadMore && hasMoreToRender;
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editHeadline, setEditHeadline] = useState('');
   const [editText, setEditText] = useState('');
@@ -123,12 +134,32 @@ export default function PostList({
       ...prev,
       [mapId]: comments
     }));
+
+    setPosts(prev => prev.map(post => {
+      if (post._id === mapId && post.isMap && post.mapData) {
+        return {
+          ...post,
+          mapData: {
+            ...post.mapData,
+            commentsCount: count
+          },
+          commentsCount: count
+        };
+      }
+      return post;
+    }));
   };
 
   // Get map comment count
   const getMapCommentCount = (post: Post): number => {
     if (post._id in mapCommentCounts) {
       return mapCommentCounts[post._id] || 0;
+    }
+    if (post.mapData && typeof post.mapData.commentsCount === 'number') {
+      return post.mapData.commentsCount;
+    }
+    if (typeof post.commentsCount === 'number') {
+      return post.commentsCount;
     }
     return post.comments?.length || 0;
   };
@@ -161,14 +192,20 @@ export default function PostList({
       const limit = LIMIT;
       
       const response = await api.get(`${endpoint}?limit=${limit}&skip=${skipCount}`);
+      const normalizedPosts: Post[] = (response.data.posts || []).map((post: Post) => ({
+        ...post,
+        comments: post.comments ?? [],
+        commentsCount: post.commentsCount ?? (post.comments ? post.comments.length : 0),
+        isMap: false,
+      }));
       
       if (skipCount === 0) {
-        setPosts(response.data.posts);
+        setPosts(normalizedPosts);
       } else {
         // For pagination, append new posts to existing ones without replacing
         setPosts(prevPosts => [
           ...prevPosts.filter(post => !post.isOptimistic), // Keep real posts
-          ...response.data.posts
+          ...normalizedPosts
         ]);
       }
       setHasMore(response.data.hasMore);
@@ -196,6 +233,34 @@ export default function PostList({
       fetchPosts(skip);
     }
   };
+
+  useEffect(() => {
+    if (!autoLoadOnScroll || !onLoadMore) return;
+    const sentinel = loadMoreRef.current;
+    if (!sentinel) return;
+
+    const hasMoreAvailable = hasMorePosts !== false;
+    if (!hasMoreAvailable) return;
+
+    const observer = new IntersectionObserver(
+      entries => {
+        const [entry] = entries;
+        if (entry?.isIntersecting) {
+          loadMorePosts();
+        }
+      },
+      {
+        rootMargin: '0px 0px 320px 0px',
+        threshold: 0,
+      }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [autoLoadOnScroll, loadMorePosts, hasMorePosts, onLoadMore]);
 
   const handleEdit = (post: Post) => {
     setEditingPostId(post._id);
@@ -410,6 +475,7 @@ export default function PostList({
           badge: user?.badge || ''  // Explicitly include the badge
         },
         comments: [],
+        commentsCount: 0,
         likes: [],
         dislikes: [],
         bookmarks: [], // Add empty bookmarks array to prevent undefined errors
@@ -630,9 +696,29 @@ export default function PostList({
     return post.bookmarks.some(bookmark => bookmark.user === user._id);
   };
 
-  const isMapBookmarked = (mapData: any) => {
-    if (!user || !mapData || !mapData.bookmarks) return false;
-    return mapData.bookmarks.some((bookmark: any) => bookmark.user === user._id);
+  const isMapBookmarked = (mapData: SavedMap | MapSummary | (SavedMap & MapSummary) | undefined) => {
+    if (!user || !mapData) return false;
+
+    if ('isBookmarked' in mapData && typeof mapData.isBookmarked === 'boolean') {
+      return mapData.isBookmarked;
+    }
+
+    const bookmarks = (mapData as SavedMap).bookmarks;
+    if (!bookmarks) return false;
+
+    return bookmarks.some((bookmark: any) => {
+      if (!bookmark) return false;
+      if (typeof bookmark === 'string') {
+        return bookmark === user._id;
+      }
+      if (typeof bookmark.user === 'string') {
+        return bookmark.user === user._id;
+      }
+      if (bookmark.user && typeof bookmark.user === 'object') {
+        return bookmark.user._id === user._id;
+      }
+      return false;
+    });
   };
 
   const handleImageClick = (imageUrl: string) => {
@@ -986,6 +1072,11 @@ export default function PostList({
   }, [posts]);
 
   const handleOpenMap = (mapId: string, mapData: any) => {
+    const isTl = mapData && (mapData.isTl || mapData.type === 'tl');
+    if (isTl) {
+      router.push(`/map-canvas?id=${mapId}`);
+      return;
+    }
     if (user && mapData.user._id === user._id) {
       router.push(`/maps?id=${mapId}`);
     } else {
@@ -999,18 +1090,26 @@ export default function PostList({
       if (success) {
         // Update local state optimistically
         setPosts(prevPosts => prevPosts.map(post => {
-          if (post._id === mapId && post.isMap) {
+          if (post._id === mapId && post.isMap && post.mapData) {
+            const currentlyBookmarked = isMapBookmarked(post.mapData);
+            const currentCount = post.mapData.bookmarksCount ?? post.bookmarks?.length ?? 0;
+            const nextCount = Math.max(0, currentCount + (currentlyBookmarked ? -1 : 1));
             return {
               ...post,
               mapData: {
                 ...post.mapData,
-                bookmarks: post.mapData.bookmarks || []
-              }
+                isBookmarked: !currentlyBookmarked,
+                bookmarksCount: nextCount
+              },
+              commentsCount: post.commentsCount,
+              bookmarks: post.bookmarks
             };
           }
           return post;
         }));
-        onPostUpdated();
+        if (!isMainPage) {
+          onPostUpdated();
+        }
       }
     } catch (error) {
       console.error('Error bookmarking map:', error);
@@ -1039,7 +1138,7 @@ export default function PostList({
         <div className="bg-black text-center py-8 px-4 rounded-lg relative overflow-hidden">
           {/* Particle animation container */}
           <div className="absolute inset-0">
-            <div id="particles-js" className="absolute inset-0"></div>
+            <div id="forum-particles" className="absolute inset-0"></div>
             <div className="absolute inset-0 bg-gradient-to-b from-black/50 to-black/20"></div>
           </div>
           
@@ -1079,52 +1178,15 @@ export default function PostList({
               className="w-full py-2 px-2 border rounded-lg focus:outline-none text-[#000000] mb-3 text-sm"
               placeholder="Headline"
             />
-            <div className="relative">
-              <textarea
-                ref={textInputRef}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                className="w-full py-1 px-2 border rounded-lg focus:outline-none text-[#000000] min-h-[60px] mb-2 text-sm"
-                placeholder="Post text (Tab for formatting)"
-              />
-              <FormatToolbar
-                inputRef={textInputRef}
-                isVisible={showFormatToolbar}
-                onClose={() => setShowFormatToolbar(false)}
-                onFormat={handleFormat}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <button
-                  onClick={() => {
-                    const input = document.createElement('input');
-                    input.type = 'file';
-                    input.accept = 'image/*';
-                    input.onchange = (e) => {
-                      const file = (e.target as HTMLInputElement).files?.[0];
-                      if (file) {
-                        setSelectedImage(file);
-                        handleImageUpload(file);
-                      }
-                    };
-                    input.click();
-                  }}
-                  className="border border-gray-400/50 text-black hover:bg-black hover:text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
-                >
-                  Add Image
-                </button>
-                {uploadingImage && <span className="text-gray-600">Uploading...</span>}
-                {selectedImage && !uploadingImage && <span className="text-gray-600">{selectedImage.name}</span>}
-              </div>
-              <button
-                onClick={handleSubmit}
-                className="border border-gray-400/50 bg-black text-white hover:bg-gray-800 px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
-              >
-                Post!
-              </button>
-            </div>
+            <CommentInput
+              value={text}
+              onChange={setText}
+              onSubmit={handleSubmit}
+              placeholder="Post text (Tab for formatting)"
+              buttonText="Post!"
+              showFormatToolbar={showFormatToolbar}
+              setShowFormatToolbar={setShowFormatToolbar}
+            />
             {imageUrl && (
               <div className="mt-3 relative w-[300px] h-[200px]">
                 <Image 
@@ -1429,7 +1491,7 @@ export default function PostList({
                       </div>
                     )}
                   </div>
-                  <CommentSection postId={post._id} initialComments={post.comments} />
+                  <CommentSection postId={post._id} initialComments={post.comments ?? []} />
                   </>
                 )}
               </>
@@ -1438,10 +1500,11 @@ export default function PostList({
         </div>
       ))}
 
-      {/* Show the load more button only if:
-          1. For user profile: hasMorePosts is true
-          2. For main/bookmarks page: hasMore is true and no initialPosts provided */}
-      {((hasMorePosts && initialPosts) || (!initialPosts && hasMore)) && (
+      {shouldRenderAutoSentinel && (
+        <div ref={loadMoreRef} className="h-1" />
+      )}
+
+      {shouldShowManualLoadMore && (
         <div ref={loadMoreRef} className="flex justify-center mt-4">
           <button
             onClick={loadMorePosts}

@@ -4,6 +4,7 @@ const Comment = require('../models/Comment');
 const Post = require('../models/Post');
 const Book = require('../models/Book');
 const Map = require('../models/Map');
+const TLMap = require('../models/TLMap');
 const { protect } = require('../middleware/auth');
 
 // Recursive population function for nested replies
@@ -54,7 +55,10 @@ router.get('/map/:mapId', async (req, res) => {
     
     // Get only top-level comments (no parent)
     const comments = await Comment.find({ 
-      map: mapId,
+      $or: [
+        { map: mapId },
+        { tlMap: mapId }
+      ],
       parentComment: null 
     })
     .populate('user', 'username badge')
@@ -87,23 +91,31 @@ router.post('/map/:mapId', protect, async (req, res) => {
     const { content, parentCommentId } = req.body;
     const mapId = req.params.mapId;
 
-    // Check if map exists
-    const map = await Map.findById(mapId);
-    if (!map) {
+    // Check if map exists (support both classic and canvas maps)
+    let mapDoc = await Map.findById(mapId);
+    let mapType = 'map';
+
+    if (!mapDoc) {
+      mapDoc = await TLMap.findById(mapId);
+      mapType = mapDoc ? 'tlMap' : 'none';
+    }
+
+    if (!mapDoc) {
       console.log(`Map not found with ID: ${mapId}`);
       return res.status(404).json({ message: 'Map not found' });
     }
     
     console.log('Map found:', {
-      id: map._id,
-      name: map.name,
-      user: map.user
+      id: mapDoc._id,
+      name: mapDoc.name,
+      user: mapDoc.user,
+      type: mapType
     });
 
     // Create comment data
     const commentData = {
       user: req.user._id, // Using _id instead of id to ensure consistency
-      map: mapId,
+      [mapType]: mapId,
       content
     };
     
@@ -138,8 +150,16 @@ router.post('/map/:mapId', protect, async (req, res) => {
     // Add comment to map if it's a top-level comment
     if (!parentCommentId) {
       console.log(`Adding comment to map's comments array`);
-      map.comments.push(comment._id);
-      await map.save();
+      if (mapType === 'map') {
+        mapDoc.comments.push(comment._id);
+      } else {
+        // Ensure the comments array exists for TL maps
+        if (!Array.isArray(mapDoc.comments)) {
+          mapDoc.comments = [];
+        }
+        mapDoc.comments.push(comment._id);
+      }
+      await mapDoc.save();
       console.log(`Updated map with new comment`);
     }
 

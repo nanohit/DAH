@@ -2,8 +2,21 @@ const express = require('express');
 const router = express.Router();
 const flibustaRouter = express.Router({ mergeParams: true }); // Create a Flibusta router that can access parent params
 const Book = require('../models/Book');
-const { protect, admin } = require('../middleware/auth');
-const { requestDownloadLinks, getDownloadVariants, selectVariant, searchBooks, getVariantDetails, getDownloadLink } = require('../controllers/flibustaController');
+const { protect, admin, optionalAuth } = require('../middleware/auth');
+const {
+  requestDownloadLinks,
+  getDownloadVariants,
+  selectVariant,
+  searchBooks,
+  getVariantDetails,
+  getDownloadLink,
+} = require('../controllers/flibustaController');
+const { searchZLibrary, getZLibraryDownloadLink, warmupZLibrary } = require('../controllers/zlibraryController');
+const { searchLiber3 } = require('../controllers/liber3Controller');
+const { downloadLiber3 } = require('../controllers/liber3DownloadController');
+const { searchMotw } = require('../controllers/motwController');
+const { getBookSvSimilar, registerBookDownload, getPersonalBookFeed } = require('../controllers/booksvController');
+const { translateTitle } = require('../controllers/wikidataController');
 
 // At the top after imports
 console.log('\n=== BOOKS ROUTER INITIALIZATION ===');
@@ -104,9 +117,27 @@ router.get('/bookmarked', protect, async (req, res) => {
 console.log('\nRegistering confirm-download-links route with pattern: /:id/confirm-download-links');
 
 // Flibusta search routes
+// Feature flag for Z-Library; disabled by default to avoid headless browsers/Redis.
+const zlibraryEnabled =
+  process.env.ZLIBRARY_ENABLED === 'true' || process.env.ENABLE_ZLIBRARY === 'true';
+
 router.get('/flibusta/search', searchBooks);
 router.get('/flibusta/variant/:id', getVariantDetails);
 router.get('/flibusta/download/:id/:format', getDownloadLink);
+router.get('/liber3/search', searchLiber3);
+router.get('/liber3/download/:cid', downloadLiber3);
+router.get('/motw/search', searchMotw);
+if (zlibraryEnabled) {
+  router.get('/zlibrary/search', searchZLibrary);
+  router.get('/zlibrary/download/:bookId/:token', getZLibraryDownloadLink);
+  router.get('/zlibrary/warmup', warmupZLibrary);
+} else {
+  console.log('Z-Library routes are disabled (set ZLIBRARY_ENABLED=true to enable).');
+}
+router.get('/booksv/similar', getBookSvSimilar);
+router.post('/booksv/downloads', optionalAuth, registerBookDownload);
+router.get('/booksv/personal-feed', optionalAuth, getPersonalBookFeed);
+router.get('/wikidata/translate', translateTitle);
 
 // Book-specific Flibusta routes
 flibustaRouter.post('/request-download-links', protect, requestDownloadLinks);

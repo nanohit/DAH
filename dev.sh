@@ -6,9 +6,9 @@ ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 echo "📂 Project root directory: $ROOT_DIR"
 
 echo "🔍 Checking for existing processes on ports 5001, 3000, and 8787..."
-pid_backend=$(lsof -ti:5001)
-pid_frontend=$(lsof -ti:3000)
-pid_cloudflare=$(lsof -ti:8787)
+pid_backend=$(lsof -ti:5001 2>/dev/null || echo "")
+pid_frontend=$(lsof -ti:3000 2>/dev/null || echo "")
+pid_cloudflare=$(lsof -ti:8787 2>/dev/null || echo "")
 
 if [ ! -z "$pid_backend" ]; then
     echo "🛑 Found process using port 5001 (PID: $pid_backend). Stopping it..."

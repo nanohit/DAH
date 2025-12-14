@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Map = require('../models/Map');
 const { protect } = require('../middleware/auth');
 
@@ -248,28 +249,158 @@ router.post('/', protect, async (req, res) => {
 // @access  Private
 router.get('/', protect, async (req, res) => {
   try {
-    console.log('GET /api/maps - Fetching ALL maps with simplified approach');
-    const { include } = req.query;
-    const includeComments = include && include.includes('comments');
-    const includeBookmarks = include && include.includes('bookmarks');
-    
-    const currentUserId = req.user._id;
+    console.log('GET /api/maps - Fetching maps with configurable payload');
+
+    const includeRaw = typeof req.query.include === 'string' ? req.query.include : '';
+    const includeTokens = includeRaw
+      .split(',')
+      .map(token => token.trim())
+      .filter(Boolean);
+
+    const includeComments = includeTokens.includes('comments');
+    const includeBookmarks = includeTokens.includes('bookmarks');
+    const fields = typeof req.query.fields === 'string' ? req.query.fields.trim().toLowerCase() : undefined;
+
+    const limitParam = req.query.limit;
+    const skipParam = req.query.skip;
+    const parsedLimit = Number.isFinite(Number(limitParam)) ? parseInt(limitParam, 10) : undefined;
+    const parsedSkip = Number.isFinite(Number(skipParam)) ? parseInt(skipParam, 10) : 0;
+
+    const currentUserId = req.user._id ? req.user._id.toString() : null;
+    const currentUserObjectId = currentUserId ? new mongoose.Types.ObjectId(currentUserId) : null;
     console.log(`Current user ID: ${currentUserId}`);
-    
-    // Base query - filter for public maps OR maps owned by current user
-    let query = Map.find({
+
+    const baseMatch = {
       $or: [
-        { isPrivate: { $ne: true } },  // Public maps
-        { user: currentUserId }        // User's own maps (including private ones)
+        { isPrivate: { $ne: true } },
+        ...(currentUserObjectId ? [{ user: currentUserObjectId }] : [])
       ]
-    })
+    };
+
+    if (fields === 'summary') {
+      const limitForSummary = parsedLimit && parsedLimit > 0 ? parsedLimit : 10;
+      const skipForSummary = parsedSkip && parsedSkip > 0 ? parsedSkip : 0;
+
+      const aggregatePipeline = [
+        { $match: baseMatch },
+        { $sort: { createdAt: -1 } },
+        { $skip: skipForSummary }
+      ];
+
+      if (limitForSummary) {
+        aggregatePipeline.push({ $limit: limitForSummary });
+      }
+
+      aggregatePipeline.push(
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'user',
+            foreignField: '_id',
+            as: 'userInfo'
+          }
+        },
+        {
+          $addFields: {
+            ownerId: '$user',
+            userDoc: { $arrayElemAt: ['$userInfo', 0] },
+            elementCount: { $size: { $ifNull: ['$elements', []] } },
+            connectionCount: { $size: { $ifNull: ['$connections', []] } },
+            commentsCount: { $size: { $ifNull: ['$comments', []] } },
+            bookmarksCount: { $size: { $ifNull: ['$bookmarks', []] } },
+            isBookmarked: {
+              $cond: [
+                { $gt: [{ $size: { $ifNull: ['$bookmarks', []] } }, 0] },
+                {
+                  $gt: [
+                    {
+                      $size: {
+                        $filter: {
+                          input: { $ifNull: ['$bookmarks', []] },
+                          as: 'bookmark',
+                          cond: currentUserObjectId ? {
+                            $and: [
+                              { $ifNull: ['$$bookmark.user', false] },
+                              { $eq: ['$$bookmark.user', currentUserObjectId] }
+                            ]
+                          } : false
+                        }
+                      }
+                    },
+                    0
+                  ]
+                },
+                false
+              ]
+            }
+          }
+        },
+        {
+          $project: {
+            _id: 1,
+            name: { $ifNull: ['$name', 'Untitled Map'] },
+            isPrivate: { $ifNull: ['$isPrivate', false] },
+            lastSaved: 1,
+            createdAt: 1,
+            updatedAt: 1,
+            elementCount: 1,
+            connectionCount: 1,
+            commentsCount: 1,
+            bookmarksCount: 1,
+            isBookmarked: 1,
+            user: {
+              _id: {
+                $cond: [
+                  { $ifNull: ['$userDoc._id', false] },
+                  '$userDoc._id',
+                  '$ownerId'
+                ]
+              },
+              username: {
+                $cond: [
+                  { $ifNull: ['$userDoc.username', false] },
+                  '$userDoc.username',
+                  'Unknown User'
+                ]
+              },
+              badge: { $ifNull: ['$userDoc.badge', ''] }
+            },
+            isOwner: currentUserObjectId ? { $eq: ['$ownerId', currentUserObjectId] } : false
+          }
+        }
+      );
+
+      const [summaries, totalCount] = await Promise.all([
+        Map.aggregate(aggregatePipeline),
+        Map.countDocuments(baseMatch)
+      ]);
+
+      console.log(`Returning ${summaries.length} map summaries (skip=${skipForSummary}, limit=${limitForSummary})`);
+
+      return res.json({
+        maps: summaries,
+        total: totalCount,
+        hasMore: totalCount > skipForSummary + limitForSummary
+      });
+    }
+
+    // Base query - filter for public maps OR maps owned by current user
+    let query = Map.find(baseMatch)
       .select('name elements connections canvasPosition scale lastSaved createdAt updatedAt user comments bookmarks isPrivate')
       .populate({
         path: 'user',
         select: 'username badge',
         model: 'User'
       });
-    
+
+    if (parsedSkip && parsedSkip > 0) {
+      query = query.skip(parsedSkip);
+    }
+
+    if (parsedLimit && parsedLimit > 0) {
+      query = query.limit(parsedLimit);
+    }
+
     // Conditionally populate comments if requested
     if (includeComments) {
       console.log('Including comments in the response');
@@ -282,12 +413,12 @@ router.get('/', protect, async (req, res) => {
         }
       });
     }
-    
+
     // Sort and execute the query
     const allMaps = await query.sort({ updatedAt: -1 });
-    
+
     console.log(`Found ${allMaps.length} total maps before processing`);
-    
+
     // Process maps for the response
     const processedMaps = allMaps.map(map => {
       // Handle user data
@@ -307,11 +438,11 @@ router.get('/', protect, async (req, res) => {
           badge: ''
         };
       }
-      
+
       // Calculate counts
       const elementCount = map.elements ? map.elements.length : 0;
       const connectionCount = map.connections ? map.connections.length : 0;
-      
+
       // Create a clean object to return
       const response = {
         _id: map._id,
@@ -329,19 +460,19 @@ router.get('/', protect, async (req, res) => {
         isPrivate: map.isPrivate || false,
         isOwner: map.user && currentUserId && map.user._id.toString() === currentUserId.toString()
       };
-      
+
       // Include comments if they were populated
       if (includeComments && map.comments) {
         response.comments = map.comments;
       }
-      
+
       // Include bookmarks if requested
       if (includeBookmarks && map.bookmarks) {
         response.bookmarks = map.bookmarks;
-        
+
         // Check if the current user has bookmarked this map
         if (currentUserId) {
-          const isBookmarked = map.bookmarks.some(bookmark => 
+          const isBookmarked = map.bookmarks.some(bookmark =>
             bookmark.user && bookmark.user.toString() === currentUserId.toString()
           );
           response.isBookmarked = isBookmarked;
@@ -349,10 +480,10 @@ router.get('/', protect, async (req, res) => {
           response.isBookmarked = false;
         }
       }
-      
+
       return response;
     });
-    
+
     // Log the first processed map for debugging
     if (processedMaps.length > 0) {
       console.log('First processed map example:', {
@@ -367,7 +498,7 @@ router.get('/', protect, async (req, res) => {
     } else {
       console.log('No maps found in the database');
     }
-    
+
     console.log(`Returning ${processedMaps.length} maps to client`);
     res.json(processedMaps);
   } catch (error) {
@@ -385,18 +516,121 @@ router.get('/', protect, async (req, res) => {
 router.get('/public', async (req, res) => {
   try {
     console.log('GET /api/maps/public - Fetching public maps');
-    const { include } = req.query;
-    const includeComments = include && include.includes('comments');
-    
+
+    const includeRaw = typeof req.query.include === 'string' ? req.query.include : '';
+    const includeTokens = includeRaw
+      .split(',')
+      .map(token => token.trim())
+      .filter(Boolean);
+
+    const includeComments = includeTokens.includes('comments');
+    const fields = typeof req.query.fields === 'string' ? req.query.fields.trim().toLowerCase() : undefined;
+
+    const limitParam = req.query.limit;
+    const skipParam = req.query.skip;
+    const parsedLimit = Number.isFinite(Number(limitParam)) ? parseInt(limitParam, 10) : undefined;
+    const parsedSkip = Number.isFinite(Number(skipParam)) ? parseInt(skipParam, 10) : 0;
+
+    const baseMatch = { isPrivate: { $ne: true } };
+
+    if (fields === 'summary') {
+      const limitForSummary = parsedLimit && parsedLimit > 0 ? parsedLimit : 10;
+      const skipForSummary = parsedSkip && parsedSkip > 0 ? parsedSkip : 0;
+
+      const aggregatePipeline = [
+        { $match: baseMatch },
+        { $sort: { createdAt: -1 } },
+        { $skip: skipForSummary }
+      ];
+
+      if (limitForSummary) {
+        aggregatePipeline.push({ $limit: limitForSummary });
+      }
+
+      aggregatePipeline.push(
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'user',
+            foreignField: '_id',
+            as: 'userInfo'
+          }
+        },
+        {
+          $addFields: {
+            userDoc: { $arrayElemAt: ['$userInfo', 0] },
+            elementCount: { $size: { $ifNull: ['$elements', []] } },
+            connectionCount: { $size: { $ifNull: ['$connections', []] } },
+            commentsCount: { $size: { $ifNull: ['$comments', []] } },
+            bookmarksCount: { $size: { $ifNull: ['$bookmarks', []] } }
+          }
+        },
+        {
+          $project: {
+            _id: 1,
+            name: { $ifNull: ['$name', 'Untitled Map'] },
+            isPrivate: { $ifNull: ['$isPrivate', false] },
+            lastSaved: 1,
+            createdAt: 1,
+            updatedAt: 1,
+            elementCount: 1,
+            connectionCount: 1,
+            commentsCount: 1,
+            bookmarksCount: 1,
+            user: {
+              _id: {
+                $cond: [
+                  { $ifNull: ['$userDoc._id', false] },
+                  '$userDoc._id',
+                  '$user'
+                ]
+              },
+              username: {
+                $cond: [
+                  { $ifNull: ['$userDoc.username', false] },
+                  '$userDoc.username',
+                  'Unknown User'
+                ]
+              },
+              badge: { $ifNull: ['$userDoc.badge', ''] }
+            },
+            isBookmarked: false,
+            isOwner: false
+          }
+        }
+      );
+
+      const [summaries, totalCount] = await Promise.all([
+        Map.aggregate(aggregatePipeline),
+        Map.countDocuments(baseMatch)
+      ]);
+
+      console.log(`Returning ${summaries.length} public map summaries (skip=${skipForSummary}, limit=${limitForSummary})`);
+
+      return res.json({
+        maps: summaries,
+        total: totalCount,
+        hasMore: totalCount > skipForSummary + limitForSummary
+      });
+    }
+
     // Base query - only fetch maps that are not private
-    let query = Map.find({ isPrivate: { $ne: true } })
+    let query = Map.find(baseMatch)
       .select('name elements connections canvasPosition scale lastSaved createdAt updatedAt user comments')
       .populate({
         path: 'user',
         select: 'username badge',
         model: 'User'
       });
-    
+
+    if (parsedSkip && parsedSkip > 0) {
+      query = query.skip(parsedSkip);
+    }
+
+    if (parsedLimit && parsedLimit > 0) {
+      query = query.limit(parsedLimit);
+    }
+
     // Conditionally populate comments if requested
     if (includeComments) {
       console.log('Including comments in the response');
@@ -409,12 +643,12 @@ router.get('/public', async (req, res) => {
         }
       });
     }
-    
+
     // Sort and execute the query
     const allMaps = await query.sort({ updatedAt: -1 });
-    
+
     console.log(`Found ${allMaps.length} total maps before processing`);
-    
+
     // Process maps for the response
     const processedMaps = allMaps.map(map => {
       // Handle user data
@@ -434,11 +668,11 @@ router.get('/public', async (req, res) => {
           badge: ''
         };
       }
-      
+
       // Calculate counts
       const elementCount = map.elements ? map.elements.length : 0;
       const connectionCount = map.connections ? map.connections.length : 0;
-      
+
       // Create a clean object to return
       const response = {
         _id: map._id,
@@ -456,18 +690,18 @@ router.get('/public', async (req, res) => {
         isPrivate: false,
         isOwner: false
       };
-      
+
       // Include comments if they were populated
       if (includeComments && map.comments) {
         response.comments = map.comments;
       }
-      
+
       // For public endpoint, there's no authentication, so isBookmarked is always false
       response.isBookmarked = false;
-      
+
       return response;
     });
-    
+
     // Log the first processed map for debugging
     if (processedMaps.length > 0) {
       console.log('First processed map example:', {
@@ -480,7 +714,7 @@ router.get('/public', async (req, res) => {
     } else {
       console.log('No maps found in the database');
     }
-    
+
     console.log(`Returning ${processedMaps.length} maps to client`);
     res.json(processedMaps);
   } catch (error) {

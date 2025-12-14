@@ -1,0 +1,42 @@
+name: Keep Z-Library Services Warm
+
+concurrency:
+  group: zlib-warmup
+  cancel-in-progress: true
+
+on:
+  schedule:
+    - cron: '*/5 * * * *' # best-effort every 5 minutes to prevent Render sleep
+  workflow_dispatch:
+
+jobs:
+  warmup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5 # fail fast if something hangs
+    steps:
+      # Wake ALL services in PARALLEL with strict timeouts
+      # This prevents one slow service from blocking others
+      - name: Wake all services (parallel)
+        run: |
+          echo "Starting parallel pings at $(date -u)"
+          
+          # All pings run in parallel with 60s timeout each
+          curl --max-time 60 -sf https://dah-api.onrender.com/ -o /dev/null &
+          curl --max-time 60 -sf https://zlib-worker-a.onrender.com/health -o /dev/null &
+          curl --max-time 60 -sf https://zlib-worker-b.onrender.com/health -o /dev/null &
+          curl --max-time 60 -sf https://zlib-worker-c.onrender.com/health -o /dev/null &
+          
+          # Wait for all background jobs (ignore failures)
+          wait || true
+          
+          echo "All services pinged at $(date -u)"
+      
+      # Single warmup call to keep Z-Library session logged in
+      # This runs AFTER services are awake
+      - name: Warmup Z-Library session
+        run: |
+          # Give workers a moment to fully wake up
+          sleep 5
+          curl --max-time 90 -sf https://dah-api.onrender.com/api/books/zlibrary/warmup -o /dev/null || true
+          echo "Warmup completed at $(date -u)"
+

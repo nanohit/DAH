@@ -14,8 +14,63 @@ export default {
 			const url = new URL(request.url);
 			console.log('Received request for:', url.pathname);
 			
+			// Normalize pathname (remove trailing slash)
+			const normalizedPath = url.pathname.endsWith('/') && url.pathname !== '/'
+				? url.pathname.slice(0, -1)
+				: url.pathname;
+
+			// Support search proxying: /search?ask=...
+			if (normalizedPath === '/search') {
+				const searchParams = new URLSearchParams(url.search);
+				const queryString = searchParams.toString();
+
+				if (!searchParams.get('ask')) {
+					console.log('Missing "ask" query parameter for search');
+					return new Response('Missing "ask" query parameter', { status: 400 });
+				}
+
+				const flibustaUrl = `${FLIBUSTA_BASE}/booksearch${queryString ? `?${queryString}` : ''}`;
+				console.log('Proxying search to Flibusta:', flibustaUrl);
+
+				const headers = {
+					'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+					'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+					'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+					'Accept-Encoding': 'gzip, deflate, br',
+					'Cache-Control': 'no-cache',
+					'Pragma': 'no-cache',
+					'Referer': `${FLIBUSTA_BASE}/`
+				};
+
+				const response = await fetch(flibustaUrl, {
+					headers,
+					redirect: 'follow',
+					cf: {
+						cacheTtl: 300,
+						cacheEverything: true
+					}
+				});
+
+				console.log('Flibusta search response:', {
+					status: response.status,
+					statusText: response.statusText
+				});
+
+				const body = await response.text();
+				const contentType = response.headers.get('content-type') || 'text/html; charset=utf-8';
+
+				return new Response(body, {
+					status: response.status,
+					headers: {
+						'Content-Type': contentType,
+						'Cache-Control': 'public, max-age=300',
+						'Access-Control-Allow-Origin': '*'
+					}
+				});
+			}
+
 			// Extract book ID and format from the path
-			const [_, bookId, format] = url.pathname.split('/');
+			const [_, bookId, format] = normalizedPath.split('/');
 			
 			if (!bookId || !format) {
 				console.log('Invalid request format');

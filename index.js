@@ -16,15 +16,10 @@ const io = new Server(server, {
   cors: {
     origin: function(origin, callback) {
       // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin || process.env.NODE_ENV === 'development') {
+      if (isOriginAllowed(origin)) {
         return callback(null, true);
       }
-  
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
+      callback(new Error('Not allowed by CORS'));
     },
     methods: ["GET", "POST"],
     credentials: true
@@ -153,38 +148,76 @@ if (enableRequestLogging) {
 }
 
 // CORS configuration
-const allowedOrigins = [
+const canonicalizeOrigin = (origin = '') => origin.trim().replace(/\/$/, '');
+
+const staticAllowedOrigins = [
   // Vercel deployments
   'https://dah-omega.vercel.app',
   'https://dah.vercel.app',
   'https://dah-git-main-nanohit.vercel.app',
   'https://alphy.tech',
   'https://www.alphy.tech',
+  'https://beta.alphy.tech',
   // Render deployments
   'https://dah-tyxc.onrender.com',
   'https://dah.onrender.com',
+  'https://dah-beta.onrender.com',
   // Local development
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:5000',
-  'http://localhost:5001'
+  'http://localhost:5001',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://127.0.0.1:5000',
+  'http://127.0.0.1:5001',
+  'http://0.0.0.0:3000',
+  'http://0.0.0.0:3001',
+  'http://0.0.0.0:5000',
+  'http://0.0.0.0:5001',
 ];
+
+const envAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((origin) => canonicalizeOrigin(origin))
+  .filter(Boolean);
+
+const wildcardOriginPatterns = [
+  /\.vercel\.app$/,
+  /\.onrender\.com$/,
+  /\.alphy\.tech$/,
+];
+
+const allowedOrigins = new Set(
+  [...staticAllowedOrigins, ...envAllowedOrigins].map((origin) => canonicalizeOrigin(origin))
+);
+
+const isOriginAllowed = (origin) => {
+  if (!origin || process.env.NODE_ENV === 'development') {
+    return true;
+  }
+
+  const normalizedOrigin = canonicalizeOrigin(origin);
+  if (allowedOrigins.has(normalizedOrigin)) {
+    return true;
+  }
+
+  return wildcardOriginPatterns.some((pattern) => pattern.test(normalizedOrigin));
+};
 
 const corsOptions = {
   origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin || process.env.NODE_ENV === 'development') {
-      console.log('Allowing request with no origin or in development mode');
+    if (isOriginAllowed(origin)) {
+      if (origin) {
+        console.log(`Allowing origin: ${origin}`);
+      } else {
+        console.log('Allowing request with no origin or in development mode');
+      }
       return callback(null, true);
     }
 
-    if (allowedOrigins.includes(origin)) {
-      console.log(`Allowing origin: ${origin}`);
-      callback(null, true);
-    } else {
-      console.log(`Blocked origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
+    console.log(`Blocked origin: ${origin}`);
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
@@ -310,6 +343,7 @@ const bookRoutes = require('./routes/booksRouter');
 const uploadRoutes = require('./routes/upload');
 const userRoutes = require('./routes/users');
 const mapRoutes = require('./routes/maps');
+const linkPreviewRoutes = require('./routes/linkPreview');
 
 // Debug route registration
 console.log('\n=== Route Registration ===');
@@ -323,6 +357,7 @@ app.use('/api/books', bookRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/maps', mapRoutes);
+app.use('/api/link-preview', linkPreviewRoutes);
 
 // Log registered routes
 console.log('\n=== Registered Routes ===');
@@ -333,6 +368,9 @@ app._router.stack.forEach((r) => {
     console.log(`Router: ${r.regexp}`);
   }
 });
+
+//Add root route
+//Add roor route/add
 
 // Add root route
 app.get('/', (req, res) => {
