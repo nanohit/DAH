@@ -214,9 +214,11 @@ type UserMapData = {
 
 interface HeroSearchProps {
   onShowForum?: () => void;
+  // Backwards-compatible alias used by older callers
+  onForumRequest?: () => void;
 }
 
-export const HeroSearch = ({ onShowForum }: HeroSearchProps) => {
+export const HeroSearch = ({ onShowForum, onForumRequest }: HeroSearchProps) => {
   const router = useRouter();
   const { isAuthenticated, user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
@@ -1098,6 +1100,8 @@ export const HeroSearch = ({ onShowForum }: HeroSearchProps) => {
     router.push('/tl-maps');
   };
 
+  const forumCallback = onShowForum || onForumRequest;
+
   const handleBoardClick = () => {
     if (userRecentMap) {
       // Navigate to TLDRAW canvas editor with the map ID
@@ -1621,10 +1625,10 @@ export const HeroSearch = ({ onShowForum }: HeroSearchProps) => {
           )}
 
           {/* "перейти на форум >" button */}
-          {onShowForum && (
+          {forumCallback && (
             <button
               type="button"
-              onClick={onShowForum}
+              onClick={forumCallback}
               className="forum-trigger"
             >
               перейти на форум <span className="forum-arrow">›</span>
