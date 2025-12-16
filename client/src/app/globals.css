@@ -1,7 +1,61 @@
 /* Import IBM Plex Mono font */
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&display=swap');
-/* Import Manrope as fallback for Geometria if not available locally */
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&display=swap');
+/* Import Manrope as robust fallback for Geometria - with all weights and cyrillic subset */
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&subset=cyrillic,latin&display=swap');
+
+/* Geometria Font - Local with multiple fallbacks */
+/* Try local system fonts first, then hosted files */
+@font-face {
+  font-family: 'Geometria';
+  src: local('Geometria'),
+       local('Geometria-Regular'),
+       local('Geometria Regular'),
+       url('/fonts/Geometria-Regular.woff2') format('woff2'),
+       url('/fonts/Geometria-Regular.woff') format('woff'),
+       url('/fonts/Geometria-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geometria';
+  src: local('Geometria Medium'),
+       local('Geometria-Medium'),
+       local('GeometriaMedium'),
+       url('/fonts/Geometria-Medium.woff2') format('woff2'),
+       url('/fonts/Geometria-Medium.woff') format('woff'),
+       url('/fonts/Geometria-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geometria';
+  src: local('Geometria Bold'),
+       local('Geometria-Bold'),
+       local('GeometriaBold'),
+       url('/fonts/Geometria-Bold.woff2') format('woff2'),
+       url('/fonts/Geometria-Bold.woff') format('woff'),
+       url('/fonts/Geometria-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geometria';
+  src: local('Geometria Light'),
+       local('Geometria-Light'),
+       local('GeometriaLight'),
+       url('/fonts/Geometria-Light.woff2') format('woff2'),
+       url('/fonts/Geometria-Light.woff') format('woff'),
+       url('/fonts/Geometria-Light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
 
 @tailwind base;
 @tailwind components;
@@ -211,7 +265,12 @@ body.maps-view-page {
 }
 
 .font-geometria {
-  font-family: 'Geometria', 'Manrope', sans-serif;
+  font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Global font fallback for all text */
+html, body {
+  font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 /* Book styles */

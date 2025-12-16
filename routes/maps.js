@@ -365,7 +365,7 @@ router.get('/', protect, async (req, res) => {
               },
               badge: { $ifNull: ['$userDoc.badge', ''] }
             },
-            isOwner: currentUserObjectId ? { $eq: ['$ownerId', currentUserObjectId] } : false
+            isOwner: currentUserObjectId ? { $eq: ['$ownerId', currentUserObjectId] } : { $literal: false }
           }
         }
       );
@@ -594,8 +594,8 @@ router.get('/public', async (req, res) => {
               },
               badge: { $ifNull: ['$userDoc.badge', ''] }
             },
-            isBookmarked: false,
-            isOwner: false
+            isBookmarked: { $literal: false },
+            isOwner: { $literal: false }
           }
         }
       );

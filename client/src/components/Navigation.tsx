@@ -4,11 +4,12 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { logout } from '@/services/auth';
 import { useRouter, usePathname } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { SearchModal } from '@/components/Search/SearchModal';
 import { FlibustaSearch } from '@/components/Search/FlibustaSearch';
 import { BookSearchResult } from '@/types';
 import { BsBookmark, BsBookmarkFill } from 'react-icons/bs';
+import api from '@/services/api';
 
 const Navigation = () => {
   const { isAuthenticated, isAdmin, user } = useAuth();
@@ -22,6 +23,34 @@ const Navigation = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isNanoAdmin = isAdmin || user?.username === 'nano';
   const canvasButtonLabel = '+ Новая доска';
+  const [onlineCount, setOnlineCount] = useState<number | null>(null);
+  const [blinkVisible, setBlinkVisible] = useState(true);
+  const [showOnlineTooltip, setShowOnlineTooltip] = useState(false);
+
+  // Fetch online count
+  useEffect(() => {
+    const fetchOnlineCount = async () => {
+      try {
+        const response = await api.get('/api/users/stats/online');
+        if (response.data?.count) {
+          // Add random variation of ±5
+          const variation = Math.floor(Math.random() * 11) - 5;
+          setOnlineCount(Math.max(1, response.data.count + variation));
+        }
+      } catch (err) {
+        console.warn('Failed to fetch online count:', err);
+      }
+    };
+    fetchOnlineCount();
+  }, []);
+
+  // Blink animation for online indicator
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setBlinkVisible(v => !v);
+    }, 1200);
+    return () => clearInterval(interval);
+  }, []);
 
   // Close mobile menu when route changes
   useEffect(() => {
@@ -93,8 +122,36 @@ const Navigation = () => {
             </div>
           </div>
 
-          {/* Right side elements (desktop) */}
-          <div className="hidden md:flex items-center space-x-4">
+          {/* Right side elements (all viewports) */}
+          <div className="flex items-center space-x-3">
+            {/* Online count - visible for all users */}
+            {onlineCount !== null && (
+              <div
+                className="relative flex items-center space-x-2 mr-1 cursor-default"
+                onMouseEnter={() => setShowOnlineTooltip(true)}
+                onMouseLeave={() => setShowOnlineTooltip(false)}
+              >
+                <span className="text-gray-300 text-[10px] underline">сейчас на alphy:</span>
+                <div className="flex items-center space-x-1.5">
+                  <svg className="w-3.5 h-3.5 text-gray-400" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                  </svg>
+                  <span className="text-gray-100 text-xs font-medium">{onlineCount}</span>
+                  <span 
+                    className="w-2 h-2 rounded-full bg-orange-500 transition-opacity duration-300"
+                    style={{ opacity: blinkVisible ? 1 : 0.3 }}
+                  />
+                </div>
+                {showOnlineTooltip && (
+                  <div className="absolute top-10 right-0 bg-black text-white text-[14px] md:text-[17px] leading-6 md:leading-7 px-6 py-3 md:px-16 md:py-5 rounded-lg shadow-3xl border border-white/20 max-w-[calc(100vw-2rem)] md:w-[400px] whitespace-normal z-80">
+                    Текущая нагрузка может привезти к более долгому
+                    открытию карт и закачке книг 
+                    
+                    (с p2p).
+                  </div>
+                )}
+              </div>
+            )}
             {isAuthenticated ? (
               <>
                 <Link
@@ -125,7 +182,7 @@ const Navigation = () => {
                 )}
               </>
             ) : (
-              <div className="space-x-4">
+              <div className="flex items-center space-x-4">
                 <Link 
                   href="/login" 
                   className="border border-gray-400/50 text-white hover:bg-white hover:text-black px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200"
@@ -171,6 +228,21 @@ const Navigation = () => {
       {/* Mobile menu */}
       <div className={`${mobileMenuOpen ? 'block' : 'hidden'} md:hidden absolute top-16 left-0 right-0 z-50 bg-black shadow-lg`}>
         <div className="px-2 pt-2 pb-3 space-y-3 border-t border-gray-700">
+          {onlineCount !== null && (
+            <div className="flex items-center space-x-2 px-3 py-2">
+              <span className="text-gray-300 text-[11px] underline">сейчас на alphy:</span>
+              <div className="flex items-center space-x-1.5">
+                <svg className="w-3.5 h-3.5 text-gray-400" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                </svg>
+                <span className="text-gray-100 text-xs font-medium">{onlineCount}</span>
+                <span 
+                  className="w-2 h-2 rounded-full bg-orange-500 transition-opacity duration-300"
+                  style={{ opacity: blinkVisible ? 1 : 0.3 }}
+                />
+              </div>
+            </div>
+          )}
           {isNanoAdmin && (
             <Link
               href="/maps"

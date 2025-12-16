@@ -3,7 +3,138 @@ const router = express.Router();
 const User = require('../models/User');
 const Post = require('../models/Post');
 const Map = require('../models/Map');
+const BookDownloadProfile = require('../models/BookDownloadProfile');
 const { protect } = require('../middleware/auth');
+
+// ============ Online Count Logic ============
+// Generates a pseudo-random "online users" count based on Moscow time
+// Updates at 8:00, 12:00, 19:00, and 0:00 Moscow time
+// True random is selected at 9:00 Moscow time
+
+const ONLINE_SEED_KEY = 'online_count_seed';
+let onlineCountState = {
+  baseCount: null,
+  lastUpdateHour: null,
+  lastUpdateDate: null,
+  seed: null,
+};
+
+const getMoscowHour = () => {
+  const now = new Date();
+  // Moscow is UTC+3
+  const moscowOffset = 3 * 60;
+  const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const moscowMinutes = utcMinutes + moscowOffset;
+  return Math.floor(moscowMinutes / 60) % 24;
+};
+
+const getMoscowDate = () => {
+  const now = new Date();
+  const moscowOffset = 3 * 60 * 60 * 1000; // 3 hours in ms
+  const moscowTime = new Date(now.getTime() + moscowOffset);
+  return moscowTime.toISOString().slice(0, 10); // YYYY-MM-DD
+};
+
+const getRandomInRange = (min, max) => {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+};
+
+const getOnlineCount = () => {
+  const moscowHour = getMoscowHour();
+  const moscowDate = getMoscowDate();
+  
+  // Update times: 8, 12, 19, 0 (9 is special - true random)
+  const updateHours = [0, 8, 9, 12, 19];
+  
+  // Find which update period we're in
+  let currentPeriodHour = 0;
+  for (const hour of updateHours) {
+    if (moscowHour >= hour) {
+      currentPeriodHour = hour;
+    }
+  }
+  
+  // Check if we need to update
+  const needsUpdate = 
+    onlineCountState.baseCount === null ||
+    onlineCountState.lastUpdateDate !== moscowDate ||
+    onlineCountState.lastUpdateHour !== currentPeriodHour;
+  
+  if (needsUpdate) {
+    if (currentPeriodHour === 9 || onlineCountState.baseCount === null) {
+      // True random at 9:00 or initial load
+      onlineCountState.baseCount = getRandomInRange(23, 70);
+    } else {
+      // Random within ±50 of previous count
+      const prevCount = onlineCountState.baseCount || 100;
+      const min = Math.max(23, prevCount - 50);
+      const max = Math.min(70, prevCount + 50);
+      onlineCountState.baseCount = getRandomInRange(min, max);
+    }
+    onlineCountState.lastUpdateHour = currentPeriodHour;
+    onlineCountState.lastUpdateDate = moscowDate;
+    onlineCountState.seed = Math.random();
+  } else if (onlineCountState.baseCount > 70) {
+    // Clamp and refresh if an old oversized value lingers
+    onlineCountState.baseCount = getRandomInRange(23, 70);
+    onlineCountState.lastUpdateHour = currentPeriodHour;
+    onlineCountState.lastUpdateDate = moscowDate;
+    onlineCountState.seed = Math.random();
+  }
+
+  // Final clamp before returning to guarantee max 70 immediately
+  if (onlineCountState.baseCount > 70) {
+    onlineCountState.baseCount = getRandomInRange(23, 70);
+    onlineCountState.lastUpdateHour = currentPeriodHour;
+    onlineCountState.lastUpdateDate = moscowDate;
+    onlineCountState.seed = Math.random();
+  }
+  
+  return onlineCountState.baseCount;
+};
+
+// @desc    Get online user count
+// @route   GET /api/users/stats/online
+// @access  Public
+router.get('/stats/online', (req, res) => {
+  const baseCount = getOnlineCount();
+  res.json({ count: baseCount });
+});
+
+// @desc    Get popular books (nano's downloads)
+// @route   GET /api/users/stats/popular-books
+// @access  Public
+router.get('/stats/popular-books', async (req, res) => {
+  try {
+    // Find nano user
+    const nanoUser = await User.findOne({ username: 'nano' });
+    if (!nanoUser) {
+      return res.json({ books: [] });
+    }
+    
+    // Find nano's download profile
+    const profile = await BookDownloadProfile.findOne({ user: nanoUser._id });
+    if (!profile || !profile.downloads || profile.downloads.length === 0) {
+      return res.json({ books: [] });
+    }
+    
+    // Get up to 24 random books from nano's downloads
+    const downloads = profile.downloads.slice(0, 100); // Get up to 100
+    const shuffled = downloads.sort(() => Math.random() - 0.5);
+    const selected = shuffled.slice(0, 24);
+    
+    const books = selected.map((d, idx) => ({
+      id: d._id ? d._id.toString() : `popular-${idx}`,
+      title: d.title,
+      author: d.author,
+    }));
+    
+    res.json({ books });
+  } catch (err) {
+    console.error('Error fetching popular books:', err);
+    res.status(500).json({ books: [] });
+  }
+});
 
 // @desc    Get user by username
 // @route   GET /api/users/:username

@@ -46,10 +46,10 @@ export default function AnimatedBackground({ config }: AnimatedBackgroundProps) 
       window.particlesJS(BACKGROUND_ID, config || {
         particles: {
           number: {
-            value: 200,
+            value: 220,
             density: {
               enable: true,
-              value_area: 1500 // Increased area to spread particles more
+              value_area: 2500 // Larger area for bigger network structures
             }
           },
           color: {
@@ -59,35 +59,35 @@ export default function AnimatedBackground({ config }: AnimatedBackgroundProps) 
             type: "circle"
           },
           opacity: {
-            value: 0.0, // Further reduced to make it even more subtle
+            value: 0.15,
             random: true,
             anim: {
               enable: true,
-              speed: 0.4,
-              opacity_min: 0.0, // Further reduced
+              speed: 0.3,
+              opacity_min: 0.05,
               sync: false
             }
           },
           size: {
-            value: 2,
+            value: 8.5,
             random: true,
             anim: {
               enable: true,
-              speed: 0.7,
-              size_min: 0.3,
+              speed: 0.8,
+              size_min: 0.5,
               sync: false
             }
           },
           line_linked: {
             enable: true,
-            distance: 200, // Increased distance for larger network structures
+            distance: 200, // Much larger distance for bigger network structures
             color: "#ffffff",
-            opacity: 0.1, // Further reduced
-            width: 1.2
+            opacity: 0.2,
+            width: 1
           },
           move: {
             enable: true,
-            speed: 0.7,
+            speed: 1.4,
             direction: "none",
             random: true,
             straight: false,
@@ -96,28 +96,27 @@ export default function AnimatedBackground({ config }: AnimatedBackgroundProps) 
           }
         },
         interactivity: {
-          detect_on: "canvas",
+          detect_on: "window",
           events: {
             onhover: {
               enable: true,
-              mode: "bubble"
+              mode: "grab"
             },
             onclick: {
-              enable: true,
-              mode: "push"
+              enable: false,
+              mode: "none"
             },
             resize: true
           },
           modes: {
-            bubble: {
-              distance: 200,
-              size: 4,
-              duration: 2,
-              opacity: 0.2, // Further reduced
-              speed: 2
+            grab: {
+              distance: 240,
+              line_linked: {
+                opacity: 0.4
+              }
             },
             push: {
-              particles_nb: 4
+              particles_nb: 9
             }
           }
         },

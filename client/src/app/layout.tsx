@@ -1,9 +1,14 @@
 import './globals.css';
-import { Inter } from 'next/font/google';
+import { Manrope } from 'next/font/google';
 import type { Metadata } from 'next'
 import ClientLayout from '@/components/ClientLayout';
 
-const inter = Inter({ subsets: ['latin'] });
+const manrope = Manrope({ 
+  subsets: ['latin', 'cyrillic'],
+  weight: ['300', '400', '500', '600', '700'],
+  variable: '--font-manrope',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Alphy',
@@ -16,8 +21,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="en" className={manrope.variable}>
+      <body className={manrope.className}>
         <ClientLayout>{children}</ClientLayout>
       </body>
     </html>

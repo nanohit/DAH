@@ -2,14 +2,17 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { HeroSearch } from '@/components/HeroSearch';
+import { useAuth } from '@/context/AuthContext';
+import AnimatedBackground from '@/components/AnimatedBackground';
+
+// Forum-related imports
 import PostList, { Post } from '@/components/PostList';
 import useSocketConnection from '@/hooks/useSocketConnection';
-import SocketStatus from '@/components/SocketStatus';
 import { getMapSummaries, MapSummary } from '@/utils/mapUtils';
 import api from '@/services/api';
 import UserRecentMaps from '@/components/UserRecentMaps';
-import { HeroSearch } from '@/components/HeroSearch';
 
 const FEED_PAGE_SIZE = 10;
 const FETCH_BATCH_SIZE = 10;
@@ -21,15 +24,19 @@ interface PaginationMeta {
 }
 
 export default function HomePage() {
+  const { isAuthenticated } = useAuth();
+  const [isForumVisible, setIsForumVisible] = useState(false);
+  const [isForumLoading, setIsForumLoading] = useState(false);
+  const forumRef = useRef<HTMLDivElement>(null);
+
+  // Forum state
   const [feedItems, setFeedItems] = useState<Post[]>([]);
   const [hasMoreFeed, setHasMoreFeed] = useState(true);
   const [isInitialLoading, setIsInitialLoading] = useState(false);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
-  const [isForumActivated, setIsForumActivated] = useState(false);
 
   const postMetaRef = useRef<PaginationMeta>({ skip: 0, hasMore: true, loading: false });
   const mapMetaRef = useRef<PaginationMeta>({ skip: 0, hasMore: true, loading: false });
-  const forumSectionRef = useRef<HTMLDivElement | null>(null);
 
   const [postStore, setPostStore] = useState<Post[]>([]);
   const [mapStore, setMapStore] = useState<MapSummary[]>([]);
@@ -39,381 +46,308 @@ export default function HomePage() {
   const feedItemsRef = useRef<Post[]>([]);
   const postCursorRef = useRef(0);
   const mapCursorRef = useRef(0);
-  const awaitingPageRef = useRef(false);
-  const tlFetchedRef = useRef(false);
-
-  const activateForum = useCallback(() => {
-    setIsForumActivated((prev) => {
-      if (!prev) {
-        setIsInitialLoading(true);
-      }
-      return true;
-    });
-  }, []);
 
   useSocketConnection({
     debugName: 'HomePage',
     checkInterval: 20000,
   });
 
+  // Lock scroll on mount - prevents any scrolling on the main page until forum is activated
   useEffect(() => {
-    postStoreRef.current = postStore;
-  }, [postStore]);
-
-  useEffect(() => {
-    mapStoreRef.current = mapStore;
-  }, [mapStore]);
-
-  useEffect(() => {
-    feedItemsRef.current = feedItems;
-  }, [feedItems]);
-
-  const transformPost = useCallback((postData: any): Post => ({
-    ...postData,
-    isMap: false,
-    comments: postData.comments ?? [],
-    commentsCount: postData.commentsCount ?? (Array.isArray(postData.comments) ? postData.comments.length : 0),
-  }), []);
-
-  const transformMapSummary = useCallback((summary: MapSummary): Post => ({
-    _id: summary._id,
-    headline: summary.name,
-    text: `${summary.elementCount || 0} elements, ${summary.connectionCount || 0} connections`,
-    author: summary.user,
-    createdAt: summary.createdAt,
-    updatedAt: summary.updatedAt ?? summary.lastSaved ?? summary.createdAt,
-    comments: [],
-    commentsCount: summary.commentsCount ?? 0,
-    likes: [],
-    dislikes: [],
-    bookmarks: [],
-    isMap: true,
-    mapData: {
-      ...summary,
-    },
-  }), []);
-
-  const fetchMorePosts = useCallback(async () => {
-    const meta = postMetaRef.current;
-    if (meta.loading || !meta.hasMore) {
-      return 0;
+    if (isForumVisible) {
+      // Unlock scrolling when forum is visible
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.height = '';
+    } else {
+      // Lock scrolling completely
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
+      document.body.style.height = '100%';
     }
+    
+    return () => {
+      // Restore on unmount
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.height = '';
+      document.body.style.width = '';
+    };
+  }, [isForumVisible]);
 
-    const currentSkip = meta.skip;
-    postMetaRef.current = { ...meta, loading: true };
+  // Fetch posts and maps when forum becomes visible
+  const fetchInitialFeed = useCallback(async () => {
+    if (!isForumVisible) return;
+    setIsInitialLoading(true);
 
     try {
-      const response = await api.get(`/api/posts?limit=${FETCH_BATCH_SIZE}&skip=${currentSkip}`);
-      const rawPosts = response.data?.posts ?? [];
-      const transformed = rawPosts.map(transformPost);
-
-      if (transformed.length > 0) {
-        const updatedStore = [...postStoreRef.current, ...transformed];
-        postStoreRef.current = updatedStore;
-        setPostStore(updatedStore);
-      }
-
+      // Fetch posts
+      const postsResponse = await api.get('/api/posts', {
+        params: { limit: FETCH_BATCH_SIZE, skip: 0 }
+      });
+      const posts: Post[] = postsResponse.data?.posts || [];
+      postStoreRef.current = posts;
+      setPostStore(posts);
       postMetaRef.current = {
-        skip: currentSkip + rawPosts.length,
-        hasMore: response.data?.hasMore ?? false,
+        skip: posts.length,
+        hasMore: postsResponse.data?.hasMore ?? posts.length === FETCH_BATCH_SIZE,
         loading: false,
       };
 
-      return transformed.length;
-    } catch (error) {
-      console.error('Error fetching posts:', error);
-      postMetaRef.current = { ...meta, loading: false };
-      return 0;
-    }
-  }, [transformPost]);
-
-  const fetchMoreMaps = useCallback(async () => {
-    const meta = mapMetaRef.current;
-    if (meta.loading || !meta.hasMore) {
-      return 0;
-    }
-
-    const currentSkip = meta.skip;
-    mapMetaRef.current = { ...meta, loading: true };
-
-    try {
-      const response = await getMapSummaries({ limit: FETCH_BATCH_SIZE, skip: currentSkip });
-      const summaries = response.maps ?? [];
-
-      // One-time fetch TL maps and merge into store
-      let tlSummaries: MapSummary[] = [];
-      if (!tlFetchedRef.current) {
-        tlFetchedRef.current = true;
-        try {
-          const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-          if (token) {
-            const res = await fetch('/api/tl-maps', {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (res.ok) {
-              const data = await res.json();
-              tlSummaries = (data || []).map((m: any) => ({
-                _id: m._id,
-                name: m.name || 'Untitled Map',
-                user: m.user || { _id: 'unknown', username: 'Unknown' },
-                createdAt: m.createdAt || '',
-                updatedAt: m.updatedAt || m.createdAt || '',
-                lastSaved: m.lastSaved || m.updatedAt || m.createdAt || '',
-                elementCount: m.elementCount || 0,
-                connectionCount: m.connectionCount || 0,
-                commentsCount: m.commentsCount || 0,
-                bookmarksCount: 0,
-                isPrivate: m.isPrivate || false,
-                isOwner: true,
-                // marker for TL map
-                // @ts-ignore
-                isTl: true,
-              }));
-            }
-          }
-        } catch (err) {
-          console.warn('Failed to fetch TL maps for feed', err);
-        }
-      }
-
-      if (summaries.length > 0) {
-        const updatedStore = [...mapStoreRef.current, ...summaries, ...tlSummaries];
-        mapStoreRef.current = updatedStore;
-        setMapStore(updatedStore);
-      } else if (tlSummaries.length > 0) {
-        const updatedStore = [...mapStoreRef.current, ...tlSummaries];
-        mapStoreRef.current = updatedStore;
-        setMapStore(updatedStore);
-      }
-
+      // Fetch maps
+      const mapsResult = await getMapSummaries({ limit: FETCH_BATCH_SIZE, skip: 0 });
+      const maps: MapSummary[] = mapsResult.maps || [];
+      mapStoreRef.current = maps;
+      setMapStore(maps);
       mapMetaRef.current = {
-        skip: currentSkip + summaries.length,
-        hasMore: response.hasMore,
+        skip: maps.length,
+        hasMore: mapsResult.hasMore ?? maps.length === FETCH_BATCH_SIZE,
         loading: false,
       };
 
-      return summaries.length;
+      // Interleave posts and maps
+      const interleaved = interleaveFeed(posts, maps, FEED_PAGE_SIZE);
+      feedItemsRef.current = interleaved;
+      setFeedItems(interleaved);
+      setHasMoreFeed(postMetaRef.current.hasMore || mapMetaRef.current.hasMore || posts.length + maps.length > interleaved.length);
     } catch (error) {
-      console.error('Error fetching map summaries:', error);
-      mapMetaRef.current = { ...meta, loading: false };
-      return 0;
-    }
-  }, []);
-
-  const pickNextItem = useCallback(async (): Promise<Post | null> => {
-    while (true) {
-      const posts = postStoreRef.current;
-      const maps = mapStoreRef.current;
-      const postIdx = postCursorRef.current;
-      const mapIdx = mapCursorRef.current;
-
-      const nextPost = posts[postIdx];
-      const nextMapSummary = maps[mapIdx];
-
-      if (!nextPost && postMetaRef.current.hasMore) {
-        const fetched = await fetchMorePosts();
-        if (fetched === 0 && !postMetaRef.current.hasMore) {
-          // continue to evaluate remaining data
-        }
-        continue;
-      }
-
-      if (!nextMapSummary && mapMetaRef.current.hasMore) {
-        const fetched = await fetchMoreMaps();
-        if (fetched === 0 && !mapMetaRef.current.hasMore) {
-          // continue to evaluate remaining data
-        }
-        continue;
-      }
-
-      const currentPost = postStoreRef.current[postCursorRef.current];
-      const currentMap = mapStoreRef.current[mapCursorRef.current];
-
-      if (!currentPost && !currentMap) {
-        return null;
-      }
-
-      let useMap = false;
-
-      if (currentPost && currentMap) {
-        useMap = new Date(currentMap.createdAt).getTime() >= new Date(currentPost.createdAt).getTime();
-      } else if (currentMap) {
-        useMap = true;
-      } else {
-        useMap = false;
-      }
-
-      if (useMap) {
-        mapCursorRef.current += 1;
-        return transformMapSummary(currentMap);
-      }
-
-      postCursorRef.current += 1;
-      return currentPost;
-    }
-  }, [fetchMorePosts, fetchMoreMaps, transformMapSummary]);
-
-  const loadNextPage = useCallback(async () => {
-    if (awaitingPageRef.current || !hasMoreFeed) {
-      return;
-    }
-
-    awaitingPageRef.current = true;
-    setIsFetchingMore(feedItemsRef.current.length > 0);
-
-    try {
-      const nextItems: Post[] = [];
-
-      while (nextItems.length < FEED_PAGE_SIZE) {
-        const item = await pickNextItem();
-        if (!item) {
-          break;
-        }
-        nextItems.push(item);
-      }
-
-      if (nextItems.length > 0) {
-        setFeedItems(prev => [...prev, ...nextItems]);
-      }
-
-      if (nextItems.length < FEED_PAGE_SIZE) {
-        if (!postMetaRef.current.hasMore && !mapMetaRef.current.hasMore) {
-          setHasMoreFeed(false);
-        }
-      }
-
-      if (nextItems.length === 0) {
-        setHasMoreFeed(false);
-      }
+      console.error('Error fetching initial feed:', error);
     } finally {
-      awaitingPageRef.current = false;
-      setIsFetchingMore(false);
       setIsInitialLoading(false);
     }
-  }, [hasMoreFeed, pickNextItem]);
+  }, [isForumVisible]);
 
   useEffect(() => {
-    if (!isForumActivated) {
-      return;
+    if (isForumVisible) {
+      fetchInitialFeed();
     }
-    loadNextPage();
-  }, [isForumActivated, loadNextPage]);
+  }, [isForumVisible, fetchInitialFeed]);
 
-  useEffect(() => {
-    if (isForumActivated) {
-      return;
+  const interleaveFeed = (posts: Post[], maps: MapSummary[], count: number): Post[] => {
+    const result: Post[] = [];
+    let pIdx = postCursorRef.current;
+    let mIdx = mapCursorRef.current;
+    
+    while (result.length < count && (pIdx < posts.length || mIdx < maps.length)) {
+      if (pIdx < posts.length && (mIdx >= maps.length || Math.random() > 0.4)) {
+        result.push(posts[pIdx]);
+        pIdx++;
+      } else if (mIdx < maps.length) {
+        const map = maps[mIdx];
+        result.push({
+          _id: map._id,
+          headline: map.name || 'Untitled Map',
+          text: '',
+          author: map.user,
+          createdAt: map.createdAt,
+          updatedAt: map.updatedAt,
+          comments: [],
+          commentsCount: map.commentsCount || 0,
+          bookmarksCount: map.bookmarksCount || 0,
+          isMap: true,
+          mapData: map,
+        } as Post);
+        mIdx++;
+      }
     }
+    
+    postCursorRef.current = pIdx;
+    mapCursorRef.current = mIdx;
+    return result;
+  };
 
-    const target = forumSectionRef.current;
-    if (!target) {
-      return;
-    }
+  const handleLoadMore = useCallback(async () => {
+    if (isFetchingMore) return;
+    setIsFetchingMore(true);
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const [entry] = entries;
-        if (entry?.isIntersecting) {
-          activateForum();
+    try {
+      // Check if we need to fetch more posts from the server
+      const postsRemaining = postStoreRef.current.length - postCursorRef.current;
+      const mapsRemaining = mapStoreRef.current.length - mapCursorRef.current;
+      
+      // Fetch more from server if running low
+      if (postsRemaining < FEED_PAGE_SIZE && postMetaRef.current.hasMore) {
+        const postsResponse = await api.get('/api/posts', {
+          params: { limit: FETCH_BATCH_SIZE, skip: postMetaRef.current.skip }
+        });
+        const newPosts: Post[] = postsResponse.data?.posts || [];
+        if (newPosts.length > 0) {
+          postStoreRef.current = [...postStoreRef.current, ...newPosts];
+          setPostStore([...postStoreRef.current]);
+          postMetaRef.current = {
+            skip: postMetaRef.current.skip + newPosts.length,
+            hasMore: postsResponse.data?.hasMore ?? newPosts.length === FETCH_BATCH_SIZE,
+            loading: false,
+          };
+        } else {
+          postMetaRef.current.hasMore = false;
         }
-      },
-      {
-        // Trigger earlier to ensure scroll activates the feed
-        rootMargin: '0px 0px 400px 0px',
-        threshold: 0.05,
       }
-    );
 
-    observer.observe(target);
+      if (mapsRemaining < FEED_PAGE_SIZE && mapMetaRef.current.hasMore) {
+        const mapsResult = await getMapSummaries({ limit: FETCH_BATCH_SIZE, skip: mapMetaRef.current.skip });
+        const newMaps: MapSummary[] = mapsResult.maps || [];
+        if (newMaps.length > 0) {
+          mapStoreRef.current = [...mapStoreRef.current, ...newMaps];
+          setMapStore([...mapStoreRef.current]);
+          mapMetaRef.current = {
+            skip: mapMetaRef.current.skip + newMaps.length,
+            hasMore: mapsResult.hasMore ?? newMaps.length === FETCH_BATCH_SIZE,
+            loading: false,
+          };
+        } else {
+          mapMetaRef.current.hasMore = false;
+        }
+      }
 
-    return () => {
-      observer.disconnect();
-    };
-  }, [activateForum, isForumActivated]);
-
-  useEffect(() => {
-    if (isForumActivated) {
-      return;
+      // Now interleave from the updated stores
+      const newItems = interleaveFeed(postStoreRef.current, mapStoreRef.current, FEED_PAGE_SIZE);
+      if (newItems.length > 0) {
+        feedItemsRef.current = [...feedItemsRef.current, ...newItems];
+        setFeedItems([...feedItemsRef.current]);
+      }
+      
+      const stillHasMore = 
+        postCursorRef.current < postStoreRef.current.length || 
+        mapCursorRef.current < mapStoreRef.current.length ||
+        postMetaRef.current.hasMore ||
+        mapMetaRef.current.hasMore;
+      setHasMoreFeed(stillHasMore);
+    } catch (error) {
+      console.error('Error loading more feed:', error);
+    } finally {
+      setIsFetchingMore(false);
     }
+  }, [isFetchingMore]);
 
-    const handleScroll = () => {
-      const nearBottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 400;
-      if (nearBottom) {
-        activateForum();
-      }
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [activateForum, isForumActivated]);
-
-  const handleFeedRefresh = useCallback(() => {
-    awaitingPageRef.current = false;
-    postMetaRef.current = { skip: 0, hasMore: true, loading: false };
-    mapMetaRef.current = { skip: 0, hasMore: true, loading: false };
-    postCursorRef.current = 0;
-    mapCursorRef.current = 0;
-
-    postStoreRef.current = [];
-    mapStoreRef.current = [];
-    feedItemsRef.current = [];
-
-    setPostStore([]);
-    setMapStore([]);
-    setFeedItems([]);
-    setHasMoreFeed(true);
-    setIsInitialLoading(true);
-    setIsFetchingMore(false);
-
-    requestAnimationFrame(() => {
-      loadNextPage();
-    });
-  }, [loadNextPage]);
-
-  const showInitialLoader = isForumActivated && isInitialLoading && feedItems.length === 0;
+  const handleShowForum = useCallback(() => {
+    setIsForumVisible(true);
+    setIsForumLoading(true);
+    // Scroll to forum after a short delay
+    setTimeout(() => {
+      forumRef.current?.scrollIntoView({ behavior: 'smooth' });
+      setIsForumLoading(false);
+    }, 100);
+  }, []);
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <HeroSearch onForumRequest={activateForum} />
-      <div className="max-w-4xl mx-auto mt-8 lg:mt-10">
-        <div id="alphy-forum-feed" ref={forumSectionRef} className="scroll-mt-24">
-          {!isForumActivated ? (
-            <div className="flex flex-col items-center gap-3 py-8 text-center text-sm text-gray-500">
-              <div>Прокрутите сюда или нажмите «сегодня на alphy», чтобы увидеть форум.</div>
-            </div>
-          ) : showInitialLoader ? (
-            <div className="flex justify-center py-16">
-              <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-gray-700" />
-            </div>
-          ) : (
-            <>
-              <UserRecentMaps maxMaps={5} />
-              <div className="mt-6">
-                <PostList
-                  onPostUpdated={handleFeedRefresh}
-                  posts={feedItems}
-                  hasMorePosts={hasMoreFeed}
-                  isLoading={isInitialLoading || isFetchingMore}
-                  autoLoadOnScroll
-                  onLoadMore={loadNextPage}
-                />
-              </div>
-
-              {isFetchingMore && feedItems.length > 0 && (
-                <div className="flex justify-center py-6">
-                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200 border-t-gray-700" />
-                </div>
-              )}
-
-              {!hasMoreFeed && feedItems.length > 0 && (
-                <div className="py-6 text-center text-sm text-gray-500">
-                  You've ACTUALLY reached the end of the feed. Wow.
-                </div>
-              )}
-            </>
-          )}
-        </div>
+    <div className={`home-page-container ${isForumVisible ? 'forum-visible' : ''}`}>
+      {/* Interactive network background */}
+      <div className="home-background">
+        <AnimatedBackground />
       </div>
-      <SocketStatus />
+      
+      {/* Main content */}
+      <div className="home-content">
+        <HeroSearch onShowForum={handleShowForum} />
+      </div>
+
+      {/* Forum Section - only rendered when visible */}
+      {isForumVisible && (
+        <div ref={forumRef} className="forum-section">
+          <div className="forum-content">
+            {isAuthenticated && <UserRecentMaps maxMaps={5} />}
+            {isInitialLoading ? (
+              <div className="loading-placeholder">
+                <div className="spinner" />
+                <p>Загрузка...</p>
+              </div>
+            ) : (
+              <PostList
+                posts={feedItems}
+                onPostUpdated={fetchInitialFeed}
+                showPostCreation={isAuthenticated}
+                hasMorePosts={hasMoreFeed}
+                onLoadMore={handleLoadMore}
+                isLoading={isFetchingMore}
+                autoLoadOnScroll={true}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        .home-page-container {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          width: 100vw;
+          height: 100vh;
+          overflow: hidden;
+          background: #000;
+        }
+
+        .home-page-container.forum-visible {
+          position: relative;
+          height: auto;
+          min-height: 100vh;
+          overflow: auto;
+        }
+
+        .home-background {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 0;
+        }
+
+        .home-content {
+          position: relative;
+          z-index: 1;
+          min-height: 100vh;
+          width: 100%;
+          padding-top: 60px;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .forum-section {
+          position: relative;
+          z-index: 1;
+          min-height: 100vh;
+          background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.98) 10%, #0a0a0a 20%);
+          padding: 60px 20px 40px;
+        }
+
+        .forum-content {
+          max-width: 900px;
+          margin: 0 auto;
+        }
+
+        .loading-placeholder {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 60px;
+          color: rgba(255, 255, 255, 0.6);
+          font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .spinner {
+          width: 32px;
+          height: 32px;
+          border: 2px solid rgba(255, 255, 255, 0.2);
+          border-top-color: white;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+          margin-bottom: 16px;
+        }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
