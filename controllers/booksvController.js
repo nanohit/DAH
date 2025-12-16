@@ -66,22 +66,73 @@ const formatDownloads = (downloads = []) =>
 
 const resolveProfile = async ({ userId, ipHash, lastIp, uaHash, createIfMissing = true }) => {
   let profile = null;
+  let mutated = false;
 
+  // Step 1: If logged in, try to find user's existing profile
   if (userId) {
     profile = await BookDownloadProfile.findOne({ user: userId });
   }
 
+  // Step 2: If no user profile found, look for an IP-based profile that can be claimed
   if (!profile && ipHash) {
-    const query = { ipHash };
-    if (userId) {
-      query.$or = [{ user: userId }, { user: { $exists: false } }, { user: null }];
-    }
-    profile = await BookDownloadProfile.findOne(query).sort({ updatedAt: -1 });
-    if (profile && userId && profile.user && profile.user.toString() !== userId) {
-      profile = null;
+    // Look for profile by IP that either belongs to this user, or is unclaimed
+    const ipProfile = await BookDownloadProfile.findOne({
+      ipHash,
+      $or: [{ user: null }, { user: { $exists: false } }],
+    }).sort({ updatedAt: -1 });
+
+    if (ipProfile) {
+      // Found an unclaimed IP-based profile
+      if (userId) {
+        // Link it to the logged-in user
+        ipProfile.user = userId;
+        profile = ipProfile;
+        mutated = true;
+      } else {
+        // Anonymous user - just use the IP profile
+        profile = ipProfile;
+      }
     }
   }
 
+  // Step 3: If user is logged in but only found by user ID, also check for IP profile to merge
+  if (profile && userId && ipHash && profile.user && profile.user.toString() === userId) {
+    // Check if there's also an unclaimed IP-based profile we should merge
+    const unclaimedIpProfile = await BookDownloadProfile.findOne({
+      ipHash,
+      $or: [{ user: null }, { user: { $exists: false } }],
+    }).sort({ updatedAt: -1 });
+
+    if (unclaimedIpProfile && unclaimedIpProfile._id.toString() !== profile._id.toString()) {
+      // Merge downloads from IP profile into user profile
+      const existingKeys = new Set(
+        profile.downloads.map((d) => `${d.titleNormalized}|${d.authorNormalized}`)
+      );
+      const newDownloads = unclaimedIpProfile.downloads.filter(
+        (d) => !existingKeys.has(`${d.titleNormalized}|${d.authorNormalized}`)
+      );
+
+      if (newDownloads.length > 0) {
+        // Add new downloads and sort by date
+        profile.downloads = [...profile.downloads, ...newDownloads]
+          .sort((a, b) => new Date(b.downloadedAt).getTime() - new Date(a.downloadedAt).getTime())
+          .slice(0, MAX_TRACKED_BOOKS);
+        profile.downloadsFingerprint = computeDownloadsFingerprint(profile.downloads);
+        // Invalidate recommendation cache since downloads changed
+        if (profile.recommendationCache) {
+          profile.recommendationCache.downloadsFingerprint = '';
+        }
+        mutated = true;
+        console.log(`[BookSv] Merged ${newDownloads.length} downloads from IP profile to user profile`);
+      }
+
+      // Delete the unclaimed IP profile after merging
+      await BookDownloadProfile.deleteOne({ _id: unclaimedIpProfile._id });
+      console.log(`[BookSv] Deleted merged IP profile: ${unclaimedIpProfile._id}`);
+    }
+  }
+
+  // Step 4: Create new profile if none found
   if (!profile) {
     if (!createIfMissing) {
       return { profile: null, mutated: false };
@@ -95,8 +146,7 @@ const resolveProfile = async ({ userId, ipHash, lastIp, uaHash, createIfMissing 
     return { profile, mutated: true };
   }
 
-  let mutated = false;
-
+  // Step 5: Update metadata if changed
   if (userId && (!profile.user || profile.user.toString() !== userId)) {
     profile.user = userId;
     mutated = true;

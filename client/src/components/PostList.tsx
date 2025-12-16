@@ -90,6 +90,9 @@ export default function PostList({
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editHeadline, setEditHeadline] = useState('');
   const [editText, setEditText] = useState('');
+  // Nano admin extended editing fields
+  const [editDate, setEditDate] = useState('');
+  const [editAuthorUsername, setEditAuthorUsername] = useState('');
   const [headline, setHeadline] = useState('');
   const [text, setText] = useState('');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
@@ -266,12 +269,22 @@ export default function PostList({
     setEditingPostId(post._id);
     setEditHeadline(post.headline);
     setEditText(post.text);
+    // Nano admin extended fields
+    if (user?.username === 'nano') {
+      // Format date for datetime-local input
+      const date = new Date(post.createdAt);
+      const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+      setEditDate(localDate.toISOString().slice(0, 16));
+      setEditAuthorUsername(post.author.username);
+    }
   };
 
   const handleCancelEdit = () => {
     setEditingPostId(null);
     setEditHeadline('');
     setEditText('');
+    setEditDate('');
+    setEditAuthorUsername('');
   };
 
   const handleUpdate = async (postId: string) => {
@@ -279,6 +292,8 @@ export default function PostList({
     console.log("Update called with values:", {
       editHeadline,
       editText,
+      editDate,
+      editAuthorUsername,
       postId
     });
     
@@ -294,42 +309,77 @@ export default function PostList({
     // Store the original author badge in case we need it later
     const originalPost = posts.find(post => post._id === postId);
     const originalAuthorBadge = originalPost?.author?.badge;
+    const isNanoAdmin = user?.username === 'nano';
 
     try {
+      // Build update payload
+      const updatePayload: Record<string, any> = {
+        headline: editHeadline ? editHeadline.trim() : undefined,
+        text: editText ? editText.trim() : undefined
+      };
+
+      // Add nano admin fields if applicable
+      if (isNanoAdmin) {
+        if (editDate) {
+          updatePayload.createdAt = new Date(editDate).toISOString();
+        }
+        if (editAuthorUsername && editAuthorUsername !== originalPost?.author.username) {
+          updatePayload.authorUsername = editAuthorUsername;
+        }
+      }
+
       // Update UI optimistically
       setPosts(prevPosts => 
         prevPosts.map(post => {
           if (post._id === postId) {
-            return {
+            const updatedPost = {
               ...post,
               headline: editHeadline ? editHeadline.trim() : post.headline,
               text: editText ? editText.trim() : post.text,
               updatedAt: new Date().toISOString()
             };
+            // Update date if nano admin changed it
+            if (isNanoAdmin && editDate) {
+              updatedPost.createdAt = new Date(editDate).toISOString();
+            }
+            return updatedPost;
           }
           return post;
         })
       );
 
       // Make the actual API call
-      const response = await api.patch(`/api/posts/${postId}`, {
-        headline: editHeadline ? editHeadline.trim() : undefined,
-        text: editText ? editText.trim() : undefined
-      });
+      const response = await api.patch(`/api/posts/${postId}`, updatePayload);
 
-      // No need to explicitly update the state again since we've done it optimistically
-      // and socket.io will handle any discrepancies
+      // Update with server response to get correct author if changed
+      if (response.data) {
+        setPosts(prevPosts => 
+          prevPosts.map(post => {
+            if (post._id === postId) {
+              return {
+                ...post,
+                ...response.data,
+                author: response.data.author || post.author
+              };
+            }
+            return post;
+          })
+        );
+      }
 
       // Reset form state
       setEditingPostId(null);
       setEditHeadline('');
       setEditText('');
+      setEditDate('');
+      setEditAuthorUsername('');
 
       // Tell parent component a post was updated
       onPostUpdated();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating post:', error);
-      alert('Failed to update post. Please try again.');
+      const errorMessage = error.response?.data?.error || 'Failed to update post. Please try again.';
+      alert(errorMessage);
       
       // Get the post again to ensure we have the latest data
       try {
@@ -1287,7 +1337,42 @@ export default function PostList({
                     </span>
                     <span className="text-gray-500 text-sm" dangerouslySetInnerHTML={{ __html: getPostTimestamp(post) }}></span>
                   </div>
+                  <button
+                    onClick={handleCancelEdit}
+                    className="text-gray-500 hover:text-gray-700 text-sm"
+                  >
+                    Cancel
+                  </button>
                 </div>
+
+                {/* Nano admin extended editing fields */}
+                {user?.username === 'nano' && (
+                  <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="text-xs text-amber-600 mb-2 font-medium">Admin Edit Options</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Author Username</label>
+                        <input
+                          type="text"
+                          value={editAuthorUsername}
+                          onChange={(e) => setEditAuthorUsername(e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:border-amber-400 text-sm text-black"
+                          placeholder="Username"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Post Date</label>
+                        <input
+                          type="datetime-local"
+                          value={editDate}
+                          onChange={(e) => setEditDate(e.target.value)}
+                          className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:border-amber-400 text-sm text-black"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
                   <div className="flex items-stretch">
                     <input

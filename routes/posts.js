@@ -1,10 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const Post = require('../models/Post');
+const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const multer = require('multer');
 const { uploadImage } = require('../utils/imageUpload');
 const jwt = require('jsonwebtoken');
+
+// Check if user is nano admin (has special editing privileges)
+const isNanoAdmin = (user) => user && user.username === 'nano';
 
 // Configure multer for memory storage
 const upload = multer({
@@ -223,9 +227,18 @@ router.patch('/:id', protect, upload.single('image'), async (req, res) => {
             return res.status(403).json({ error: 'Not authorized' });
         }
 
-        // Only allow updating headline, text, or image
+        // Determine allowed fields based on user privileges
+        const allowedFields = ['headline', 'text'];
+        
+        // Nano admin can also edit date and author
+        if (isNanoAdmin(req.user)) {
+            allowedFields.push('createdAt', 'authorUsername');
+            console.log('Nano admin detected - extended editing privileges enabled');
+        }
+
+        // Only allow updating specified fields
         const updates = Object.keys(req.body).filter(
-            update => ['headline', 'text'].includes(update)
+            update => allowedFields.includes(update)
         );
 
         if (updates.length === 0 && !req.file) {
@@ -233,7 +246,31 @@ router.patch('/:id', protect, upload.single('image'), async (req, res) => {
             return res.status(400).json({ error: 'No valid updates provided' });
         }
 
-        updates.forEach((update) => post[update] = req.body[update]);
+        // Handle special nano admin fields
+        for (const update of updates) {
+            if (update === 'authorUsername' && isNanoAdmin(req.user)) {
+                // Find user by username and update author
+                const newAuthor = await User.findOne({ username: req.body.authorUsername });
+                if (newAuthor) {
+                    post.author = newAuthor._id;
+                    console.log(`Nano admin changed author to: ${req.body.authorUsername}`);
+                } else {
+                    console.log(`User not found: ${req.body.authorUsername}`);
+                    return res.status(400).json({ error: `User '${req.body.authorUsername}' not found` });
+                }
+            } else if (update === 'createdAt' && isNanoAdmin(req.user)) {
+                // Update the post date
+                const newDate = new Date(req.body.createdAt);
+                if (!isNaN(newDate.getTime())) {
+                    post.createdAt = newDate;
+                    console.log(`Nano admin changed date to: ${newDate.toISOString()}`);
+                } else {
+                    return res.status(400).json({ error: 'Invalid date format' });
+                }
+            } else if (['headline', 'text'].includes(update)) {
+                post[update] = req.body[update];
+            }
+        }
         console.log('Updated post data:', post);
 
         await post.save();

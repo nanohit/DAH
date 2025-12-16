@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import api from '@/services/api';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
@@ -89,27 +89,19 @@ type PersonalRecommendationItem = {
 };
 
 type BookRailProps = {
-  eyebrow?: string;
   title: string;
-  description?: string;
-  actionSlot?: ReactNode;
   items: BookRailItem[];
   loading?: boolean;
-  emptyMessage?: string;
-  onItemSearch: (item: BookRailItem) => void;
+  onItemClick: (item: BookRailItem) => void;
 };
 
 const MAX_RAIL_ITEMS = 24;
 
 const BookRail = ({
-  eyebrow,
   title,
-  description,
-  actionSlot,
   items,
   loading,
-  emptyMessage,
-  onItemSearch,
+  onItemClick,
 }: BookRailProps) => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [showLeft, setShowLeft] = useState(false);
@@ -131,11 +123,6 @@ const BookRail = ({
       return;
     }
     const maxScroll = node.scrollWidth - node.clientWidth;
-    if (maxScroll <= 2) {
-      setShowLeft(false);
-      setShowRight(false);
-      return;
-    }
     setShowLeft(node.scrollLeft > 2);
     setShowRight(node.scrollLeft < maxScroll - 2);
   };
@@ -151,110 +138,67 @@ const BookRail = ({
       node.removeEventListener('scroll', handler);
       window.removeEventListener('resize', handler);
     };
-  }, []);
+  }, [items]);
 
-  const showEmptyState = !loading && items.length === 0;
-  const skeletons = Array.from({ length: 4 }, (_, index) => (
-    <div
-      key={`rail-skeleton-${index}`}
-      className="w-full min-w-0 h-[110px] rounded-xl border border-gray-100 bg-gray-50 animate-pulse"
-    />
-  ));
+  if (loading) {
+    return (
+      <div className="book-rail">
+        <p className="book-rail-title">{title}</p>
+        <div className="book-rail-scroll">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="book-rail-item skeleton" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (items.length === 0) return null;
 
   return (
-    <div className="w-full">
-      {eyebrow && (
-        <p className="text-xs uppercase tracking-[0.2em] text-gray-500 font-semibold font-geometria mb-2">{eyebrow}</p>
-      )}
-      <div className="flex flex-col gap-2 mb-2">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <h3 className="text-base font-semibold text-black font-geometria">{title}</h3>
-            {actionSlot ? <div className="flex-shrink-0">{actionSlot}</div> : null}
-          </div>
-        </div>
-        {description && <p className="text-sm text-gray-500 font-geometria">{description}</p>}
-      </div>
-      {showEmptyState ? (
-        <div className="p-4 border border-dashed border-gray-200 rounded-xl text-sm text-gray-500 font-geometria bg-gray-50/50">
-          {emptyMessage || 'Пока нет данных.'}
-        </div>
-      ) : (
-        <div className="relative">
-          <div
-            ref={scrollRef}
-            className="rail-scroll grid grid-flow-col auto-cols-[minmax(170px,1fr)] sm:auto-cols-[minmax(200px,1fr)] md:auto-cols-[minmax(230px,1fr)] lg:auto-cols-[minmax(260px,1fr)] gap-3 overflow-x-auto overflow-y-hidden pb-3 pr-12 sm:pr-14 snap-x snap-mandatory"
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+    <div className="book-rail">
+      <p className="book-rail-title">{title}</p>
+      <div className="book-rail-container">
+        {showLeft && (
+          <button
+            type="button"
+            onClick={() => {
+              scroll('left');
+              setTimeout(updateArrows, 300);
+            }}
+            aria-label="Scroll left"
+            className="book-rail-arrow book-rail-arrow-left"
           >
-            {loading
-              ? skeletons.map((skeleton, index) => (
-                  <div key={`rail-skeleton-${index}`} className="w-full min-w-0 snap-start">
-                    {skeleton}
-                  </div>
-                ))
-              : items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="w-full min-w-0 min-h-[110px] rounded-xl border border-gray-200 bg-white shadow-sm p-3 flex flex-col justify-between snap-start"
-                  >
-                    <div>
-                      <h4
-                        className="text-sm font-semibold text-gray-900 font-geometria leading-snug"
-                        style={{
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden',
-                        }}
-                      >
-                        {item.title}
-                      </h4>
-                      {item.author && (
-                        <p className="text-xs text-gray-600 font-geometria mt-1 truncate">{item.author}</p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onItemSearch(item)}
-                      className="mt-3 inline-flex items-center justify-center px-3 py-1.5 text-xs font-semibold text-black border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors font-geometria"
-                    >
-                      <span>Найти</span>
-                    </button>
-                  </div>
-                ))}
-          </div>
-          {!showEmptyState && items.length > 0 && (
-            <>
-              {showLeft && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    scroll('left');
-                    setTimeout(updateArrows, 300);
-                  }}
-                  aria-label="Прокрутить влево"
-                  className="inline-flex absolute left-[-10px] top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors shadow-sm"
-                >
-                  ‹
-                </button>
-              )}
-              {showRight && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    scroll('right');
-                    setTimeout(updateArrows, 300);
-                  }}
-                  aria-label="Прокрутить вправо"
-                  className="inline-flex absolute right-[-10px] top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors shadow-sm"
-                >
-                  ›
-                </button>
-              )}
-            </>
-          )}
+            ‹
+          </button>
+        )}
+        <div ref={scrollRef} className="book-rail-scroll">
+          {items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onItemClick(item)}
+              className="book-rail-item"
+            >
+              <h4 className="book-rail-item-title">{item.title}</h4>
+              {item.author && <p className="book-rail-item-author">{item.author}</p>}
+            </button>
+          ))}
         </div>
-      )}
+        {showRight && (
+          <button
+            type="button"
+            onClick={() => {
+              scroll('right');
+              setTimeout(updateArrows, 300);
+            }}
+            aria-label="Scroll right"
+            className="book-rail-arrow book-rail-arrow-right"
+          >
+            ›
+          </button>
+        )}
+      </div>
     </div>
   );
 };
@@ -263,14 +207,25 @@ const SIMILAR_PREFIX = 'похоже на: ';
 const SIMILAR_PREFIX_LOWER = SIMILAR_PREFIX.toLowerCase();
 const RU_BETA_SUFFIX = ' (проверьте корректность названия на русском, функция в бете!)';
 
-export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) => {
-  const { isAuthenticated } = useAuth();
+type UserMapData = {
+  _id: string;
+  name: string;
+};
+
+interface HeroSearchProps {
+  onShowForum?: () => void;
+}
+
+export const HeroSearch = ({ onShowForum }: HeroSearchProps) => {
+  const router = useRouter();
+  const { isAuthenticated, user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<BookResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [userRecentMap, setUserRecentMap] = useState<UserMapData | null>(null);
+  const [popularBooks, setPopularBooks] = useState<BookRailItem[]>([]);
   const [error, setError] = useState<SearchError | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
-  // To avoid hydration mismatch, use a deterministic initial placeholder, then randomize on mount
   const [currentPlaceholder, setCurrentPlaceholder] = useState(PLACEHOLDERS[0]);
   const [nextPlaceholder, setNextPlaceholder] = useState(PLACEHOLDERS[1] ?? PLACEHOLDERS[0]);
   const [isFlipping, setIsFlipping] = useState(false);
@@ -297,13 +252,14 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
   const [personalRecommendations, setPersonalRecommendations] = useState<PersonalRecommendationItem[]>([]);
   const [isPersonalFeedLoading, setIsPersonalFeedLoading] = useState(false);
   const [personalFeedError, setPersonalFeedError] = useState<string | null>(null);
+  const [isToolHovered, setIsToolHovered] = useState(false);
+  const [isBoardHovered, setIsBoardHovered] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const similarRequestIdRef = useRef(0);
   const historyIndexRef = useRef(-1);
   const personalFeedRequestRef = useRef(0);
   const personalFeedLoadingRequestRef = useRef<number | null>(null);
-  const [lastTlMap, setLastTlMap] = useState<{ id: string; name: string } | null>(null);
 
   const stripSimilarPrefix = (value: string) => {
     if (value.toLowerCase().startsWith(SIMILAR_PREFIX_LOWER)) {
@@ -369,12 +325,7 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
     []
   );
 
-  const handleRecommendationsRefresh = useCallback(async () => {
-    await fetchPersonalFeed({ force: true });
-  }, [fetchPersonalFeed]);
-
   const refreshRecommendationsFromDownloads = useCallback(async () => {
-    // Use trackedDownloads to get up to 5 latest titles, query booksv similar, take results
     const latest = trackedDownloads.slice(0, 5);
     if (!latest.length) return;
     const allRecs: PersonalRecommendationItem[] = [];
@@ -385,12 +336,11 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
         });
         const payload = resp.data?.data || resp.data;
         const recs: PersonalRecommendationItem[] = payload?.recommendations || [];
-        allRecs.push(...recs.slice(0, 6)); // keep it short per item
+        allRecs.push(...recs.slice(0, 6));
       } catch (err) {
         // ignore individual failures
       }
     }
-    // Deduplicate by title+author
     const seen = new Set<string>();
     const deduped: PersonalRecommendationItem[] = [];
     for (const r of allRecs) {
@@ -421,13 +371,11 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
         if (downloadsPayload) {
           setTrackedDownloads(downloadsPayload);
         }
-        // Refresh recs based on latest downloads (force server refresh + local fallback)
         await fetchPersonalFeed({ force: true });
         refreshRecommendationsFromDownloads().catch(() => {});
       } catch (registrationError) {
         console.warn('Failed to register download', registrationError);
       } finally {
-        // Ensure UI updated even if forced refresh above failed
         await fetchPersonalFeed({ force: true, silent: true });
       }
     },
@@ -492,61 +440,57 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
     api.get('/api/books/zlibrary/warmup').catch(() => {});
   }, []);
 
+  // Fetch user's most recent TLDRAW map
+  useEffect(() => {
+    const fetchUserMap = async () => {
+      if (!isAuthenticated || !user?._id) {
+        setUserRecentMap(null);
+        return;
+      }
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        if (!token) return;
+        // Fetch TLDRAW maps (the new canvas-based maps), not legacy maps
+        const response = await api.get('/api/tl-maps', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (Array.isArray(response.data) && response.data.length > 0) {
+          // TL maps endpoint already filters by user, just sort by date
+          const sortedMaps = [...response.data].sort((a: any, b: any) => {
+            const dateA = new Date(a.lastSaved || a.updatedAt || a.createdAt).getTime();
+            const dateB = new Date(b.lastSaved || b.updatedAt || b.createdAt).getTime();
+            return dateB - dateA;
+          });
+          setUserRecentMap({
+            _id: sortedMaps[0]._id,
+            name: sortedMaps[0].name || 'Безымянная доска'
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to fetch user TL maps:', err);
+      }
+    };
+    fetchUserMap();
+  }, [isAuthenticated, user?._id]);
+
+  // Fetch popular books for new users
+  useEffect(() => {
+    const fetchPopularBooks = async () => {
+      try {
+        const response = await api.get('/api/users/stats/popular-books');
+        if (response.data?.books && Array.isArray(response.data.books)) {
+          setPopularBooks(response.data.books);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch popular books:', err);
+      }
+    };
+    fetchPopularBooks();
+  }, []);
+
   useEffect(() => {
     fetchPersonalFeed();
   }, [fetchPersonalFeed]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setLastTlMap(null);
-      return;
-    }
-
-    const token = isBrowser ? localStorage.getItem('token') : null;
-    if (!token) {
-      setLastTlMap(null);
-      return;
-    }
-
-    const controller = new AbortController();
-
-    const loadLatestTlMap = async () => {
-      try {
-        const res = await fetch('/api/tl-maps', {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: controller.signal,
-        });
-        if (!res.ok) {
-          return;
-        }
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const latest = data[0];
-          setLastTlMap({
-            id: latest._id,
-            name: latest.name || 'Untitled Map',
-          });
-        } else {
-          setLastTlMap(null);
-        }
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        console.warn('Failed to load latest TL map', err);
-      }
-    };
-
-    loadLatestTlMap();
-
-    return () => controller.abort();
-  }, [isAuthenticated]);
-
-  const scrollToForum = () => {
-    onForumRequest?.();
-    const forumSection = document.getElementById('alphy-forum-feed');
-    if (forumSection) {
-      forumSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  };
 
   const insertSimilarPrefix = () => {
     const prefix = SIMILAR_PREFIX;
@@ -774,7 +718,7 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
         flibustaResults,
         mergeResults(
           motwResults,
-          mergeResults(zlibraryResults, liber3Results) // p2p last
+          mergeResults(zlibraryResults, liber3Results)
         )
       );
       setSearchResults(combinedResults);
@@ -837,7 +781,6 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
       if (format.source === 'liber3' && format.downloadPath) {
         const mirrors = format.mirrors && format.mirrors.length ? format.mirrors : [format.downloadPath];
 
-        // Try client-side fetch first (uses end-user network, bypasses server IP blocking)
         for (const url of mirrors) {
           try {
             const controller = new AbortController();
@@ -861,7 +804,6 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
           }
         }
 
-        // Fallback to server proxy (may still fail if gateways block server IP)
         if (format.cid) {
           window.location.href = `/api/books/liber3/download/${format.cid}`;
           return;
@@ -1029,7 +971,6 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
           }
         }
       } else {
-        // English: prefer MOTW first, then p2p (Liber3). Skip Flibusta.
         const motw = await fetchMotwResults(baseTitle);
         const p2p = await fetchLiber3Results(baseTitle);
         results = [...motw, ...p2p];
@@ -1128,13 +1069,12 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
     const timeout = setTimeout(() => {
       setCurrentPlaceholder(nextPlaceholder);
       setIsFlipping(false);
-    }, 600); // match CSS animation duration
+    }, 600);
 
     return () => clearTimeout(timeout);
   }, [isFlipping, nextPlaceholder]);
 
   useEffect(() => {
-    // Randomize placeholders after mount to avoid SSR/CSR mismatch
     const idx = Math.floor(Math.random() * PLACEHOLDERS.length);
     const nextIdx = (idx + 1) % PLACEHOLDERS.length;
     setCurrentPlaceholder(PLACEHOLDERS[idx]);
@@ -1153,6 +1093,20 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [isResultsVisible]);
+
+  const handleToolClick = () => {
+    router.push('/tl-maps');
+  };
+
+  const handleBoardClick = () => {
+    if (userRecentMap) {
+      // Navigate to TLDRAW canvas editor with the map ID
+      router.push(`/map-canvas?id=${userRecentMap._id}`);
+    } else {
+      // Create new TLDRAW canvas
+      router.push('/map-canvas');
+    }
+  };
 
   const activeSimilarRecommendations = similarSnapshot?.recommendations || [];
   const isAutoSearchBusy = Boolean(autoSearchLoading);
@@ -1189,565 +1143,794 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
     title: item.title,
     author: item.author,
   }));
-  const hasRailsContent = downloadRailItems.length > 0 || recommendationRailItems.length > 0;
+  const hasDownloads = downloadRailItems.length > 0;
+  
+  // For new users without downloads, show popular books instead of recommendations
+  const displayRecommendations = hasDownloads ? recommendationRailItems : popularBooks;
+  const recommendationTitle = hasDownloads ? 'Рекомендовано:' : 'Популярно на alphy:';
 
   return (
     <>
-      <section className="relative w-full overflow-hidden">
-        <div className="relative flex flex-col">
-          <div className="flex-1 w-full">
-            <div className="max-w-5xl mx-auto mb-10 mt-3 px-3 sm:px-4 relative">
-              {/* Title Section - compact, image removed on mobile */}
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4 mb-4">
-                <div className="text-left w-full">
-                  <h1 className="text-[20px] sm:text-[24px] md:text-[32px] font-medium text-black leading-tight font-geometria">
-                    Бесплатный доступ к любой литературе.
-                    <br />
-                    Мощный инструмент работы с ней.
-                  </h1>
-                </div>
-              </div>
+      <section className="hero-section">
+        <div className="hero-content">
+          {/* Title Section */}
+          <div className="title-section">
+            <h1 className="hero-title">
+              Бесплатный доступ к любым книгам
+            </h1>
+            <h2 className="hero-subtitle">
+              <button
+                type="button"
+                className={`tool-button ${isToolHovered ? 'hovered' : ''}`}
+                onMouseEnter={() => setIsToolHovered(true)}
+                onMouseLeave={() => setIsToolHovered(false)}
+                onClick={handleToolClick}
+              >
+                <span className="tool-text">Мощный инструмент</span>
+                <span className="tool-fill" />
+              </button>
+              {' '}работы с ними
+            </h2>
+          </div>
 
-              <div className="flex flex-row flex-nowrap items-stretch gap-2 max-w-4xl w-full">
-                {/* Input Group */}
-                <div className="flex items-start gap-2 w-full min-w-0">
-                  {showHistoryControls && (
-                    <div className="flex flex-col gap-1 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => navigateHistory(-1)}
-                        disabled={!canNavigateBack}
-                        aria-label="Вернуться к предыдущему списку"
-                        className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-black disabled:opacity-50 disabled:hover:text-gray-500 transition-colors"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <polyline points="15 18 9 12 15 6"></polyline>
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => navigateHistory(1)}
-                        disabled={!canNavigateForward}
-                        aria-label="Перейти к следующему списку"
-                        className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-black disabled:opacity-50 disabled:hover:text-gray-500 transition-colors"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <polyline points="9 18 15 12 9 6"></polyline>
-                        </svg>
-                      </button>
-                    </div>
-                  )}
-                  <div className="flex-1 w-full relative group" ref={searchContainerRef}>
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      value={searchTerm}
-                      onChange={(e) => {
-                        const nextValue = e.target.value;
-                        if (resultsView === 'similar' || history.length > 0) {
-                          clearSimilarContext();
-                        }
-                        setSearchTerm(nextValue);
-                        setShouldShowRuBetaHint(false);
-                        if (nextValue === '') {
-                          setSearchResults([]);
-                          setError(null);
-                          setHasSearched(false);
-                          setIsResultsVisible(false);
-                          resetHistory();
-                        }
-                      }}
-                      onKeyDown={handleInputKeyDown}
-                      onFocus={() => {
-                        setIsInputFocused(true);
-                        setShouldShowRuBetaHint(false);
-                        setIsFlipping(false);
-                        if (hasSearched) {
-                          setIsResultsVisible(true);
-                        }
-                      }}
-                      onBlur={() => setIsInputFocused(false)}
-                      placeholder=""
-                      aria-label="Search books"
-                      style={{
-                        color: 'transparent',
-                        caretColor: '#000',
-                      }}
-                      className="w-full h-12 px-4 bg-white text-black border border-gray-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-100 focus:border-gray-300 transition-all duration-200 text-base font-geometria"
-                    />
-
-                    {!searchTerm && (
-                      <div className="placeholder-wrapper">
-                        <span
-                          className={`placeholder-text ${
-                            isFlipping ? 'flip-out' : 'flip-static'
-                          }`}
-                        >
-                          {currentPlaceholder}
-                        </span>
-                        {isFlipping && (
-                          <span className="placeholder-text flip-in">
-                            {nextPlaceholder}
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    {searchTerm && (
-                      <div
-                        aria-hidden="true"
-                        className="pointer-events-none absolute inset-0 flex items-center px-4 font-geometria text-base whitespace-pre"
-                      >
-                        {shouldShowSimilarPrefixOverlay ? (
-                          <>
-                            <span className="text-gray-400 select-none">{overlayPrefixText}</span>
-                            <span className="text-black select-none">{overlaySuffixText}</span>
-                          </>
-                        ) : (
-                          <span className="text-black select-none">{searchTerm}</span>
-                        )}
-                        {shouldShowRuBetaHint && !isInputFocused && (
-                          <span className="text-gray-400 select-none">{RU_BETA_SUFFIX}</span>
-                        )}
-                      </div>
-                    )}
-                    
-                    {/* Results Dropdown */}
-                    {shouldRenderDropdown && (
-                      <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-xl overflow-hidden z-50 max-h-[65vh] overflow-y-auto border border-gray-200">
-                        {resultsView === 'search' && error && (
-                          <div className="p-4 text-red-600 bg-red-50 border-b border-red-100">
-                            {error.message}
-                          </div>
-                        )}
-                        {resultsView === 'similar' && similarError && (
-                          <div className="p-4 text-red-600 bg-red-50 border-b border-red-100">
-                            {similarError}
-                          </div>
-                        )}
-
-                        {resultsView === 'similar' && (
-                          <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
-                            <p className="text-sm text-gray-700 font-geometria">
-                              Похожие книги на{' '}
-                              <span className="font-semibold">
-                                {similarSnapshot?.seedTitle || stripSimilarPrefix(searchTerm)}
-                              </span>
-                              {similarSnapshot?.seedAuthor && (
-                                <span className="text-gray-500">{' '}by {similarSnapshot.seedAuthor}</span>
-                              )}
-                            </p>
-                          </div>
-                        )}
-
-                        {resultsView === 'search' &&
-                          searchResults.map((book) => {
-                            const badgeLabel =
-                              book.source === 'zlibrary'
-                                ? 'zlb'
-                                : book.source === 'flibusta'
-                                  ? 'flbst'
-                                  : book.source === 'liber3'
-                                    ? 'p2p'
-                                    : book.source === 'motw'
-                                      ? 'motw'
-                                    : book.source || '';
-                            const canShowSimilar =
-                              book.source === 'zlibrary' ||
-                              book.source === 'flibusta' ||
-                              book.source === 'liber3' ||
-                              book.source === 'motw';
-                            const similarButtonId = `${book.source || 'book'}-${book.id}`;
-                            const titleLang = book.source === 'flibusta' ? 'ru' : 'en';
-
-                            return (
-                              <div key={book.id} className="p-3.5 border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                                <div className="flex flex-col sm:flex-row justify-between items-start gap-3.5">
-                                  <div className="space-y-1">
-                                    <h3 className="text-base font-medium text-gray-900 font-geometria">{book.title}</h3>
-                                    <p className="text-sm text-gray-600 font-geometria">{book.author}</p>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-1.5 justify-end shrink-0">
-                                    {badgeLabel && (
-                                      <span className="inline-flex items-center px-2 py-0.5 text-[11px] uppercase text-gray-600 border border-gray-200 rounded-full font-geometria">
-                                        {badgeLabel}
-                                      </span>
-                                    )}
-                                    {book.formats
-                                      .filter((format) => format.format !== 'mobi')
-                                      .map((format) => (
-                                        <button
-                                          key={format.id ?? format.format}
-                                          onClick={() => handleDownload(book, format)}
-                                          className="px-2.5 py-0.5 text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 rounded transition-colors font-semibold uppercase font-geometria flex items-center gap-1.5"
-                                        >
-                                          <span>{format.format}</span>
-                                          {format.size && (
-                                            <span className="text-[10px] text-gray-500 uppercase">
-                                              {format.size}
-                                            </span>
-                                          )}
-                                          {format.source === 'zlibrary' && (
-                                            <span className="text-[9px] font-semibold text-purple-600">Z</span>
-                                          )}
-                                        </button>
-                                      ))}
-                                    {book.source === 'flibusta' && (
-                                      <a
-                                        href={`https://flibusta.is/b/${book.id}/read`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="px-2.5 py-0.5 text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 rounded transition-colors font-semibold uppercase font-geometria"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        READ
-                                      </a>
-                                    )}
-                                    {canShowSimilar && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleSimilarClick({
-                                            id: similarButtonId,
-                                            title: book.title,
-                                            author: book.author,
-                                            titleLang,
-                                          })
-                                        }
-                                        disabled={isSimilarLoading && similarLoadingId === similarButtonId}
-                                        className="px-3 py-0.5 text-xs bg-white border border-gray-200 text-gray-700 rounded transition-colors font-semibold uppercase font-geometria hover:bg-gray-50 disabled:opacity-60 flex items-center gap-1"
-                                      >
-                                        {isSimilarLoading && similarLoadingId === similarButtonId ? (
-                                          <span className="inline-flex h-3.5 w-3.5 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
-                                        ) : null}
-                                        <span>Похожее</span>
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                        {resultsView === 'search' && !isLoading && hasSearched && searchResults.length === 0 && !error && (
-                          <div className="p-8 text-center text-gray-500 font-geometria">
-                            Ничего не найдено. Попробуйте другой запрос.
-                          </div>
-                        )}
-
-                        {resultsView === 'similar' && isSimilarLoading && !similarSnapshot && (
-                          <div className="p-8 text-center text-gray-500 font-geometria text-sm">
-                            Загружаем похожие книги...
-                          </div>
-                        )}
-
-                        {resultsView === 'similar' &&
-                          !isSimilarLoading &&
-                          !similarError &&
-                          activeSimilarRecommendations.map((rec) => {
-                            const similarButtonId =
-                              rec.workId != null
-                                ? `booksv-${rec.workId}`
-                                : `${rec.id ?? rec.title}`;
-                            const recommendationKey = String(rec.id ?? rec.title);
-                            const ruLoading = autoSearchLoading?.key === `${recommendationKey}-ru`;
-                            const engLoading = autoSearchLoading?.key === `${recommendationKey}-en`;
-                            return (
-                              <div
-                                key={rec.id ?? rec.title}
-                                className="p-3.5 border-b border-gray-100 hover:bg-gray-50 transition-colors"
-                              >
-                                <div className="flex flex-col sm:flex-row justify-between items-start gap-3.5">
-                                  <div className="space-y-1">
-                                    {rec.goodreadsUrl ? (
-                                      <a
-                                        href={rec.goodreadsUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-base font-medium text-gray-900 font-geometria hover:underline"
-                                      >
-                                        {rec.title}
-                                      </a>
-                                    ) : (
-                                      <h3 className="text-base font-medium text-gray-900 font-geometria">{rec.title}</h3>
-                                    )}
-                                    <p className="text-sm text-gray-600 font-geometria">{rec.author}</p>
-                                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex flex-col items-center gap-1">
-                      <span className="text-[10px] uppercase text-gray-400 tracking-[0.08em] font-semibold">
-                        скачать
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleRecommendationAutoSearch({
-                              recommendation: rec,
-                              language: 'ru',
-                            })
-                          }
-                          disabled={isAutoSearchBusy || isSimilarLoading}
-                          className="px-2.5 py-0.5 text-xs bg-white border border-gray-200 text-gray-700 rounded font-semibold uppercase font-geometria hover:bg-gray-50 disabled:opacity-60 flex items-center justify-center min-w-[44px]"
-                        >
-                          {ruLoading ? (
-                            <span className="inline-flex h-3.5 w-3.5 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
-                          ) : (
-                            'Ru'
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleRecommendationAutoSearch({
-                              recommendation: rec,
-                              language: 'en',
-                            })
-                          }
-                          disabled={isAutoSearchBusy || isSimilarLoading}
-                          className="px-2.5 py-0.5 text-xs bg-white border border-gray-200 text-gray-700 rounded font-semibold uppercase font-geometria hover:bg-gray-50 disabled:opacity-60 flex items-center justify-center min-w-[44px]"
-                        >
-                          {engLoading ? (
-                            <span className="inline-flex h-3.5 w-3.5 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
-                          ) : (
-                            'Eng'
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleSimilarClick({
-                          id: similarButtonId,
-                          title: rec.title,
-                          author: rec.author,
-                          workId: rec.workId,
-                          titleLang: 'en',
-                        })
-                      }
-                      disabled={isSimilarLoading && similarLoadingId === similarButtonId}
-                      className="px-3 py-0.5 text-xs bg-white border border-gray-200 text-gray-700 rounded transition-colors font-semibold uppercase font-geometria hover:bg-gray-50 disabled:opacity-60 flex items-center gap-1"
-                    >
-                      {isSimilarLoading && similarLoadingId === similarButtonId ? (
-                        <span className="inline-flex h-3.5 w-3.5 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
-                      ) : null}
-                      <span>Похожее</span>
-                    </button>
-                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                        {resultsView === 'similar' &&
-                          !isSimilarLoading &&
-                          !similarError &&
-                          activeSimilarRecommendations.length === 0 && (
-                            <div className="p-8 text-center text-gray-500 font-geometria">
-                              {searchTerm.trim() === SIMILAR_PREFIX.trim()
-                                ? 'Введите название книги и получите список похожих на неё книг'
-                                : 'Нет рекомендаций для этой книги.'}
-                            </div>
-                          )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Submit Button - Separate button */}
-                <button
-                  onClick={() => {
-                    handleSearch();
-                    setIsResultsVisible(true);
-                  }}
-                  disabled={isLoading}
-                  className="w-12 h-12 flex-shrink-0 flex items-center justify-center bg-white text-gray-500 border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 hover:text-black transition-colors disabled:opacity-50 text-sm"
-                >
-                  {isLoading ? (
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
-                  ) : (
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="9 18 15 12 9 6"></polyline>
-                    </svg>
-                  )}
-                </button>
-              </div>
-
-              {/* Attached similar button */}
-              <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+          {/* Search Bar Container with "найти похожее" positioned half-on */}
+          <div className="search-wrapper">
+            <button
+              type="button"
+              onClick={insertSimilarPrefix}
+              className="similar-button"
+            >
+              или найти похожее
+            </button>
+            
+            {/* Search Bar */}
+            <div className="search-row">
+            {showHistoryControls && (
+              <div className="history-controls">
                 <button
                   type="button"
-                  onClick={insertSimilarPrefix}
-                  className="inline-flex items-center px-3 py-2 text-xs sm:text-sm bg-white border border-gray-200 rounded-lg text-gray-700 hover:text-black hover:bg-gray-50 transition-colors font-geometria shadow-sm w-full sm:w-auto"
-                  style={{
-                    position: 'absolute',
-                    left: '661px',
-                    top: '142px',
-                    width: '190px',
-                    height: '27px',
-                    textAlign: 'right',
-                  }}
+                  onClick={() => navigateHistory(-1)}
+                  disabled={!canNavigateBack}
+                  aria-label="Back"
+                  className="history-btn"
                 >
-                  или найти похожее на:
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigateHistory(1)}
+                  disabled={!canNavigateForward}
+                  aria-label="Forward"
+                  className="history-btn"
+                >
+                  ›
                 </button>
               </div>
+            )}
+            <div className="search-container" ref={searchContainerRef}>
+              <input
+                ref={inputRef}
+                type="text"
+                value={searchTerm}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  if (resultsView === 'similar' || history.length > 0) {
+                    clearSimilarContext();
+                  }
+                  setSearchTerm(nextValue);
+                  setShouldShowRuBetaHint(false);
+                  if (nextValue === '') {
+                    setSearchResults([]);
+                    setError(null);
+                    setHasSearched(false);
+                    setIsResultsVisible(false);
+                    resetHistory();
+                  }
+                }}
+                onKeyDown={handleInputKeyDown}
+                onFocus={() => {
+                  setIsInputFocused(true);
+                  setShouldShowRuBetaHint(false);
+                  setIsFlipping(false);
+                  if (hasSearched) {
+                    setIsResultsVisible(true);
+                  }
+                }}
+                onBlur={() => setIsInputFocused(false)}
+                placeholder=""
+                aria-label="Search books"
+                className="search-input"
+              />
 
-              {/* CTA Section */}
-              <div className="mt-8 flex items-center gap-3 text-base text-black">
-                {lastTlMap ? (
-                  <>
-                    <span className="font-medium font-geometria">или продолжите работать с</span>
-                    <Link
-                      href={`/map-canvas?id=${lastTlMap.id}`}
-                      className="inline-flex items-center px-4 py-2.5 bg-white text-black font-semibold border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 transition-all hover:shadow-md font-geometria text-sm"
-                    >
-                      {lastTlMap.name}
-                    </Link>
-                  </>
-                ) : (
-                  <>
-                    <span className="font-medium font-geometria">либо начните с</span>
-                    <Link 
-                      href="/map-canvas" 
-                      className="inline-flex items-center px-4 py-2.5 bg-white text-black font-semibold border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 transition-all hover:shadow-md font-geometria text-sm"
-                    >
-                      создания новой доски <span className="ml-1.5 text-base leading-none">+</span>
-                    </Link>
-                  </>
-                )}
-              </div>
-
-              {hasRailsContent && (
-                <div className="mt-6 space-y-6">
-                  {downloadRailItems.length > 0 && (
-                    <BookRail
-                      title="Недавно скачанные"
-                      items={downloadRailItems}
-                      loading={isPersonalFeedLoading && !downloadRailItems.length}
-                      emptyMessage={
-                        personalFeedError || 'Скачайте книгу, чтобы она появилась в вашем списке.'
-                      }
-                      onItemSearch={(item) => {
-                        void handleSearch(item.title);
-                        setIsResultsVisible(true);
-                      }}
-                    />
-                  )}
-                  {recommendationRailItems.length > 0 && (
-                    <BookRail
-                      title="Рекомендовано"
-                      actionSlot={
-                        <button
-                          type="button"
-                          onClick={handleRecommendationsRefresh}
-                          disabled={isPersonalFeedLoading}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-black border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors disabled:opacity-60"
-                        >
-                          {isPersonalFeedLoading ? (
-                            <span className="inline-flex h-3.5 w-3.5 border-2 border-gray-200 border-t-gray-700 rounded-full animate-spin" />
-                          ) : (
-                            <span className="text-base leading-none">↻</span>
-                          )}
-                        </button>
-                      }
-                      items={recommendationRailItems}
-                      loading={Boolean(
-                        isPersonalFeedLoading &&
-                          !recommendationRailItems.length &&
-                          trackedDownloads.length
-                      )}
-                      emptyMessage={
-                        personalFeedError ||
-                        (trackedDownloads.length
-                          ? 'Собираем рекомендации... Попробуйте позже.'
-                          : 'Скачайте несколько книг, чтобы получить персональные рекомендации.')
-                      }
-                      onItemSearch={(item) => {
-                        void handleSearch(item.title);
-                        setIsResultsVisible(true);
-                      }}
-                    />
+              {!searchTerm && (
+                <div className="placeholder-wrapper">
+                  <span className={`placeholder-text ${isFlipping ? 'flip-out' : 'flip-static'}`}>
+                    {currentPlaceholder}
+                  </span>
+                  {isFlipping && (
+                    <span className="placeholder-text flip-in">
+                      {nextPlaceholder}
+                    </span>
                   )}
                 </div>
               )}
 
+              {searchTerm && (
+                <div className="search-overlay" aria-hidden="true">
+                  {shouldShowSimilarPrefixOverlay ? (
+                    <>
+                      <span className="overlay-prefix">{overlayPrefixText}</span>
+                      <span className="overlay-suffix">{overlaySuffixText}</span>
+                    </>
+                  ) : (
+                    <span className="overlay-suffix">{searchTerm}</span>
+                  )}
+                  {shouldShowRuBetaHint && !isInputFocused && (
+                    <span className="overlay-hint">{RU_BETA_SUFFIX}</span>
+                  )}
+                </div>
+              )}
+              
+              {/* Results Dropdown */}
+              {shouldRenderDropdown && (
+                <div className="results-dropdown">
+                  {resultsView === 'search' && error && (
+                    <div className="error-message">
+                      {error.message}
+                    </div>
+                  )}
+                  {resultsView === 'similar' && similarError && (
+                    <div className="error-message">
+                      {similarError}
+                    </div>
+                  )}
+
+                  {resultsView === 'similar' && (
+                    <div className="similar-header">
+                      <p>
+                        Похожие книги на{' '}
+                        <span className="font-semibold">
+                          {similarSnapshot?.seedTitle || stripSimilarPrefix(searchTerm)}
+                        </span>
+                        {similarSnapshot?.seedAuthor && (
+                          <span className="text-gray-500">{' '}by {similarSnapshot.seedAuthor}</span>
+                        )}
+                      </p>
+                    </div>
+                  )}
+
+                  {resultsView === 'search' &&
+                    searchResults.map((book) => {
+                      const badgeLabel =
+                        book.source === 'zlibrary'
+                          ? 'zlb'
+                          : book.source === 'flibusta'
+                            ? 'ft'
+                            : book.source === 'liber3'
+                              ? 'p2p'
+                              : book.source === 'motw'
+                                ? 'motw'
+                              : book.source || '';
+                      const canShowSimilar =
+                        book.source === 'zlibrary' ||
+                        book.source === 'flibusta' ||
+                        book.source === 'liber3' ||
+                        book.source === 'motw';
+                      const similarButtonId = `${book.source || 'book'}-${book.id}`;
+                      const titleLang = book.source === 'flibusta' ? 'ru' : 'en';
+
+                      return (
+                        <div key={book.id} className="result-item">
+                          <div className="result-content">
+                            <div className="result-info">
+                              <h3 className="result-title">{book.title}</h3>
+                              <p className="result-author">{book.author}</p>
+                            </div>
+                            <div className="result-actions">
+                              {badgeLabel && (
+                                <span className="source-badge">
+                                  {badgeLabel}
+                                </span>
+                              )}
+                              {book.formats
+                                .filter((format) => format.format !== 'mobi')
+                                .map((format) => (
+                                  <button
+                                    key={format.id ?? format.format}
+                                    onClick={() => handleDownload(book, format)}
+                                    className="format-btn"
+                                  >
+                                    <span>{format.format}</span>
+                                    {format.size && (
+                                      <span className="format-size">
+                                        {format.size}
+                                      </span>
+                                    )}
+                                    {format.source === 'zlibrary' && (
+                                      <span className="zlib-badge">Z</span>
+                                    )}
+                                  </button>
+                                ))}
+                              {book.source === 'flibusta' && (
+                                <a
+                                  href={`https://flibusta.is/b/${book.id}/read`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="format-btn"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  READ
+                                </a>
+                              )}
+                              {canShowSimilar && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleSimilarClick({
+                                      id: similarButtonId,
+                                      title: book.title,
+                                      author: book.author,
+                                      titleLang,
+                                    })
+                                  }
+                                  disabled={isSimilarLoading && similarLoadingId === similarButtonId}
+                                  className="similar-action-btn"
+                                >
+                                  {isSimilarLoading && similarLoadingId === similarButtonId ? (
+                                    <span className="spinner" />
+                                  ) : null}
+                                  <span>Похожее</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                  {resultsView === 'search' && !isLoading && hasSearched && searchResults.length === 0 && !error && (
+                    <div className="empty-message">
+                      Ничего не найдено. Попробуйте другой запрос.
+                    </div>
+                  )}
+
+                  {resultsView === 'similar' && isSimilarLoading && !similarSnapshot && (
+                    <div className="empty-message">
+                      Загружаем похожие книги...
+                    </div>
+                  )}
+
+                  {resultsView === 'similar' &&
+                    !isSimilarLoading &&
+                    !similarError &&
+                    activeSimilarRecommendations.map((rec) => {
+                      const similarButtonId =
+                        rec.workId != null
+                          ? `booksv-${rec.workId}`
+                          : `${rec.id ?? rec.title}`;
+                      const recommendationKey = String(rec.id ?? rec.title);
+                      const ruLoading = autoSearchLoading?.key === `${recommendationKey}-ru`;
+                      const engLoading = autoSearchLoading?.key === `${recommendationKey}-en`;
+                      return (
+                        <div
+                          key={rec.id ?? rec.title}
+                          className="result-item"
+                        >
+                          <div className="result-content">
+                            <div className="result-info">
+                              {rec.goodreadsUrl ? (
+                                <a
+                                  href={rec.goodreadsUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="result-title-link"
+                                >
+                                  {rec.title}
+                                </a>
+                              ) : (
+                                <h3 className="result-title">{rec.title}</h3>
+                              )}
+                              <p className="result-author">{rec.author}</p>
+                            </div>
+                            <div className="result-actions">
+                              <div className="download-group">
+                                <span className="download-label">скачать</span>
+                                <div className="download-buttons">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleRecommendationAutoSearch({
+                                        recommendation: rec,
+                                        language: 'ru',
+                                      })
+                                    }
+                                    disabled={isAutoSearchBusy || isSimilarLoading}
+                                    className="lang-btn"
+                                  >
+                                    {ruLoading ? <span className="spinner" /> : 'Ru'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleRecommendationAutoSearch({
+                                        recommendation: rec,
+                                        language: 'en',
+                                      })
+                                    }
+                                    disabled={isAutoSearchBusy || isSimilarLoading}
+                                    className="lang-btn"
+                                  >
+                                    {engLoading ? <span className="spinner" /> : 'Eng'}
+                                  </button>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleSimilarClick({
+                                    id: similarButtonId,
+                                    title: rec.title,
+                                    author: rec.author,
+                                    workId: rec.workId,
+                                    titleLang: 'en',
+                                  })
+                                }
+                                disabled={isSimilarLoading && similarLoadingId === similarButtonId}
+                                className="similar-action-btn"
+                              >
+                                {isSimilarLoading && similarLoadingId === similarButtonId ? (
+                                  <span className="spinner" />
+                                ) : null}
+                                <span>Похожее</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                  {resultsView === 'similar' &&
+                    !isSimilarLoading &&
+                    !similarError &&
+                    activeSimilarRecommendations.length === 0 && (
+                      <div className="empty-message">
+                        {searchTerm.trim() === SIMILAR_PREFIX.trim()
+                          ? 'Введите название книги и получите список похожих на неё книг'
+                          : 'Нет рекомендаций для этой книги.'}
+                      </div>
+                    )}
+                </div>
+              )}
+            </div>
+
+            {/* Submit Button */}
+            <button
+              onClick={() => {
+                handleSearch();
+                setIsResultsVisible(true);
+              }}
+              disabled={isLoading}
+              className="submit-btn"
+            >
+              {isLoading ? (
+                <div className="spinner-large" />
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              )}
+            </button>
+            </div>
+
+            {/* "или начните работать на доске +" under search bar */}
+            <div className="board-action-row">
+              <span className="board-action-text">или</span>
+              {userRecentMap ? (
+                <>
+                  <span className="board-action-text">&nbsp;продолжите работу с&nbsp;</span>
+                  <button
+                    type="button"
+                    className={`board-button ${isBoardHovered ? 'hovered' : ''}`}
+                    onMouseEnter={() => setIsBoardHovered(true)}
+                    onMouseLeave={() => setIsBoardHovered(false)}
+                    onClick={handleBoardClick}
+                  >
+                    <span className="board-text">{userRecentMap.name}</span>
+                    <span className="board-fill" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="board-action-text">&nbsp;начните&nbsp;</span>
+                  <span className="board-action-text">работать на&nbsp;</span>
+                  <button
+                    type="button"
+                    className={`board-button ${isBoardHovered ? 'hovered' : ''}`}
+                    onMouseEnter={() => setIsBoardHovered(true)}
+                    onMouseLeave={() => setIsBoardHovered(false)}
+                    onClick={handleBoardClick}
+                  >
+                    <span className="board-text">доске  +</span>
+                    <span className="board-fill" />
+                  </button>
+                  <span className="board-action-text">&nbsp;</span>
+                </>
+              )}
             </div>
           </div>
 
-          {!trackedDownloads.length && (
-            <div className="flex justify-center mt-1 mb-0 px-4">
-              <div className="text-center max-w-xl">
-                <p className="text-sm md:text-base text-gray-700 font-geometria italic leading-snug">
-                  “The only thing that you absolutely have to know, is the location of the library.”
-                </p>
-                <p className="text-xs text-gray-500 font-geometria mt-2">— Albert Einstein</p>
-              </div>
+          {/* Book Rails Section - for users with downloads */}
+          {hasDownloads && (
+            <div className="rails-section">
+              <BookRail
+                title="Скачано:"
+                items={downloadRailItems}
+                loading={isPersonalFeedLoading && !downloadRailItems.length}
+                onItemClick={(item) => {
+                  void handleSearch(item.title);
+                  setIsResultsVisible(true);
+                }}
+              />
+              {displayRecommendations.length > 0 && (
+                <BookRail
+                  title={recommendationTitle}
+                  items={displayRecommendations}
+                  loading={isPersonalFeedLoading && !displayRecommendations.length}
+                  onItemClick={(item) => {
+                    void handleSearch(item.title);
+                    setIsResultsVisible(true);
+                  }}
+                />
+              )}
             </div>
           )}
 
-          <div className="flex justify-center pb-2 px-4">
+          {/* Quote for users without downloads */}
+          {!hasDownloads && (
+            <div className="quote-section">
+              <p className="quote-text">
+                "The only thing that you absolutely have to know, is the location of the library."
+              </p>
+              <p className="quote-author">— Albert Einstein</p>
+            </div>
+          )}
+
+          {/* Popular books section - positioned at bottom for non-registered users */}
+          {!hasDownloads && displayRecommendations.length > 0 && (
+            <div className="rails-section rails-section-bottom">
+              <BookRail
+                title={recommendationTitle}
+                items={displayRecommendations}
+                loading={isPersonalFeedLoading}
+                onItemClick={(item) => {
+                  void handleSearch(item.title);
+                  setIsResultsVisible(true);
+                }}
+              />
+            </div>
+          )}
+
+          {/* "перейти на форум >" button */}
+          {onShowForum && (
             <button
-              onClick={scrollToForum}
-              className="inline-flex items-center gap-2 text-sm text-gray-700 hover:text-black transition-colors font-geometria"
+              type="button"
+              onClick={onShowForum}
+              className="forum-trigger"
             >
-              <span className="font-geometria">сегодня на alphy</span>
-              <span className="text-lg leading-none font-geometria">›</span>
+              перейти на форум <span className="forum-arrow">›</span>
             </button>
-          </div>
+          )}
         </div>
       </section>
 
       <style jsx>{`
+        .hero-section {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 0 24px;
+        }
+
+        .hero-content {
+          width: 100%;
+          max-width: 900px;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          padding-top: 20px;
+          padding-left: 40px;
+          padding-bottom: 10px;
+          margin: 0 auto;
+        }
+
+        .title-section {
+          text-align: left;
+          margin-bottom: 20px;
+          width: 100%;
+        }
+
+        .hero-title {
+          font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 32px;
+          font-weight: 700;
+          color: white;
+          margin: 0 0 6px 0;
+          line-height: 1.25;
+        }
+
+        .hero-subtitle {
+          font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 32px;
+          font-weight: 700;
+          color: white;
+          margin: 0;
+          line-height: 1.25;
+        }
+
+        .tool-button {
+          position: relative;
+          display: inline-block;
+          padding: 6px 14px;
+          background: transparent;
+          border: 2px solid rgba(255, 255, 255, 0.9);
+          border-radius: 10px;
+          color: white;
+          font-family: inherit;
+          font-size: inherit;
+          font-weight: inherit;
+          cursor: pointer;
+          overflow: hidden;
+          transition: color 0.35s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.35s ease;
+        }
+
+        .tool-button:active {
+          transform: scale(0.98);
+        }
+
+        .tool-text {
+          position: relative;
+          z-index: 2;
+          transition: color 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .tool-fill {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 0%;
+          height: 100%;
+          background: white;
+          z-index: 1;
+          transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .tool-button.hovered .tool-fill {
+          width: 100%;
+        }
+
+        .tool-button.hovered .tool-text {
+          color: black;
+        }
+
+        .tool-button.hovered {
+          border-color: white;
+        }
+
+        .search-wrapper {
+          width: 100%;
+          max-width: 760px;
+          position: relative;
+        }
+
+        .similar-button {
+          position: absolute;
+          right: 60px;
+          top: -14px;
+          z-index: 10;
+          padding: 6px 16px;
+          background: rgba(30, 30, 30, 0.6);
+          backdrop-filter: blur(24px);
+          -webkit-backdrop-filter: blur(24px);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 20px;
+          color: rgba(255, 255, 255, 0.85);
+          font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 14px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .similar-button:hover {
+          background: rgba(50, 50, 50, 0.7);
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .search-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          width: 100%;
+        }
+
+        .history-controls {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .history-btn {
+          width: 36px;
+          height: 36px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255, 255, 255, 0.12);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          border-radius: 8px;
+          color: white;
+          font-size: 18px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .history-btn:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.2);
+        }
+
+        .history-btn:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
+
+        .search-container {
+          flex: 1;
+          position: relative;
+        }
+
+        .search-input {
+          width: 100%;
+          height: 56px;
+          padding: 0 24px;
+          background: white;
+          border: none;
+          border-radius: 14px;
+          font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 17px;
+          color: transparent;
+          caret-color: #000;
+          outline: none;
+          box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+        }
+
         .placeholder-wrapper {
           position: absolute;
-          left: 1rem;
-          right: 1rem;
+          left: 24px;
+          right: 24px;
           top: 50%;
           transform: translateY(-50%);
           pointer-events: none;
           perspective: 800px;
-          perspective-origin: center;
           color: #9ca3af;
-          font-size: 0.9rem;
+          font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 17px;
+        }
+
+        .board-action-row {
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
+          margin-top: 20px;
+          gap: 0;
+          width: 100%;
+        }
+
+        .board-action-text {
+          font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 18px;
+          color: rgba(255, 255, 255, 0.65);
+          letter-spacing: 0.01em;
+        }
+
+        .board-action-text.spaced {
+          margin-right: 6px;
+        }
+
+        .board-button {
+          position: relative;
+          display: inline-block;
+          padding: 5px 14px;
+          margin: 0 4px;
+          background: transparent;
+          border: 1.5px solid rgba(255, 255, 255, 0.5);
+          border-radius: 8px;
+          color: rgba(255, 255, 255, 0.8);
+          font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 18px;
+          font-weight: 500;
+          cursor: pointer;
+          overflow: hidden;
+          transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s ease;
+        }
+
+        .board-button:active {
+          transform: scale(0.98);
+        }
+
+        .board-text {
+          position: relative;
+          z-index: 2;
+          transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .board-fill {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 0%;
+          height: 100%;
+          background: rgba(255, 255, 255, 0.9);
+          z-index: 1;
+          transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .board-button.hovered .board-fill {
+          width: 100%;
+        }
+
+        .board-button.hovered .board-text {
+          color: black;
+        }
+
+        .board-button.hovered {
+          border-color: rgba(255, 255, 255, 0.9);
+        }
+
+        .forum-trigger {
+          margin-top: 16px;
+          padding: 10px 24px;
+          background: transparent;
+          border: none;
+          color: rgba(255, 255, 255, 0.5);
+          font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 14px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          align-self: center;
+          width: 100%;
+          text-align: center;
+        }
+
+        .forum-trigger:hover {
+          color: rgba(255, 255, 255, 0.8);
+        }
+
+        .forum-arrow {
+          display: inline-block;
+          transition: transform 0.2s ease;
+          margin-left: 4px;
+        }
+
+        .forum-trigger:hover .forum-arrow {
+          transform: translateX(4px);
         }
 
         .placeholder-text {
           display: block;
-          transform: rotateX(0deg);
-          opacity: 1;
           transform-origin: center;
-          transform-style: preserve-3d;
         }
 
         .placeholder-text.flip-static {
@@ -1757,59 +1940,566 @@ export const HeroSearch = ({ onForumRequest }: { onForumRequest?: () => void }) 
 
         .placeholder-text.flip-out {
           animation: flipOut 0.6s forwards;
-          transform-origin: center;
         }
 
         .placeholder-text.flip-in {
           position: absolute;
           left: 0;
           top: 0;
-          transform-origin: center;
-          transform-style: preserve-3d;
           animation: flipIn 0.6s forwards;
         }
 
-        .no-scrollbar {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
+        .search-overlay {
+          position: absolute;
+          left: 24px;
+          right: 24px;
+          top: 50%;
+          transform: translateY(-50%);
+          pointer-events: none;
+          font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 17px;
+          white-space: pre;
         }
 
-        .no-scrollbar::-webkit-scrollbar {
-          display: none;
+        .overlay-prefix {
+          color: #9ca3af;
         }
 
-        .rail-scroll {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
+        .overlay-suffix {
+          color: #000;
         }
 
-        :global(.rail-scroll::-webkit-scrollbar) {
-          display: none;
-          width: 0;
-          height: 0;
-          background: transparent;
+        .overlay-hint {
+          color: #9ca3af;
+        }
+
+        .submit-btn {
+          width: 56px;
+          height: 56px;
+          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: white;
+          border: none;
+          border-radius: 14px;
+          color: #555;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+        }
+
+        .submit-btn:hover:not(:disabled) {
+          color: #000;
+          transform: translateX(2px);
+        }
+
+        .submit-btn:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+
+        .rails-section {
+          width: 100%;
+          margin-top: 30px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          overflow: visible;
+          padding-bottom: 0;
+        }
+
+        .rails-section-bottom {
+          margin-top: 20px;
+        }
+
+        .quote-section {
+          margin-top: 40px;
+          text-align: center;
+          padding: 0 20px;
+        }
+
+        .quote-text {
+          font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 17px;
+          font-style: normal;
+          color: rgba(255, 255, 255, 0.65);
+          margin: 0 0 10px 0;
+          line-height: 1.5;
+        }
+
+        .quote-author {
+          font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 13px;
+          color: rgba(255, 255, 255, 0.45);
+          margin: 0;
+        }
+
+        /* Results Dropdown */
+        .results-dropdown {
+          position: absolute;
+          top: calc(100% + 8px);
+          left: 0;
+          right: 0;
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+          max-height: 65vh;
+          overflow-y: auto;
+          z-index: 50;
+        }
+
+        .error-message {
+          padding: 16px;
+          color: #dc2626;
+          background: #fef2f2;
+          border-bottom: 1px solid #fecaca;
+        }
+
+        .similar-header {
+          padding: 12px 16px;
+          background: #f9fafb;
+          border-bottom: 1px solid #e5e7eb;
+          font-family: 'Geometria', 'Manrope', system-ui, sans-serif;
+          font-size: 14px;
+          color: #374151;
+        }
+
+        .result-item {
+          padding: 14px 16px;
+          border-bottom: 1px solid #f3f4f6;
+          transition: background 0.15s ease;
+        }
+
+        .result-item:hover {
+          background: #f9fafb;
+        }
+
+        .result-content {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 16px;
+        }
+
+        .result-info {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .result-title {
+          font-family: 'Geometria', 'Manrope', system-ui, sans-serif;
+          font-size: 16px;
+          font-weight: 500;
+          color: #111827;
+          margin: 0 0 4px 0;
+        }
+
+        .result-title-link {
+          font-family: 'Geometria', 'Manrope', system-ui, sans-serif;
+          font-size: 16px;
+          font-weight: 500;
+          color: #111827;
+          text-decoration: none;
+        }
+
+        .result-title-link:hover {
+          text-decoration: underline;
+        }
+
+        .result-author {
+          font-family: 'Geometria', 'Manrope', system-ui, sans-serif;
+          font-size: 14px;
+          color: #6b7280;
+          margin: 0;
+        }
+
+        .result-actions {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 6px;
+          flex-shrink: 0;
+        }
+
+        .source-badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 2px 8px;
+          font-family: 'Geometria', 'Manrope', system-ui, sans-serif;
+          font-size: 11px;
+          text-transform: uppercase;
+          color: #6b7280;
+          border: 1px solid #e5e7eb;
+          border-radius: 12px;
+        }
+
+        .format-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 10px;
+          background: #f3f4f6;
+          border: none;
+          border-radius: 6px;
+          font-family: 'Geometria', 'Manrope', system-ui, sans-serif;
+          font-size: 12px;
+          font-weight: 600;
+          text-transform: uppercase;
+          color: #374151;
+          cursor: pointer;
+          text-decoration: none;
+          transition: background 0.15s ease;
+        }
+
+        .format-btn:hover {
+          background: #e5e7eb;
+        }
+
+        .format-size {
+          font-size: 10px;
+          color: #9ca3af;
+        }
+
+        .zlib-badge {
+          font-size: 9px;
+          font-weight: 600;
+          color: #7c3aed;
+        }
+
+        .similar-action-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 12px;
+          background: white;
+          border: 1px solid #e5e7eb;
+          border-radius: 6px;
+          font-family: 'Geometria', 'Manrope', system-ui, sans-serif;
+          font-size: 12px;
+          font-weight: 600;
+          text-transform: uppercase;
+          color: #374151;
+          cursor: pointer;
+          transition: background 0.15s ease;
+        }
+
+        .similar-action-btn:hover:not(:disabled) {
+          background: #f9fafb;
+        }
+
+        .similar-action-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .download-group {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .download-label {
+          font-family: 'Geometria', 'Manrope', system-ui, sans-serif;
+          font-size: 10px;
+          text-transform: uppercase;
+          color: #9ca3af;
+          letter-spacing: 0.05em;
+        }
+
+        .download-buttons {
+          display: flex;
+          gap: 6px;
+        }
+
+        .lang-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 44px;
+          padding: 4px 10px;
+          background: white;
+          border: 1px solid #e5e7eb;
+          border-radius: 6px;
+          font-family: 'Geometria', 'Manrope', system-ui, sans-serif;
+          font-size: 12px;
+          font-weight: 600;
+          text-transform: uppercase;
+          color: #374151;
+          cursor: pointer;
+          transition: background 0.15s ease;
+        }
+
+        .lang-btn:hover:not(:disabled) {
+          background: #f9fafb;
+        }
+
+        .lang-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .empty-message {
+          padding: 32px;
+          text-align: center;
+          font-family: 'Geometria', 'Manrope', system-ui, sans-serif;
+          font-size: 14px;
+          color: #6b7280;
+        }
+
+        .spinner {
+          display: inline-block;
+          width: 14px;
+          height: 14px;
+          border: 2px solid #e5e7eb;
+          border-top-color: #374151;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+
+        .spinner-large {
+          width: 20px;
+          height: 20px;
+          border: 2px solid #e5e7eb;
+          border-top-color: #374151;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
         }
 
         @keyframes flipOut {
-          0% {
-            transform: rotateX(0deg);
-            opacity: 1;
-          }
-          100% {
-            transform: rotateX(90deg);
-            opacity: 0;
-          }
+          0% { transform: rotateX(0deg); opacity: 1; }
+          100% { transform: rotateX(90deg); opacity: 0; }
         }
 
         @keyframes flipIn {
-          0% {
-            transform: rotateX(-90deg);
-            opacity: 0;
+          0% { transform: rotateX(-90deg); opacity: 0; }
+          100% { transform: rotateX(0deg); opacity: 1; }
+        }
+
+        @media (max-width: 768px) {
+          .hero-content {
+            padding-top: 24px;
+            padding-left: 16px;
+            align-items: flex-start;
           }
-          100% {
-            transform: rotateX(0deg);
-            opacity: 1;
+
+          .title-section {
+            text-align: left;
           }
+
+          .hero-title,
+          .hero-subtitle {
+            font-size: 24px;
+          }
+
+          .search-wrapper {
+            max-width: 100%;
+          }
+
+          .similar-button {
+            right: 50px;
+            top: -12px;
+            font-size: 12px;
+            padding: 5px 12px;
+          }
+
+          .search-row {
+            flex-wrap: wrap;
+          }
+
+          .search-input {
+            height: 50px;
+            font-size: 16px;
+          }
+
+          .submit-btn {
+            width: 50px;
+            height: 50px;
+          }
+
+          .board-action-row {
+            flex-wrap: wrap;
+            justify-content: flex-start;
+          }
+
+          .board-action-text {
+            font-size: 15px;
+          }
+
+          .board-button {
+            font-size: 15px;
+            padding: 4px 10px;
+          }
+
+          .rails-section {
+            margin-top: 25px;
+            gap: 14px;
+          }
+
+          .rails-section-bottom {
+            margin-top: 16px;
+          }
+
+          .forum-trigger {
+            margin-top: 14px;
+            align-self: center;
+            text-align: center;
+          }
+
+          .quote-section {
+            margin-top: 30px;
+          }
+
+          .result-content {
+            flex-direction: column;
+          }
+
+          .result-actions {
+            width: 100%;
+            justify-content: flex-start;
+          }
+        }
+      `}</style>
+
+      <style jsx global>{`
+        /* Book Rail Styles */
+        .book-rail {
+          width: 100%;
+          overflow: visible;
+        }
+
+        .book-rail-title {
+          font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 18px;
+          font-weight: 700;
+          color: white;
+          margin: 0 0 14px 0;
+        }
+
+        .book-rail-container {
+          position: relative;
+          overflow: visible;
+          padding: 10px 0;
+          margin: -10px 0;
+        }
+
+        .book-rail-scroll {
+          display: flex;
+          gap: 14px;
+          overflow-x: auto;
+          overflow-y: visible;
+          padding: 10px 50px 10px 0;
+          margin: -10px 0;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+          scroll-snap-type: x mandatory;
+        }
+
+        .book-rail-scroll::-webkit-scrollbar {
+          display: none;
+        }
+
+        .book-rail-item {
+          flex: 0 0 auto;
+          width: 180px;
+          min-height: 100px;
+          padding: 16px;
+          background: rgba(255, 255, 255, 0.1);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 18px;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-start;
+          text-align: left;
+          cursor: pointer;
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          scroll-snap-align: start;
+        }
+
+        .book-rail-item:hover {
+          background: rgba(255, 255, 255, 0.15);
+          transform: translateY(-5px);
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        }
+
+        .book-rail-item:active {
+          transform: translateY(-2px) scale(0.98);
+        }
+
+        .book-rail-item.skeleton {
+          background: rgba(255, 255, 255, 0.06);
+          animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .book-rail-item-title {
+          font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 14px;
+          font-weight: 600;
+          color: white;
+          margin: 0 0 6px 0;
+          line-height: 1.3;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
+        .book-rail-item-author {
+          font-family: 'Geometria', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 12px;
+          color: rgba(255, 255, 255, 0.7);
+          margin: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .book-rail-arrow {
+          position: absolute;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 42px;
+          height: 42px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255, 255, 255, 0.12);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          border-radius: 50%;
+          color: white;
+          font-size: 26px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+          z-index: 10;
+        }
+
+        .book-rail-arrow-left {
+          left: -10px;
+        }
+
+        .book-rail-arrow-right {
+          right: 0;
+        }
+
+        .book-rail-arrow:hover {
+          background: rgba(255, 255, 255, 0.2);
+          transform: translateY(-50%) scale(1.05);
+        }
+
+        @keyframes pulse {
+          0%, 100% { opacity: 0.4; }
+          50% { opacity: 0.7; }
         }
       `}</style>
     </>
