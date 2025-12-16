@@ -1,0 +1,11 @@
+[build]
+  base = "client"
+  command = "npm install && npm run build"
+  publish = ".next"
+
+[build.environment]
+  NETLIFY_USE_PNPM = "false"
+  NODE_VERSION = "22.21.1"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
