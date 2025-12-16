@@ -6,6 +6,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import { getUserMaps, deleteMap, SavedMap, bookmarkMap, notifyMapDeleted } from '@/utils/mapUtils';
+import { getApiBaseUrl } from '@/utils/api';
 import Link from 'next/link';
 import MapCommentSection from '@/components/MapCommentSection';
 import { useAuth } from '@/context/AuthContext';
@@ -144,7 +145,7 @@ export default function SavedMapsPage() {
         try {
           const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
           if (token) {
-            const res = await fetch('/api/tl-maps', {
+            const res = await fetch(`${getApiBaseUrl()}/tl-maps`, {
               headers: { Authorization: `Bearer ${token}` },
             });
             if (res.ok) {
@@ -222,7 +223,7 @@ export default function SavedMapsPage() {
           toast.error('You must be logged in to delete maps');
           return;
         }
-        const res = await fetch(`/api/tl-maps/${mapId}`, {
+        const res = await fetch(`${getApiBaseUrl()}/tl-maps/${mapId}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });

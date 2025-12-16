@@ -114,7 +114,7 @@ export const useTLMapPersistence = ({
       setIsLoading(true);
       try {
         const token = localStorage.getItem('token');
-        const response = await fetch(`${getApiBaseUrl()}/api/tl-maps/${id}`, {
+        const response = await fetch(`${getApiBaseUrl()}/tl-maps/${id}`, {
           headers: {
             Authorization: token ? `Bearer ${token}` : '',
           },
@@ -162,8 +162,8 @@ export const useTLMapPersistence = ({
 
       const snapshot = getSnapshot(editor.store);
       const endpoint = savedMapId
-        ? `${getApiBaseUrl()}/api/tl-maps/${savedMapId}`
-        : `${getApiBaseUrl()}/api/tl-maps`;
+        ? `${getApiBaseUrl()}/tl-maps/${savedMapId}`
+        : `${getApiBaseUrl()}/tl-maps`;
 
       const response = await fetch(endpoint, {
         method: savedMapId ? 'PUT' : 'POST',
@@ -206,7 +206,7 @@ export const useTLMapPersistence = ({
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${getApiBaseUrl()}/api/tl-maps/${savedMapId}`, {
+      const response = await fetch(`${getApiBaseUrl()}/tl-maps/${savedMapId}`, {
         method: 'DELETE',
         headers: {
           Authorization: token ? `Bearer ${token}` : '',
