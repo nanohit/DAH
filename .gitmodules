@@ -1,0 +1,7 @@
+[submodule "external-tools/anna-dl"]
+	path = external-tools/anna-dl
+	url = https://github.com/Nquxii/anna-dl.git
+
+[submodule "external-tools/annas-py"]
+	path = external-tools/annas-py
+	url = https://github.com/milahu/annas-py.git
