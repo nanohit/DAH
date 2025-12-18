@@ -283,7 +283,9 @@ function ToolbarWithEditor({
         </button>
 
         {showMoreDropdown && (
-          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 p-3 z-50 min-w-[220px]">
+          <div className={`absolute left-1/2 -translate-x-1/2 bg-white rounded-lg shadow-lg border border-gray-200 p-3 z-50 min-w-[220px] ${
+            isCompact ? 'bottom-full mb-2' : 'top-full mt-2'
+          }`}>
             <div className="grid grid-cols-4 gap-2">
               {/* Rectangle */}
               <button

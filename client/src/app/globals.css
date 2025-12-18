@@ -3,16 +3,13 @@
 /* Import Manrope as robust fallback for Geometria - with all weights and cyrillic subset */
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&subset=cyrillic,latin&display=swap');
 
-/* Geometria Font - Local with multiple fallbacks */
-/* Try local system fonts first, then hosted files */
+/* Geometria Font - Local system fonts only (no hosted files) */
+/* If Geometria is installed on the system, it will be used; otherwise fallback to Manrope */
 @font-face {
   font-family: 'Geometria';
   src: local('Geometria'),
        local('Geometria-Regular'),
-       local('Geometria Regular'),
-       url('/fonts/Geometria-Regular.woff2') format('woff2'),
-       url('/fonts/Geometria-Regular.woff') format('woff'),
-       url('/fonts/Geometria-Regular.ttf') format('truetype');
+       local('Geometria Regular');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -22,10 +19,7 @@
   font-family: 'Geometria';
   src: local('Geometria Medium'),
        local('Geometria-Medium'),
-       local('GeometriaMedium'),
-       url('/fonts/Geometria-Medium.woff2') format('woff2'),
-       url('/fonts/Geometria-Medium.woff') format('woff'),
-       url('/fonts/Geometria-Medium.ttf') format('truetype');
+       local('GeometriaMedium');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -35,10 +29,7 @@
   font-family: 'Geometria';
   src: local('Geometria Bold'),
        local('Geometria-Bold'),
-       local('GeometriaBold'),
-       url('/fonts/Geometria-Bold.woff2') format('woff2'),
-       url('/fonts/Geometria-Bold.woff') format('woff'),
-       url('/fonts/Geometria-Bold.ttf') format('truetype');
+       local('GeometriaBold');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -48,10 +39,7 @@
   font-family: 'Geometria';
   src: local('Geometria Light'),
        local('Geometria-Light'),
-       local('GeometriaLight'),
-       url('/fonts/Geometria-Light.woff2') format('woff2'),
-       url('/fonts/Geometria-Light.woff') format('woff'),
-       url('/fonts/Geometria-Light.ttf') format('truetype');
+       local('GeometriaLight');
   font-weight: 300;
   font-style: normal;
   font-display: swap;

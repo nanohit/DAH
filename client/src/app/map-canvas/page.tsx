@@ -192,6 +192,7 @@ function CanvasMapContent() {
   const [hasLoadedFromServer, setHasLoadedFromServer] = useState(false);
   const loadAttemptedRef = useRef(false);
   const [isNanoAdmin, setIsNanoAdmin] = useState(false);
+  const [showAuthNotification, setShowAuthNotification] = useState(false);
 
   // IMPORTANT: Keep persistenceKey stable during the session.
   // If this changes (e.g., after first save), tldraw will reload from IndexedDB with the new key and clear the canvas.
@@ -306,7 +307,7 @@ function CanvasMapContent() {
 
     const token = localStorage.getItem('token');
     if (!token) {
-      toast.error('Please login to save maps');
+      setShowAuthNotification(true);
       return;
     }
 
@@ -431,6 +432,53 @@ function CanvasMapContent() {
       {isLoading && (
         <div className="absolute inset-0 bg-white/50 z-[400] flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
+        </div>
+      )}
+      
+      {/* Auth notification for unauthenticated save attempts */}
+      {showAuthNotification && (
+        <div className="fixed inset-0 bg-black/30 z-[500] flex items-center justify-center" onClick={() => setShowAuthNotification(false)}>
+          <div 
+            className="bg-white rounded-xl shadow-2xl p-6 max-w-sm mx-4 transform animate-in fade-in zoom-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                  <polyline points="10 17 15 12 10 7" />
+                  <line x1="15" y1="12" x2="3" y2="12" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Требуется авторизация</h3>
+            </div>
+            <p className="text-gray-600 mb-5">
+              Чтобы сохранить карту, необходимо войти в аккаунт или зарегистрироваться.
+            </p>
+            <div className="flex gap-3">
+              <a
+                href="/login"
+                className="flex-1 px-4 py-2.5 bg-blue-600 text-white text-center rounded-lg font-medium hover:bg-blue-700 transition-colors"
+              >
+                Войти
+              </a>
+              <a
+                href="/register"
+                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 text-center rounded-lg font-medium hover:bg-gray-200 transition-colors"
+              >
+                Регистрация
+              </a>
+            </div>
+            <button
+              onClick={() => setShowAuthNotification(false)}
+              className="absolute top-3 right-3 p-1 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
       <TLMapToolbar
